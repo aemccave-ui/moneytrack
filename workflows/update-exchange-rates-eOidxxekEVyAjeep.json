@@ -1,0 +1,316 @@
+{
+  "updatedAt": "2026-06-07T12:51:57.841Z",
+  "createdAt": "2026-06-07T12:18:50.561Z",
+  "id": "eOidxxekEVyAjeep",
+  "name": "Update Exchange Rates",
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 18
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "9ae520ae-27ae-4606-9a5a-2ee3412a5240",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select code\nfrom moneytrack.currencies\nwhere is_active = true\norder by code;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        208,
+        0
+      ],
+      "id": "3db1e24d-7080-4318-bb2e-c95a96791c1e",
+      "name": "Get active currencies",
+      "credentials": {
+        "postgres": {
+          "id": "tM27zg5m7tREo2ep",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://open.er-api.com/v6/latest/EUR",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        416,
+        0
+      ],
+      "id": "de245568-e16f-4f32-9ebd-a50c553d6ed2",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const api = $input.first().json;\n\nconst currencies = $('Get active currencies')\n  .all()\n  .map(i => String(i.json.code).toUpperCase());\n\nconst rateDate = api.time_last_update_utc\n  ? new Date(api.time_last_update_utc).toISOString().slice(0, 10)\n  : new Date().toISOString().slice(0, 10);\n\nconst rates = api.rates || {};\n\nconst out = [];\n\nfor (const from of currencies) {\n  for (const to of currencies) {\n    if (from === to) {\n      out.push({\n        json: {\n          rate_date: rateDate,\n          from_currency: from,\n          to_currency: to,\n          rate: 1,\n          source: 'open.er-api.com'\n        }\n      });\n      continue;\n    }\n\n    const fromRate = from === 'EUR' ? 1 : Number(rates[from]);\n    const toRate = to === 'EUR' ? 1 : Number(rates[to]);\n\n    if (!Number.isFinite(fromRate) || !Number.isFinite(toRate)) {\n      continue;\n    }\n\n    out.push({\n      json: {\n        rate_date: rateDate,\n        from_currency: from,\n        to_currency: to,\n        rate: toRate / fromRate,\n        source: 'open.er-api.com'\n      }\n    });\n  }\n}\n\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        0
+      ],
+      "id": "4643e42e-09e0-4dea-8a70-2f9daffa1db5",
+      "name": "Prepare exchange rates"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into moneytrack.exchange_rates (\n    rate_date,\n    from_currency,\n    to_currency,\n    rate,\n    source\n)\nvalues (\n    '{{ $json.rate_date }}'::date,\n    '{{ $json.from_currency }}',\n    '{{ $json.to_currency }}',\n    {{ $json.rate }},\n    '{{ $json.source }}'\n)\non conflict (rate_date, from_currency, to_currency)\ndo update set\n    rate = excluded.rate,\n    source = excluded.source;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        832,
+        0
+      ],
+      "id": "538931a8-63ae-4897-941d-e050e37b8345",
+      "name": "Upsert exchange rates",
+      "credentials": {
+        "postgres": {
+          "id": "tM27zg5m7tREo2ep",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get active currencies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get active currencies": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Prepare exchange rates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare exchange rates": {
+      "main": [
+        [
+          {
+            "node": "Upsert exchange rates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": {
+    "node:Schedule Trigger": {
+      "recurrenceRules": []
+    }
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "versionId": "1ff8cb57-ce6c-4dc5-86bb-93f9af907c58",
+  "activeVersionId": "1ff8cb57-ce6c-4dc5-86bb-93f9af907c58",
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-06-07T12:18:50.561Z",
+      "createdAt": "2026-06-07T12:18:50.561Z",
+      "role": "workflow:owner",
+      "workflowId": "eOidxxekEVyAjeep",
+      "projectId": "m9DMPSZOUe7yfL0e"
+    }
+  ],
+  "activeVersion": {
+    "updatedAt": "2026-06-07T12:52:02.798Z",
+    "createdAt": "2026-06-07T12:51:57.864Z",
+    "versionId": "1ff8cb57-ce6c-4dc5-86bb-93f9af907c58",
+    "workflowId": "eOidxxekEVyAjeep",
+    "nodes": [
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "triggerAtHour": 18
+              }
+            ]
+          }
+        },
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.3,
+        "position": [
+          0,
+          0
+        ],
+        "id": "9ae520ae-27ae-4606-9a5a-2ee3412a5240",
+        "name": "Schedule Trigger"
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "select code\nfrom moneytrack.currencies\nwhere is_active = true\norder by code;",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          208,
+          0
+        ],
+        "id": "3db1e24d-7080-4318-bb2e-c95a96791c1e",
+        "name": "Get active currencies",
+        "credentials": {
+          "postgres": {
+            "id": "tM27zg5m7tREo2ep",
+            "name": "Postgres account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "url": "https://open.er-api.com/v6/latest/EUR",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          416,
+          0
+        ],
+        "id": "de245568-e16f-4f32-9ebd-a50c553d6ed2",
+        "name": "HTTP Request"
+      },
+      {
+        "parameters": {
+          "jsCode": "const api = $input.first().json;\n\nconst currencies = $('Get active currencies')\n  .all()\n  .map(i => String(i.json.code).toUpperCase());\n\nconst rateDate = api.time_last_update_utc\n  ? new Date(api.time_last_update_utc).toISOString().slice(0, 10)\n  : new Date().toISOString().slice(0, 10);\n\nconst rates = api.rates || {};\n\nconst out = [];\n\nfor (const from of currencies) {\n  for (const to of currencies) {\n    if (from === to) {\n      out.push({\n        json: {\n          rate_date: rateDate,\n          from_currency: from,\n          to_currency: to,\n          rate: 1,\n          source: 'open.er-api.com'\n        }\n      });\n      continue;\n    }\n\n    const fromRate = from === 'EUR' ? 1 : Number(rates[from]);\n    const toRate = to === 'EUR' ? 1 : Number(rates[to]);\n\n    if (!Number.isFinite(fromRate) || !Number.isFinite(toRate)) {\n      continue;\n    }\n\n    out.push({\n      json: {\n        rate_date: rateDate,\n        from_currency: from,\n        to_currency: to,\n        rate: toRate / fromRate,\n        source: 'open.er-api.com'\n      }\n    });\n  }\n}\n\nreturn out;"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          624,
+          0
+        ],
+        "id": "4643e42e-09e0-4dea-8a70-2f9daffa1db5",
+        "name": "Prepare exchange rates"
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "insert into moneytrack.exchange_rates (\n    rate_date,\n    from_currency,\n    to_currency,\n    rate,\n    source\n)\nvalues (\n    '{{ $json.rate_date }}'::date,\n    '{{ $json.from_currency }}',\n    '{{ $json.to_currency }}',\n    {{ $json.rate }},\n    '{{ $json.source }}'\n)\non conflict (rate_date, from_currency, to_currency)\ndo update set\n    rate = excluded.rate,\n    source = excluded.source;",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          832,
+          0
+        ],
+        "id": "538931a8-63ae-4897-941d-e050e37b8345",
+        "name": "Upsert exchange rates",
+        "credentials": {
+          "postgres": {
+            "id": "tM27zg5m7tREo2ep",
+            "name": "Postgres account"
+          }
+        }
+      }
+    ],
+    "connections": {
+      "Schedule Trigger": {
+        "main": [
+          [
+            {
+              "node": "Get active currencies",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get active currencies": {
+        "main": [
+          [
+            {
+              "node": "HTTP Request",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "HTTP Request": {
+        "main": [
+          [
+            {
+              "node": "Prepare exchange rates",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare exchange rates": {
+        "main": [
+          [
+            {
+              "node": "Upsert exchange rates",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "Anatolii Makeev",
+    "name": "Version 1ff8cb57",
+    "description": "",
+    "autosaved": true
+  },
+  "tags": []
+}

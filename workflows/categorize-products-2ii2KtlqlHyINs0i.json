@@ -1,0 +1,266 @@
+{
+  "updatedAt": "2026-06-05T15:51:40.291Z",
+  "createdAt": "2026-05-29T21:38:17.998Z",
+  "id": "2ii2KtlqlHyINs0i",
+  "name": "Categorize products",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "63329423-c671-4298-b9fc-92c24f4fb77d",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with user_row as (\n    select id as user_id\n    from moneytrack.app_users\n    where telegram_user_id = {{ $('Set user context').item.json.telegram_user_id }}\n)\n\nselect\n    pc.id as product_id,\n    pc.original_name,\n    pc.original_language\nfrom moneytrack.product_catalog pc\njoin user_row u\n    on u.user_id = pc.user_id\nwhere pc.category_id is null\norder by pc.id\nlimit {{ $('Set user context').item.json.limit || 50 }};",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        208,
+        0
+      ],
+      "id": "a8027bdb-46c5-49b5-9d3e-d427459579e1",
+      "name": "Get uncategorized products",
+      "credentials": {
+        "postgres": {
+          "id": "tM27zg5m7tREo2ep",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with user_row as (\n    select\n        u.id as user_id,\n        us.language_code\n    from moneytrack.app_users u\n    join moneytrack.user_settings us\n        on us.user_id = u.id\n    where u.telegram_user_id = {{ $('Set user context').item.json.telegram_user_id }}\n)\n\nselect\n    c.id as category_id,\n    c.parent_id,\n    coalesce(t_user.name, t_ru.name) as category_name\nfrom moneytrack.category_catalog c\njoin user_row u\n    on u.user_id = c.user_id\nleft join moneytrack.category_catalog_translations t_user\n    on t_user.category_id = c.id\n   and t_user.language_code = u.language_code\nleft join moneytrack.category_catalog_translations t_ru\n    on t_ru.category_id = c.id\n   and t_ru.language_code = 'ru'\nwhere c.is_active = true\norder by c.sort_order, c.id;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        416,
+        0
+      ],
+      "id": "9281d155-6e60-42e3-9e6f-3ba9b714eb74",
+      "name": "Get user categories",
+      "credentials": {
+        "postgres": {
+          "id": "tM27zg5m7tREo2ep",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const products = $('Get uncategorized products').all().map(i => i.json);\nconst categories = $('Get user categories').all().map(i => i.json);\nreturn [{\n  json: {\n    prompt: `Категоризируй товары. Используй только category_id из списка категорий. Не придумывай категории. Верни только JSON-массив без markdown в формате [{\"product_id\":1,\"category_id\":10}].\\n\\nКатегории:\\n${JSON.stringify(categories, null, 2)}\\n\\nТовары:\\n${JSON.stringify(products, null, 2)}`\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        0
+      ],
+      "id": "f170226b-aeaf-4122-8626-cc9e065b29d3",
+      "name": "Build categorization prompt"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-5-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "={{ $json.prompt }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        832,
+        0
+      ],
+      "id": "2600002a-2026-4075-9be8-63a7305fb463",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": "nmnJ0OYJbQTXMGLE",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.output[0].content[0].text.trim();\n\nreturn JSON.parse(raw).map(x => ({\n  json: {\n    product_id: x.product_id,\n    category_id: x.category_id\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        0
+      ],
+      "id": "b6f1e6b1-fb4e-401f-be0b-94f1a2136038",
+      "name": "Parse categorization JSON"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with user_row as (\n    select id as user_id\n    from moneytrack.app_users\n    where telegram_user_id = {{ $('Set user context').item.json.telegram_user_id }}\n)\n\nupdate moneytrack.product_catalog pc\nset category_id = {{ $json.category_id }}\nfrom user_row u\nwhere pc.id = {{ $json.product_id }}\n  and pc.user_id = u.user_id\nreturning pc.id, pc.category_id;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1392,
+        0
+      ],
+      "id": "8d87343e-5e74-41a3-9d2c-1f7b520e2620",
+      "name": "Update product category",
+      "credentials": {
+        "postgres": {
+          "id": "tM27zg5m7tREo2ep",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update moneytrack.receipt_items ri\nset category_id=pc.category_id\nfrom moneytrack.product_catalog pc\nwhere pc.id=ri.product_id\nand ri.category_id is null\nand pc.category_id is not null;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1600,
+        0
+      ],
+      "id": "8087002a-2af0-4875-a435-5877a300f593",
+      "name": "Update receipt item categories",
+      "credentials": {
+        "postgres": {
+          "id": "tM27zg5m7tREo2ep",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get uncategorized products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get uncategorized products": {
+      "main": [
+        [
+          {
+            "node": "Get user categories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get user categories": {
+      "main": [
+        [
+          {
+            "node": "Build categorization prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build categorization prompt": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Parse categorization JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse categorization JSON": {
+      "main": [
+        [
+          {
+            "node": "Update product category",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update product category": {
+      "main": [
+        [
+          {
+            "node": "Update receipt item categories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "versionId": "fd55e8d1-3e27-4775-812e-64fd1b340038",
+  "activeVersionId": null,
+  "triggerCount": 0,
+  "shared": [
+    {
+      "updatedAt": "2026-05-29T21:38:17.998Z",
+      "createdAt": "2026-05-29T21:38:17.998Z",
+      "role": "workflow:owner",
+      "workflowId": "2ii2KtlqlHyINs0i",
+      "projectId": "m9DMPSZOUe7yfL0e"
+    }
+  ],
+  "activeVersion": null,
+  "tags": []
+}

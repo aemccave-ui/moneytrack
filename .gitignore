@@ -1,0 +1,10 @@
+.env
+.env.*
+node_modules/
+logs/
+*.log
+tmp/
+backup/
+backups/
+*.zip
+*.tar.gz
