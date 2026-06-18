@@ -52,38 +52,4 @@ done
 
 rm -f "$response_file"
 
-cd "$PROJECT_DIR"
-
-if [ ! -d ".git" ]; then
-  git init
-  git branch -M main
-fi
-
-if [ ! -f ".gitignore" ]; then
-  cat > .gitignore <<'GITIGNORE'
-.env
-.env.*
-node_modules/
-logs/
-*.log
-tmp/
-backup/
-backups/
-*.zip
-*.tar.gz
-GITIGNORE
-fi
-
-if ! git remote get-url origin >/dev/null 2>&1; then
-  git remote add origin git@github.com:aemccave-ui/moneytrack.git
-fi
-
-if [ -n "$(git status --short)" ]; then
-  git add .
-  git commit -m "workflow: export n8n workflows"
-  git push -u origin main
-else
-  echo "No workflow changes to commit"
-fi
-
 echo "Workflow export completed"
