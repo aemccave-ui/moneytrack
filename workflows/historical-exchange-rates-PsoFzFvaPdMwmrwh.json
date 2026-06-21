@@ -1,0 +1,140 @@
+{
+  "updatedAt": "2026-06-20T13:14:16.827Z",
+  "createdAt": "2026-06-20T12:00:07.137Z",
+  "id": "PsoFzFvaPdMwmrwh",
+  "name": "Historical Exchange Rates",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -112,
+        0
+      ],
+      "id": "b5767306-aeac-4a97-8a55-1cc87287cf54",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "jsCode": "const https = require(\"https\");\nconst START_DATE = \"2010-01-01\";\nconst END_DATE = new Date().toISOString().slice(0, 10);\nconst BATCH_SIZE = 1000;\n\nconst TARGET_CURRENCIES = [\n  \"USD\",\"EUR\",\"GBP\",\"CHF\",\"SEK\",\"NOK\",\"DKK\",\"PLN\",\"CZK\",\"HUF\",\"RON\",\"BGN\",\n  \"RSD\",\"BAM\",\"MKD\",\"TRY\",\"UAH\",\n  \"RUB\",\"BYN\",\"KZT\",\"UZS\",\"KGS\",\"TJS\",\"TMT\",\"AZN\",\"AMD\",\"GEL\",\n  \"AED\",\"SAR\",\"QAR\",\"ILS\",\"OMR\",\"KWD\",\"BHD\",\n  \"CNY\",\"HKD\",\"SGD\",\"JPY\",\"KRW\",\"TWD\",\"INR\",\"THB\",\"MYR\",\"IDR\",\"PHP\",\"VND\",\n  \"CAD\",\"MXN\",\"BRL\",\"CLP\",\"COP\",\"PEN\",\"ARS\",\n  \"ZAR\",\"EGP\",\"MAD\"\n];\n\nfunction toCbrDate(iso) {\n  const [y, m, d] = iso.split(\"-\");\n  return `${d}/${m}/${y}`;\n}\n\nfunction parseNumber(value) {\n  return Number(String(value).replace(\",\", \".\"));\n}\n\nfunction addDays(isoDate, days) {\n  const d = new Date(`${isoDate}T00:00:00Z`);\n  d.setUTCDate(d.getUTCDate() + days);\n  return d.toISOString().slice(0, 10);\n}\n\nfunction dateRange(start, end) {\n  const result = [];\n  let current = start;\n\n  while (current <= end) {\n    result.push(current);\n    current = addDays(current, 1);\n  }\n\n  return result;\n}\n\n\nasync function fetchText(url) {\n  return await new Promise((resolve, reject) => {\n    https\n      .get(url, (res) => {\n        let data = \"\";\n\n        if (res.statusCode < 200 || res.statusCode >= 300) {\n          reject(new Error(`HTTP ${res.statusCode}: ${url}`));\n          res.resume();\n          return;\n        }\n\n        res.setEncoding(\"utf8\");\n\n        res.on(\"data\", (chunk) => {\n          data += chunk;\n        });\n\n        res.on(\"end\", () => {\n          resolve(data);\n        });\n      })\n      .on(\"error\", reject);\n  });\n}\n\nfunction parseCatalog(xml) {\n  const rows = [];\n  const re = /<Item ID=\"([^\"]+)\">([\\s\\S]*?)<\\/Item>/g;\n\n  let m;\n\n  while ((m = re.exec(xml)) !== null) {\n    const id = m[1];\n    const body = m[2];\n\n    const code = body.match(/<ISO_Char_Code>(.*?)<\\/ISO_Char_Code>/)?.[1]?.trim();\n\n    if (code) {\n      rows.push({ id, code });\n    }\n  }\n\n  return rows;\n}\n\nfunction parseHistory(xml) {\n  const rows = [];\n  const re = /<Record Date=\"([^\"]+)\" Id=\"([^\"]+)\">([\\s\\S]*?)<\\/Record>/g;\n\n  let m;\n\n  while ((m = re.exec(xml)) !== null) {\n    const dateRaw = m[1];\n    const body = m[3];\n\n    const nominalRaw = body.match(/<Nominal>(.*?)<\\/Nominal>/)?.[1]?.trim();\n    const valueRaw = body.match(/<Value>(.*?)<\\/Value>/)?.[1]?.trim();\n\n    if (!nominalRaw || !valueRaw) continue;\n\n    const [dd, mm, yyyy] = dateRaw.split(\".\");\n    const rateDate = `${yyyy}-${mm}-${dd}`;\n\n    const nominal = parseNumber(nominalRaw);\n    const value = parseNumber(valueRaw);\n\n    if (!nominal || !value) continue;\n\n    rows.push({\n      rateDate,\n      rubPerUnit: value / nominal,\n    });\n  }\n\n  return rows;\n}\n\nasync function fetchHistory(currencyId) {\n  const url =\n    `https://www.cbr.ru/scripts/XML_dynamic.asp` +\n    `?date_req1=${encodeURIComponent(toCbrDate(START_DATE))}` +\n    `&date_req2=${encodeURIComponent(toCbrDate(END_DATE))}` +\n    `&VAL_NM_RQ=${encodeURIComponent(currencyId)}`;\n\n  return parseHistory(await fetchText(url));\n}\n\nconst catalogXml = await fetchText(\"https://www.cbr.ru/scripts/XML_valFull.asp\");\nconst catalog = parseCatalog(catalogXml);\nconst byCode = new Map(catalog.map((x) => [x.code, x.id]));\n\nconst missing = TARGET_CURRENCIES.filter(\n  (code) => code !== \"RUB\" && !byCode.has(code)\n);\n\nconst histories = new Map();\n\nfor (const code of TARGET_CURRENCIES) {\n  if (code === \"RUB\") continue;\n\n  const id = byCode.get(code);\n  if (!id) continue;\n\n  const history = await fetchHistory(id);\n  histories.set(code, history);\n}\n\nconst usdHistory = histories.get(\"USD\");\n\nif (!usdHistory || usdHistory.length === 0) {\n  throw new Error(\"USD history not found in CBR\");\n}\n\nfunction historyToMap(history) {\n  return new Map(history.map((r) => [r.rateDate, r.rubPerUnit]));\n}\n\nconst historyMaps = new Map();\n\nfor (const [code, history] of histories.entries()) {\n  historyMaps.set(code, historyToMap(history));\n}\n\nconst dates = dateRange(START_DATE, END_DATE);\nconst lastRubPerUnit = new Map();\n\nconst rows = [];\n\nfor (const rateDate of dates) {\n  for (const [code, map] of historyMaps.entries()) {\n    if (map.has(rateDate)) {\n      lastRubPerUnit.set(code, map.get(rateDate));\n    }\n  }\n\n  const rubPerUsd = lastRubPerUnit.get(\"USD\");\n\n  if (!rubPerUsd) continue;\n\n  rows.push({\n    rate_date: rateDate,\n    currency_code: \"USD\",\n    usd_rate: 1,\n    source: \"CBR\"\n  });\n\n  rows.push({\n    rate_date: rateDate,\n    currency_code: \"RUB\",\n    usd_rate: rubPerUsd,\n    source: \"CBR\"\n  });\n\n  for (const code of TARGET_CURRENCIES) {\n    if (code === \"USD\" || code === \"RUB\") continue;\n\n    const rubPerCurrency = lastRubPerUnit.get(code);\n\n    if (!rubPerCurrency) continue;\n\n    rows.push({\n      rate_date: rateDate,\n      currency_code: code,\n      usd_rate: rubPerUsd / rubPerCurrency,\n      source: \"CBR\"\n    });\n  }\n}\n\nconst batches = [];\n\nfor (let i = 0; i < rows.length; i += BATCH_SIZE) {\n  const batch = rows.slice(i, i + BATCH_SIZE);\n\n  batches.push({\n    json: {\n      batch_no: batches.length + 1,\n      batch_size: batch.length,\n      missing_in_cbr: missing,\n      rowsJson: JSON.stringify(batch)\n    }\n  });\n}\n\nreturn batches;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        64,
+        0
+      ],
+      "id": "dfcb6c44-dd4c-4670-a0f2-38abb472bdb9",
+      "name": "Build CBR USD Rate Rows"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with input_data as (\n    select\n        '{{ $json.rowsJson.replace(/'/g, \"''\") }}'::jsonb as data\n),\n\nrows as (\n    select *\n    from input_data i,\n    jsonb_to_recordset(i.data) as x(\n        rate_date date,\n        currency_code text,\n        usd_rate numeric,\n        source text\n    )\n)\n\ninsert into moneytrack.exchange_rates_usd\n    (rate_date, currency_code, usd_rate, source)\nselect\n    rate_date,\n    currency_code,\n    usd_rate,\n    source\nfrom rows\non conflict (rate_date, currency_code)\ndo update set\n    usd_rate = excluded.usd_rate,\n    source = excluded.source,\n    created_at = now();",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        416,
+        0
+      ],
+      "id": "89c49448-9402-476d-8338-451c567f99fd",
+      "name": "PostgreSQL Upsert FX",
+      "credentials": {
+        "postgres": {
+          "id": "tM27zg5m7tREo2ep",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const TARGET = [\n  \"USD\",\"EUR\",\"GBP\",\"CHF\",\"SEK\",\"NOK\",\"DKK\",\n  \"PLN\",\"CZK\",\"HUF\",\"RON\",\"BGN\",\"RSD\",\"BAM\",\n  \"MKD\",\"TRY\",\"UAH\",\"RUB\",\"BYN\",\"KZT\",\"UZS\",\n  \"KGS\",\"TJS\",\"TMT\",\"AZN\",\"AMD\",\"GEL\",\"AED\",\n  \"SAR\",\"QAR\",\"ILS\",\"OMR\",\"KWD\",\"BHD\",\"CNY\",\n  \"HKD\",\"SGD\",\"JPY\",\"KRW\",\"TWD\",\"INR\",\"THB\",\n  \"MYR\",\"IDR\",\"PHP\",\"VND\",\"CAD\",\"MXN\",\"BRL\",\n  \"CLP\",\"COP\",\"PEN\",\"ARS\",\"ZAR\",\"EGP\",\"MAD\"\n];\n\nconst rates = $json.rates || {};\n\nconst supported = TARGET.filter(c => rates[c] !== undefined);\nconst missing = TARGET.filter(c => rates[c] === undefined);\n\nreturn [{\n  json: {\n    provider: \"open.er-api.com\",\n    target_count: TARGET.length,\n    supported_count: supported.length,\n    missing_count: missing.length,\n    supported,\n    missing\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        -192
+      ],
+      "id": "e1da5ada-eb5d-458f-ab78-2fb05f620c5b",
+      "name": "check"
+    },
+    {
+      "parameters": {
+        "url": "https://open.er-api.com/v6/latest/USD",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        64,
+        -192
+      ],
+      "id": "ee143af2-92c9-4723-8089-b1bc5418c863",
+      "name": "HTTP Request"
+    }
+  ],
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build CBR USD Rate Rows": {
+      "main": [
+        [
+          {
+            "node": "PostgreSQL Upsert FX",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "versionId": "d3b86eb1-3413-41ca-b460-c8d732a16625",
+  "activeVersionId": null,
+  "triggerCount": 0,
+  "shared": [
+    {
+      "updatedAt": "2026-06-20T12:00:07.137Z",
+      "createdAt": "2026-06-20T12:00:07.137Z",
+      "role": "workflow:owner",
+      "workflowId": "PsoFzFvaPdMwmrwh",
+      "projectId": "m9DMPSZOUe7yfL0e"
+    }
+  ],
+  "activeVersion": null,
+  "tags": []
+}

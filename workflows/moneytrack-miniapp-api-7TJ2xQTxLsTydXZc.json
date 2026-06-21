@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-06-05T15:37:09.389Z",
+  "updatedAt": "2026-06-20T14:03:19.994Z",
   "createdAt": "2026-06-02T08:19:48.728Z",
   "id": "7TJ2xQTxLsTydXZc",
   "name": "MoneyTrack MiniApp API",
@@ -8,34 +8,19 @@
   "nodes": [
     {
       "parameters": {
-        "path": "miniapp-summary",
-        "responseMode": "responseNode",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2.1,
-      "position": [
-        0,
-        0
-      ],
-      "id": "5516e954-9add-41b6-9256-64c9e7150822",
-      "name": "Webhook",
-      "webhookId": "c5a6e8ef-970a-47f8-b44a-320a45472340"
-    },
-    {
-      "parameters": {
         "operation": "executeQuery",
-        "query": "with user_row as (\n    select\n        u.id as user_id,\n        us.base_currency,\n        us.report_currency,\n        us.language_code\n    from moneytrack.app_users u\n    join moneytrack.user_settings us\n        on us.user_id = u.id\n    where u.telegram_user_id =\n    {{ Number($json.query?.telegram_user_id || $json.body?.telegram_user_id || 0) }}\n),\n\ntransaction_movements as (\n    select\n        t.account_id,\n        case\n            when t.transaction_type = 'openingbalance' then t.amount_original\n            when t.transaction_type = 'income' then t.amount_original\n            when t.transaction_type = 'expense' then -t.amount_original\n            when t.transaction_type = 'adjustment' then t.amount_original\n            else 0\n        end as amount\n    from moneytrack.transactions t\n    join user_row u on u.user_id = t.user_id\n),\n\ntransfer_movements as (\n    select\n        tr.from_account_id as account_id,\n        -tr.from_amount as amount\n    from moneytrack.transfers tr\n    join user_row u on u.user_id = tr.user_id\n\n    union all\n\n    select\n        tr.to_account_id as account_id,\n        tr.to_amount as amount\n    from moneytrack.transfers tr\n    join user_row u on u.user_id = tr.user_id\n),\n\nbalances as (\n    select\n        account_id,\n        sum(amount) as balance\n    from (\n        select * from transaction_movements\n        union all\n        select * from transfer_movements\n    ) x\n    group by account_id\n),\n\nsummary_by_currency as (\n    select\n        t.currency_original as currency_code,\n\n        sum(case when t.transaction_type = 'income' then t.amount_original else 0 end) as income,\n        sum(case when t.transaction_type = 'expense' then t.amount_original else 0 end) as expense,\n        sum(case when t.transaction_type = 'adjustment' then t.amount_original else 0 end) as adjustment,\n\n        sum(\n            case\n                when t.transaction_type = 'income' then t.amount_original\n                when t.transaction_type = 'expense' then -t.amount_original\n                when t.transaction_type = 'adjustment' then t.amount_original\n                else 0\n            end\n        ) as result\n\n    from moneytrack.transactions t\n    join user_row u on u.user_id = t.user_id\n    where date_trunc('month', t.transaction_date) = date_trunc('month', current_date)\n    group by t.currency_original\n),\n\nsummary_converted as (\n    select\n        s.*,\n        u.report_currency,\n        case\n            when s.currency_code = u.report_currency then 1\n            else er.rate\n        end as rate_to_report,\n\n        s.income *\n        case when s.currency_code = u.report_currency then 1 else er.rate end as income_report,\n\n        s.expense *\n        case when s.currency_code = u.report_currency then 1 else er.rate end as expense_report,\n\n        s.adjustment *\n        case when s.currency_code = u.report_currency then 1 else er.rate end as adjustment_report,\n\n        s.result *\n        case when s.currency_code = u.report_currency then 1 else er.rate end as result_report\n\n    from summary_by_currency s\n    cross join user_row u\n    left join moneytrack.exchange_rates er\n        on er.rate_date = current_date\n       and er.from_currency = s.currency_code\n       and er.to_currency = u.report_currency\n),\n\nregular_transactions as (\n    select\n        t.id,\n        t.transaction_date,\n        t.created_at,\n        t.transaction_type as operation_type,\n        t.amount_original as amount_from,\n        t.currency_original as currency_from,\n        null::numeric as amount_to,\n        null::text as currency_to,\n        coalesce(a.name, '-') as from_account_name,\n        null::text as to_account_name,\n        t.description,\n        'transaction' as source\n    from moneytrack.transactions t\n    join user_row u on u.user_id = t.user_id\n    left join moneytrack.accounts a on a.id = t.account_id\n),\n\ntransfer_transactions as (\n    select\n        tr.id,\n        tr.transfer_date as transaction_date,\n        tr.created_at,\n        tr.transfer_type as operation_type,\n        tr.from_amount as amount_from,\n        tr.from_currency as currency_from,\n        tr.to_amount as amount_to,\n        tr.to_currency as currency_to,\n        coalesce(fa.name, '-') as from_account_name,\n        coalesce(ta.name, '-') as to_account_name,\n        tr.transfer_type as description,\n        'transfer' as source\n    from moneytrack.transfers tr\n    join user_row u on u.user_id = tr.user_id\n    left join moneytrack.accounts fa on fa.id = tr.from_account_id\n    left join moneytrack.accounts ta on ta.id = tr.to_account_id\n),\n\nlast_operations as (\n    select *\n    from (\n        select * from regular_transactions\n        union all\n        select * from transfer_transactions\n    ) x\n    order by transaction_date desc, created_at desc, id desc\n    limit 20\n)\n\nselect json_build_object(\n    'settings', json_build_object(\n        'base_currency', u.base_currency,\n        'report_currency', u.report_currency,\n        'language_code', u.language_code\n    ),\n\n    'summary', json_build_object(\n        'period', to_char(current_date, 'YYYY-MM'),\n        'currency', u.report_currency,\n        'income', coalesce((select sum(income_report) from summary_converted), 0),\n        'expense', coalesce((select sum(expense_report) from summary_converted), 0),\n        'adjustment', coalesce((select sum(adjustment_report) from summary_converted), 0),\n        'result', coalesce((select sum(result_report) from summary_converted), 0)\n    ),\n\n    'summary_by_currency', (\n        select coalesce(json_agg(x order by x.currency_code), '[]'::json)\n        from (\n            select\n                currency_code,\n                income,\n                expense,\n                adjustment,\n                result,\n                rate_to_report\n            from summary_converted\n        ) x\n    ),\n\n    'accounts', (\n        select coalesce(json_agg(a order by a.sort_order nulls last, a.name), '[]'::json)\n        from (\n            select\n                acc.id,\n                acc.parent_id,\n                acc.name,\n                acc.account_type,\n                acc.currency_code,\n                acc.sort_order,\n                coalesce(b.balance, 0) as balance\n            from moneytrack.accounts acc\n            join user_row uu on uu.user_id = acc.user_id\n            left join balances b on b.account_id = acc.id\n            where acc.is_active = true\n            order by acc.parent_id nulls first, acc.sort_order nulls last, acc.name\n        ) a\n    ),\n\n    'transactions', (\n        select coalesce(json_agg(t), '[]'::json)\n        from (\n            select *\n            from last_operations\n        ) t\n    )\n) as data\n\nfrom user_row u;",
+        "query": "select\n    u.id as user_id,\n    u.telegram_user_id,\n    u.username,\n    u.first_name,\n    u.last_name,\n    u.language_code as user_language_code,\n\n    s.base_currency,\n    s.report_currency,\n    s.language_code as settings_language_code,\n    s.current_workspace_id,\n    s.default_expense_account_id,\n    s.default_income_account_id,\n\n    w.id as workspace_id,\n    w.name as workspace_name,\n    w.workspace_type\n\nfrom moneytrack.app_users u\n\nleft join moneytrack.user_settings s\n       on s.user_id = u.id\n\nleft join moneytrack.workspaces w\n       on w.id = s.current_workspace_id\n\nwhere u.telegram_user_id = {{ $json.telegram_user_id }}::bigint\n\nlimit 1;",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        208,
-        0
+        608,
+        -352
       ],
-      "id": "11bc8a66-934f-4c53-ab43-5aa23ef3e994",
-      "name": "Get miniapp summary",
+      "id": "625f1218-ff2a-470c-a00b-abffa715d905",
+      "name": "Get Me",
+      "alwaysOutputData": true,
       "credentials": {
         "postgres": {
           "id": "tM27zg5m7tREo2ep",
@@ -45,35 +30,555 @@
     },
     {
       "parameters": {
+        "jsCode": "const row = $input.first().json;\n\nif (!row || !row.user_id) {\n  return [{\n    json: {\n      error: \"USER_NOT_FOUND\"\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    data: {\n      user: {\n        id: row.user_id,\n        telegram_user_id: row.telegram_user_id,\n        username: row.username,\n        first_name: row.first_name,\n        last_name: row.last_name,\n        language_code:\n          row.settings_language_code ||\n          row.user_language_code\n      },\n      settings: row.base_currency\n        ? {\n            base_currency: row.base_currency,\n            report_currency: row.report_currency,\n            language_code: row.settings_language_code,\n            current_workspace_id: row.current_workspace_id,\n            default_expense_account_id: row.default_expense_account_id,\n            default_income_account_id: row.default_income_account_id\n          }\n        : null,\n      workspace: row.workspace_id\n        ? {\n            id: row.workspace_id,\n            name: row.workspace_name,\n            workspace_type: row.workspace_type\n          }\n        : null\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        -352
+      ],
+      "id": "58965cce-16bd-4cd4-aa4e-d97d961c08fc",
+      "name": "Format Me Response"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with user_ctx as (\n    select\n        u.id as user_id,\n        coalesce(s.base_currency, u.default_currency, 'EUR') as base_currency,\n        coalesce(s.report_currency, s.base_currency, u.default_currency, 'EUR') as report_currency,\n        coalesce(s.language_code, u.language_code, 'en') as language_code\n    from moneytrack.app_users u\n    left join moneytrack.user_settings s\n           on s.user_id = u.id\n    where u.telegram_user_id = {{ $json.telegram_user_id }}::bigint\n    limit 1\n),\n\nperiod_ctx as (\n    select\n        date_trunc('month', current_date)::date as date_from,\n        (date_trunc('month', current_date) + interval '1 month - 1 day')::date as date_to\n),\n\ntx_with_rates as (\n    select\n        t.*,\n        uc.report_currency,\n        rf.usd_rate as from_usd_rate,\n        rt.usd_rate as to_usd_rate,\n        case\n            when rf.usd_rate is not null\n             and rt.usd_rate is not null\n             and rf.usd_rate <> 0\n            then t.amount_original * rt.usd_rate / rf.usd_rate\n            else null\n        end as amount_report\n    from moneytrack.transactions t\n    join user_ctx uc\n      on uc.user_id = t.user_id\n    left join lateral (\n        select r.usd_rate\n        from moneytrack.exchange_rates_usd r\n        where r.currency_code = t.currency_original\n          and r.rate_date <= t.transaction_date::date\n        order by r.rate_date desc\n        limit 1\n    ) rf on true\n    left join lateral (\n        select r.usd_rate\n        from moneytrack.exchange_rates_usd r\n        where r.currency_code = uc.report_currency\n          and r.rate_date <= t.transaction_date::date\n        order by r.rate_date desc\n        limit 1\n    ) rt on true\n),\n\nmonth_summary as (\n    select\n        coalesce(sum(\n            case\n                when transaction_type = 'income'\n                then amount_report\n                else 0\n            end\n        ), 0) as income_month,\n\n        coalesce(sum(\n            case\n                when transaction_type = 'expense'\n                then abs(amount_report)\n                else 0\n            end\n        ), 0) as expenses_month\n    from tx_with_rates t\n    join period_ctx pc on true\n    where t.transaction_date >= pc.date_from\n      and t.transaction_date < pc.date_to + interval '1 day'\n),\n\naccount_balances as (\n    select\n        a.currency_code,\n        coalesce(sum(t.amount_original), 0) as balance\n    from moneytrack.accounts a\n    join user_ctx uc\n      on uc.user_id = a.user_id\n    left join moneytrack.transactions t\n           on t.account_id = a.id\n          and t.user_id = a.user_id\n    where a.is_active = true\n    group by a.currency_code\n),\n\naccount_balances_report as (\n    select\n        ab.currency_code,\n        ab.balance,\n        case\n            when rf.usd_rate is not null\n             and rt.usd_rate is not null\n             and rf.usd_rate <> 0\n            then ab.balance * rt.usd_rate / rf.usd_rate\n            else null\n        end as balance_report\n    from account_balances ab\n    cross join user_ctx uc\n    left join lateral (\n        select r.usd_rate\n        from moneytrack.exchange_rates_usd r\n        where r.currency_code = ab.currency_code\n          and r.rate_date <= current_date\n        order by r.rate_date desc\n        limit 1\n    ) rf on true\n    left join lateral (\n        select r.usd_rate\n        from moneytrack.exchange_rates_usd r\n        where r.currency_code = uc.report_currency\n          and r.rate_date <= current_date\n        order by r.rate_date desc\n        limit 1\n    ) rt on true\n),\n\nnetworth as (\n    select\n        coalesce(sum(balance_report), 0) as net_worth\n    from account_balances_report\n),\n\nlatest_operations as (\n    select jsonb_agg(\n        jsonb_build_object(\n            'id', x.id,\n            'transaction_type', x.transaction_type,\n            'account_id', x.account_id,\n            'account_name', x.account_name,\n            'amount_original', x.amount_original,\n            'currency_original', x.currency_original,\n            'category_id', x.category_id,\n            'description', x.description,\n            'transaction_date', x.transaction_date\n        )\n        order by x.transaction_date desc, x.id desc\n    ) as items\n    from (\n        select\n            t.id,\n            t.transaction_type,\n            t.account_id,\n            a.name as account_name,\n            t.amount_original,\n            t.currency_original,\n            t.category_id,\n            t.description,\n            t.transaction_date\n        from moneytrack.transactions t\n        join user_ctx uc on uc.user_id = t.user_id\n        left join moneytrack.accounts a on a.id = t.account_id\n        order by t.transaction_date desc, t.id desc\n        limit 10\n    ) x\n)\n\nselect\n    uc.user_id,\n    uc.base_currency,\n    uc.report_currency,\n    uc.language_code,\n\n    pc.date_from,\n    pc.date_to,\n\n    nw.net_worth,\n    ms.income_month,\n    ms.expenses_month,\n    ms.income_month - ms.expenses_month as result_month,\n\n    coalesce(\n        (\n            select jsonb_agg(\n                jsonb_build_object(\n                    'currency', ab.currency_code,\n                    'balance', ab.balance\n                )\n                order by ab.currency_code\n            )\n            from account_balances ab\n        ),\n        '[]'::jsonb\n    ) as balances_by_currency,\n\n    coalesce(lo.items, '[]'::jsonb) as latest_operations\n\nfrom user_ctx uc\ncross join period_ctx pc\ncross join month_summary ms\ncross join networth nw\ncross join latest_operations lo;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        608,
+        -160
+      ],
+      "id": "46380560-ec1c-4e9b-b1bc-5f1a8faede61",
+      "name": "Get Dashboard",
+      "credentials": {
+        "postgres": {
+          "id": "tM27zg5m7tREo2ep",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first().json;\n\nif (!row || !row.user_id) {\n  return [{ json: { error: \"USER_NOT_FOUND\" } }];\n}\n\nreturn [{\n  json: {\n    data: {\n      period: {\n        date_from: row.date_from,\n        date_to: row.date_to\n      },\n      summary: {\n        net_worth: Number(row.net_worth || 0),\n        income_month: Number(row.income_month || 0),\n        expenses_month: Number(row.expenses_month || 0),\n        result_month: Number(row.result_month || 0),\n        currency: row.report_currency\n      },\n      balances_by_currency: row.balances_by_currency || [],\n      latest_operations: row.latest_operations || []\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        -160
+      ],
+      "id": "17c4de6c-8267-48b0-86cb-fb76508e88cf",
+      "name": "Format Dashboard Response"
+    },
+    {
+      "parameters": {
         "options": {}
       },
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
       "position": [
-        416,
-        0
+        1072,
+        -352
       ],
-      "id": "bc444623-a13b-49fc-9d2e-194244ae19e8",
+      "id": "2335ca57-614e-4120-942c-b94381be7519",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with user_ctx as (\n    select\n        u.id as user_id,\n        coalesce(s.base_currency, u.default_currency, 'EUR') as base_currency\n    from moneytrack.app_users u\n    left join moneytrack.user_settings s\n           on s.user_id = u.id\n    where u.telegram_user_id = {{ $json.telegram_user_id }}::bigint\n    limit 1\n),\n\naccount_balances as (\n    select\n        a.id,\n        a.user_id,\n        a.code,\n        a.name,\n        a.account_type,\n        a.currency_code,\n        a.parent_id,\n        a.sort_order,\n        a.is_active,\n\n        coalesce(sum(t.amount_original), 0) as balance_original,\n\n        coalesce(sum(t.amount_base), 0) as balance_base\n\n    from moneytrack.accounts a\n    join user_ctx uc\n      on uc.user_id = a.user_id\n\n    left join moneytrack.transactions t\n      on t.account_id = a.id\n     and t.user_id = a.user_id\n\n    where a.is_active = true\n\n    group by\n        a.id,\n        a.user_id,\n        a.code,\n        a.name,\n        a.account_type,\n        a.currency_code,\n        a.parent_id,\n        a.sort_order,\n        a.is_active\n),\n\naccounts_json as (\n    select jsonb_agg(\n        jsonb_build_object(\n            'id', ab.id,\n            'code', ab.code,\n            'name', ab.name,\n            'account_type', ab.account_type,\n            'currency_code', ab.currency_code,\n            'parent_id', ab.parent_id,\n            'sort_order', ab.sort_order,\n            'balance_original', ab.balance_original,\n            'balance_base', ab.balance_base\n        )\n        order by\n            coalesce(ab.parent_id, ab.id),\n            ab.parent_id nulls first,\n            ab.sort_order,\n            ab.name\n    ) as accounts\n    from account_balances ab\n),\n\ntotal_base as (\n    select coalesce(sum(balance_base), 0) as total_base\n    from account_balances\n)\n\nselect\n    uc.user_id,\n    uc.base_currency,\n    tb.total_base,\n    coalesce(aj.accounts, '[]'::jsonb) as accounts\nfrom user_ctx uc\ncross join total_base tb\ncross join accounts_json aj;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        608,
+        32
+      ],
+      "id": "1d99a88c-11a6-4ef6-a060-fe9729428ee5",
+      "name": "Get Accounts",
+      "credentials": {
+        "postgres": {
+          "id": "tM27zg5m7tREo2ep",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first().json;\n\nif (!row || !row.user_id) {\n  return [{\n    json: {\n      error: \"USER_NOT_FOUND\"\n    }\n  }];\n}\n\nconst flatAccounts = row.accounts || [];\n\nconst byId = new Map();\n\nfor (const account of flatAccounts) {\n  byId.set(account.id, {\n    ...account,\n    balance_original: Number(account.balance_original || 0),\n    balance_base: Number(account.balance_base || 0),\n    children: []\n  });\n}\n\nconst roots = [];\n\nfor (const account of byId.values()) {\n  if (account.parent_id && byId.has(account.parent_id)) {\n    byId.get(account.parent_id).children.push(account);\n  } else {\n    roots.push(account);\n  }\n}\n\nfunction sortTree(items) {\n  items.sort((a, b) => {\n    const sa = Number(a.sort_order || 0);\n    const sb = Number(b.sort_order || 0);\n\n    if (sa !== sb) return sa - sb;\n\n    return String(a.name || \"\").localeCompare(String(b.name || \"\"));\n  });\n\n  for (const item of items) {\n    sortTree(item.children);\n  }\n}\n\nsortTree(roots);\n\nreturn [{\n  json: {\n    data: {\n      base_currency: row.base_currency,\n      total_base: Number(row.total_base || 0),\n      accounts: roots\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        32
+      ],
+      "id": "9efc280d-0a9e-4d12-bb75-c24535d0e083",
+      "name": "Format Accounts Response"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with user_ctx as (\n    select\n        u.id as user_id,\n        coalesce(s.language_code, u.language_code, 'en') as language_code\n    from moneytrack.app_users u\n    left join moneytrack.user_settings s\n           on s.user_id = u.id\n    where u.telegram_user_id = {{ $json.telegram_user_id }}::bigint\n    limit 1\n),\n\nmessages as (\n    select\n        uc.user_id,\n        uc.language_code,\n        m.message_key,\n        m.message_text\n    from user_ctx uc\n    join moneytrack.i18n_messages m\n      on m.language_code = uc.language_code\n     and m.module = 'miniapp'\n)\n\nselect\n    uc.user_id,\n    uc.language_code,\n    coalesce(\n        (\n            select jsonb_object_agg(\n                msg.message_key,\n                msg.message_text\n                order by msg.message_key\n            )\n            from messages msg\n        ),\n        '{}'::jsonb\n    ) as messages\nfrom user_ctx uc;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        608,
+        208
+      ],
+      "id": "faa5b61d-93a0-49f1-bc35-c646125deefc",
+      "name": "Get I18n",
+      "credentials": {
+        "postgres": {
+          "id": "tM27zg5m7tREo2ep",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first().json;\n\nif (!row || !row.user_id) {\n  return [{\n    json: {\n      error: \"USER_NOT_FOUND\"\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    data: {\n      language_code: row.language_code,\n      messages: row.messages || {}\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        208
+      ],
+      "id": "94044d19-ea64-4ddf-8296-166c9c65276f",
+      "name": "Format I18n Response"
+    },
+    {
+      "parameters": {
+        "path": "api/v1/dashboard",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -176,
+        -160
+      ],
+      "id": "5516e954-9add-41b6-9256-64c9e7150822",
+      "name": "dashboard",
+      "webhookId": "c5a6e8ef-970a-47f8-b44a-320a45472340"
+    },
+    {
+      "parameters": {
+        "path": "api/v1/me",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -176,
+        -352
+      ],
+      "id": "77ae5210-2843-42fa-8ce5-32a62decc512",
+      "name": "me",
+      "webhookId": "c5a6e8ef-970a-47f8-b44a-320a45472340"
+    },
+    {
+      "parameters": {
+        "path": "api/v1/accounts",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -176,
+        32
+      ],
+      "id": "5c9b351d-e55d-4cb3-ab3e-80528ef09583",
+      "name": "accounts",
+      "webhookId": "c5a6e8ef-970a-47f8-b44a-320a45472340"
+    },
+    {
+      "parameters": {
+        "path": "api/v1/i18n",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -176,
+        208
+      ],
+      "id": "68dfaa53-9b6c-4dd0-a0ae-8cd92e9830a5",
+      "name": "i18n",
+      "webhookId": "c5a6e8ef-970a-47f8-b44a-320a45472340"
+    },
+    {
+      "parameters": {
+        "jsCode": "const headers = $json.headers || {};\nconst query = $json.query || {};\n\nconst initData =\n  headers[\"x-telegram-init-data\"] ||\n  headers[\"X-Telegram-Init-Data\"] ||\n  query.initData ||\n  query.init_data ||\n  null;\n\nconst path =\n  query.endpoint ||\n  $json.path ||\n  \"/api/v1/me\";\n\nreturn [{\n  json: {\n    method: $json.httpMethod || \"GET\",\n    path,\n    initData\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        96,
+        -352
+      ],
+      "id": "44d62267-441f-483c-9c87-322fd3a665dc",
+      "name": "Normalize Request me"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require(\"crypto\");\n\nconst initData = $json.initData;\n\nif (!initData) {\n  throw new Error(\"INIT_DATA_MISSING\");\n}\n\nconst botToken = $env.MONEYTRACK_BOT_TOKEN;\n\nif (!botToken) {\n  throw new Error(\"BOT_TOKEN_MISSING\");\n}\n\nfunction parseInitData(initData) {\n  const result = {};\n\n  for (const part of initData.split(\"&\")) {\n    const eqIndex = part.indexOf(\"=\");\n\n    if (eqIndex === -1) continue;\n\n    const key = decodeURIComponent(part.slice(0, eqIndex));\n    const value = decodeURIComponent(part.slice(eqIndex + 1));\n\n    result[key] = value;\n  }\n\n  return result;\n}\n\nconst params = parseInitData(initData);\nconst receivedHash = params.hash;\n\nif (!receivedHash) {\n  throw new Error(\"HASH_MISSING\");\n}\n\ndelete params.hash;\n\nconst dataCheckString = Object.keys(params)\n  .sort()\n  .map((key) => `${key}=${params[key]}`)\n  .join(\"\\n\");\n\nconst secretKey = crypto\n  .createHmac(\"sha256\", \"WebAppData\")\n  .update(botToken)\n  .digest();\n\nconst calculatedHash = crypto\n  .createHmac(\"sha256\", secretKey)\n  .update(dataCheckString)\n  .digest(\"hex\");\n\nif (calculatedHash !== receivedHash) {\n  throw new Error(\"INVALID_INIT_DATA_HASH\");\n}\n\nconst user = JSON.parse(params.user);\n\nreturn [{\n  json: {\n    path: $json.path,\n    method: $json.method,\n\n    telegram_user_id: user.id,\n    username: user.username || null,\n    first_name: user.first_name || null,\n    last_name: user.last_name || null,\n    language_code: user.language_code || null\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        -352
+      ],
+      "id": "9a4900a3-a868-44ab-8c02-5e0695182c37",
+      "name": "Verify Telegram InitData me"
+    },
+    {
+      "parameters": {
+        "jsCode": "const headers = $json.headers || {};\nconst query = $json.query || {};\n\nconst initData =\n  headers[\"x-telegram-init-data\"] ||\n  headers[\"X-Telegram-Init-Data\"] ||\n  query.initData ||\n  query.init_data ||\n  null;\n\nconst path =\n  query.endpoint ||\n  $json.path ||\n  \"/api/v1/me\";\n\nreturn [{\n  json: {\n    method: $json.httpMethod || \"GET\",\n    path,\n    initData\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        96,
+        -160
+      ],
+      "id": "d22c793c-0160-4982-bc04-726de0d9190a",
+      "name": "Normalize Request dashboard"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require(\"crypto\");\n\nconst initData = $json.initData;\n\nif (!initData) {\n  throw new Error(\"INIT_DATA_MISSING\");\n}\n\nconst botToken = $env.MONEYTRACK_BOT_TOKEN;\n\nif (!botToken) {\n  throw new Error(\"BOT_TOKEN_MISSING\");\n}\n\nfunction parseInitData(initData) {\n  const result = {};\n\n  for (const part of initData.split(\"&\")) {\n    const eqIndex = part.indexOf(\"=\");\n\n    if (eqIndex === -1) continue;\n\n    const key = decodeURIComponent(part.slice(0, eqIndex));\n    const value = decodeURIComponent(part.slice(eqIndex + 1));\n\n    result[key] = value;\n  }\n\n  return result;\n}\n\nconst params = parseInitData(initData);\nconst receivedHash = params.hash;\n\nif (!receivedHash) {\n  throw new Error(\"HASH_MISSING\");\n}\n\ndelete params.hash;\n\nconst dataCheckString = Object.keys(params)\n  .sort()\n  .map((key) => `${key}=${params[key]}`)\n  .join(\"\\n\");\n\nconst secretKey = crypto\n  .createHmac(\"sha256\", \"WebAppData\")\n  .update(botToken)\n  .digest();\n\nconst calculatedHash = crypto\n  .createHmac(\"sha256\", secretKey)\n  .update(dataCheckString)\n  .digest(\"hex\");\n\nif (calculatedHash !== receivedHash) {\n  throw new Error(\"INVALID_INIT_DATA_HASH\");\n}\n\nconst user = JSON.parse(params.user);\n\nreturn [{\n  json: {\n    path: $json.path,\n    method: $json.method,\n\n    telegram_user_id: user.id,\n    username: user.username || null,\n    first_name: user.first_name || null,\n    last_name: user.last_name || null,\n    language_code: user.language_code || null\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        -160
+      ],
+      "id": "3c8f5841-afd0-485f-a896-cd32dfb5d9c5",
+      "name": "Verify Telegram InitData dashboard"
+    },
+    {
+      "parameters": {
+        "jsCode": "const headers = $json.headers || {};\nconst query = $json.query || {};\n\nconst initData =\n  headers[\"x-telegram-init-data\"] ||\n  headers[\"X-Telegram-Init-Data\"] ||\n  query.initData ||\n  query.init_data ||\n  null;\n\nconst path =\n  query.endpoint ||\n  $json.path ||\n  \"/api/v1/me\";\n\nreturn [{\n  json: {\n    method: $json.httpMethod || \"GET\",\n    path,\n    initData\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        96,
+        32
+      ],
+      "id": "3d363581-a672-4b1c-bec0-e24fe4ddd493",
+      "name": "Normalize Request accounts"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require(\"crypto\");\n\nconst initData = $json.initData;\n\nif (!initData) {\n  throw new Error(\"INIT_DATA_MISSING\");\n}\n\nconst botToken = $env.MONEYTRACK_BOT_TOKEN;\n\nif (!botToken) {\n  throw new Error(\"BOT_TOKEN_MISSING\");\n}\n\nfunction parseInitData(initData) {\n  const result = {};\n\n  for (const part of initData.split(\"&\")) {\n    const eqIndex = part.indexOf(\"=\");\n\n    if (eqIndex === -1) continue;\n\n    const key = decodeURIComponent(part.slice(0, eqIndex));\n    const value = decodeURIComponent(part.slice(eqIndex + 1));\n\n    result[key] = value;\n  }\n\n  return result;\n}\n\nconst params = parseInitData(initData);\nconst receivedHash = params.hash;\n\nif (!receivedHash) {\n  throw new Error(\"HASH_MISSING\");\n}\n\ndelete params.hash;\n\nconst dataCheckString = Object.keys(params)\n  .sort()\n  .map((key) => `${key}=${params[key]}`)\n  .join(\"\\n\");\n\nconst secretKey = crypto\n  .createHmac(\"sha256\", \"WebAppData\")\n  .update(botToken)\n  .digest();\n\nconst calculatedHash = crypto\n  .createHmac(\"sha256\", secretKey)\n  .update(dataCheckString)\n  .digest(\"hex\");\n\nif (calculatedHash !== receivedHash) {\n  throw new Error(\"INVALID_INIT_DATA_HASH\");\n}\n\nconst user = JSON.parse(params.user);\n\nreturn [{\n  json: {\n    path: $json.path,\n    method: $json.method,\n\n    telegram_user_id: user.id,\n    username: user.username || null,\n    first_name: user.first_name || null,\n    last_name: user.last_name || null,\n    language_code: user.language_code || null\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        32
+      ],
+      "id": "fe865922-5c5d-4f4e-abe4-a7f028e7b69b",
+      "name": "Verify Telegram InitData accounts"
+    },
+    {
+      "parameters": {
+        "jsCode": "const headers = $json.headers || {};\nconst query = $json.query || {};\n\nconst initData =\n  headers[\"x-telegram-init-data\"] ||\n  headers[\"X-Telegram-Init-Data\"] ||\n  query.initData ||\n  query.init_data ||\n  null;\n\nconst path =\n  query.endpoint ||\n  $json.path ||\n  \"/api/v1/me\";\n\nreturn [{\n  json: {\n    method: $json.httpMethod || \"GET\",\n    path,\n    initData\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        96,
+        208
+      ],
+      "id": "bc1eb095-3b5e-4620-a933-e88822626308",
+      "name": "Normalize Request i18n"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require(\"crypto\");\n\nconst initData = $json.initData;\n\nif (!initData) {\n  throw new Error(\"INIT_DATA_MISSING\");\n}\n\nconst botToken = $env.MONEYTRACK_BOT_TOKEN;\n\nif (!botToken) {\n  throw new Error(\"BOT_TOKEN_MISSING\");\n}\n\nfunction parseInitData(initData) {\n  const result = {};\n\n  for (const part of initData.split(\"&\")) {\n    const eqIndex = part.indexOf(\"=\");\n\n    if (eqIndex === -1) continue;\n\n    const key = decodeURIComponent(part.slice(0, eqIndex));\n    const value = decodeURIComponent(part.slice(eqIndex + 1));\n\n    result[key] = value;\n  }\n\n  return result;\n}\n\nconst params = parseInitData(initData);\nconst receivedHash = params.hash;\n\nif (!receivedHash) {\n  throw new Error(\"HASH_MISSING\");\n}\n\ndelete params.hash;\n\nconst dataCheckString = Object.keys(params)\n  .sort()\n  .map((key) => `${key}=${params[key]}`)\n  .join(\"\\n\");\n\nconst secretKey = crypto\n  .createHmac(\"sha256\", \"WebAppData\")\n  .update(botToken)\n  .digest();\n\nconst calculatedHash = crypto\n  .createHmac(\"sha256\", secretKey)\n  .update(dataCheckString)\n  .digest(\"hex\");\n\nif (calculatedHash !== receivedHash) {\n  throw new Error(\"INVALID_INIT_DATA_HASH\");\n}\n\nconst user = JSON.parse(params.user);\n\nreturn [{\n  json: {\n    path: $json.path,\n    method: $json.method,\n\n    telegram_user_id: user.id,\n    username: user.username || null,\n    first_name: user.first_name || null,\n    last_name: user.last_name || null,\n    language_code: user.language_code || null\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        208
+      ],
+      "id": "e542733b-b753-4901-8855-4e39480b54a0",
+      "name": "Verify Telegram InitData i18n"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1072,
+        -160
+      ],
+      "id": "44e911ae-c89d-4e39-b485-832060111ee4",
       "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1072,
+        32
+      ],
+      "id": "153af809-108e-4518-ba3f-a8f23249e206",
+      "name": "Respond to Webhook2"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1072,
+        208
+      ],
+      "id": "6e0a5c8b-a694-4802-9adc-66181f36635a",
+      "name": "Respond to Webhook3"
     }
   ],
   "connections": {
-    "Webhook": {
+    "Get Me": {
       "main": [
         [
           {
-            "node": "Get miniapp summary",
+            "node": "Format Me Response",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Get miniapp summary": {
+    "Format Me Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Dashboard": {
+      "main": [
+        [
+          {
+            "node": "Format Dashboard Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Dashboard Response": {
       "main": [
         [
           {
             "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Accounts": {
+      "main": [
+        [
+          {
+            "node": "Format Accounts Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Accounts Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get I18n": {
+      "main": [
+        [
+          {
+            "node": "Format I18n Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format I18n Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "dashboard": {
+      "main": [
+        [
+          {
+            "node": "Normalize Request dashboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "me": {
+      "main": [
+        [
+          {
+            "node": "Normalize Request me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "accounts": {
+      "main": [
+        [
+          {
+            "node": "Normalize Request accounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "i18n": {
+      "main": [
+        [
+          {
+            "node": "Normalize Request i18n",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Request me": {
+      "main": [
+        [
+          {
+            "node": "Verify Telegram InitData me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Telegram InitData me": {
+      "main": [
+        [
+          {
+            "node": "Get Me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Request dashboard": {
+      "main": [
+        [
+          {
+            "node": "Verify Telegram InitData dashboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Telegram InitData dashboard": {
+      "main": [
+        [
+          {
+            "node": "Get Dashboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Request accounts": {
+      "main": [
+        [
+          {
+            "node": "Verify Telegram InitData accounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Telegram InitData accounts": {
+      "main": [
+        [
+          {
+            "node": "Get Accounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Request i18n": {
+      "main": [
+        [
+          {
+            "node": "Verify Telegram InitData i18n",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Telegram InitData i18n": {
+      "main": [
+        [
+          {
+            "node": "Get I18n",
             "type": "main",
             "index": 0
           }
@@ -90,9 +595,9 @@
     "templateCredsSetupCompleted": true
   },
   "pinData": {},
-  "versionId": "febef724-3700-4f00-b678-745de487c300",
-  "activeVersionId": "f9c97489-90b6-4844-9d00-cfb930a726d8",
-  "triggerCount": 1,
+  "versionId": "f7f6c40e-2caa-495b-aa33-6e7e620802b8",
+  "activeVersionId": "f7f6c40e-2caa-495b-aa33-6e7e620802b8",
+  "triggerCount": 4,
   "shared": [
     {
       "updatedAt": "2026-06-02T08:19:48.728Z",
@@ -103,41 +608,26 @@
     }
   ],
   "activeVersion": {
-    "updatedAt": "2026-06-02T22:31:23.695Z",
-    "createdAt": "2026-06-02T22:30:44.607Z",
-    "versionId": "f9c97489-90b6-4844-9d00-cfb930a726d8",
+    "updatedAt": "2026-06-20T14:04:36.220Z",
+    "createdAt": "2026-06-20T14:03:19.999Z",
+    "versionId": "f7f6c40e-2caa-495b-aa33-6e7e620802b8",
     "workflowId": "7TJ2xQTxLsTydXZc",
     "nodes": [
       {
         "parameters": {
-          "path": "miniapp-summary",
-          "responseMode": "responseNode",
-          "options": {}
-        },
-        "type": "n8n-nodes-base.webhook",
-        "typeVersion": 2.1,
-        "position": [
-          0,
-          0
-        ],
-        "id": "5516e954-9add-41b6-9256-64c9e7150822",
-        "name": "Webhook",
-        "webhookId": "c5a6e8ef-970a-47f8-b44a-320a45472340"
-      },
-      {
-        "parameters": {
           "operation": "executeQuery",
-          "query": "select json_build_object(\n  'currency', 'EUR',\n  'summary', json_build_object(\n    'income', coalesce(sum(case when transaction_type='income' then amount_original else 0 end),0),\n    'expense', coalesce(sum(case when transaction_type='expense' then amount_original else 0 end),0),\n    'balance',\n      coalesce(sum(case when transaction_type='income' then amount_original else 0 end),0)\n      - coalesce(sum(case when transaction_type='expense' then amount_original else 0 end),0)\n  ),\n\n'accounts', (\n  select coalesce(json_agg(a), '[]'::json)\n  from (\n    select\n      acc.id,\n      acc.name,\n      acc.currency_code,\n      coalesce(\n        sum(\n          case\n            when t.transaction_type = 'income'\n              then t.amount_original\n            when t.transaction_type = 'expense'\n              then -t.amount_original\n            else 0\n          end\n        ),\n        0\n      ) as balance\n    from moneytrack.accounts acc\n    left join moneytrack.transactions t\n      on t.account_id = acc.id\n    where acc.user_id = 1\n    group by\n      acc.id,\n      acc.name,\n      acc.currency_code\n    order by acc.name\n  ) a\n),\n\n  \n  'transactions', (\n    select coalesce(json_agg(x), '[]'::json)\n    from (\n      select\n        t.id,\n        t.transaction_type,\n        t.transaction_date,\n        t.amount_original,\n        t.currency_original,\n        t.description,\n        coalesce(a.name,'-') as account_name\n      from moneytrack.transactions t\n      left join moneytrack.accounts a on a.id=t.account_id\n      where t.user_id=1\n      order by t.transaction_date desc,t.id desc\n      limit 10\n    ) x\n  )\n) as data\nfrom moneytrack.transactions\nwhere user_id=1;",
+          "query": "select\n    u.id as user_id,\n    u.telegram_user_id,\n    u.username,\n    u.first_name,\n    u.last_name,\n    u.language_code as user_language_code,\n\n    s.base_currency,\n    s.report_currency,\n    s.language_code as settings_language_code,\n    s.current_workspace_id,\n    s.default_expense_account_id,\n    s.default_income_account_id,\n\n    w.id as workspace_id,\n    w.name as workspace_name,\n    w.workspace_type\n\nfrom moneytrack.app_users u\n\nleft join moneytrack.user_settings s\n       on s.user_id = u.id\n\nleft join moneytrack.workspaces w\n       on w.id = s.current_workspace_id\n\nwhere u.telegram_user_id = {{ $json.telegram_user_id }}::bigint\n\nlimit 1;",
           "options": {}
         },
         "type": "n8n-nodes-base.postgres",
         "typeVersion": 2.6,
         "position": [
-          208,
-          0
+          608,
+          -352
         ],
-        "id": "11bc8a66-934f-4c53-ab43-5aa23ef3e994",
-        "name": "Get miniapp summary",
+        "id": "625f1218-ff2a-470c-a00b-abffa715d905",
+        "name": "Get Me",
+        "alwaysOutputData": true,
         "credentials": {
           "postgres": {
             "id": "tM27zg5m7tREo2ep",
@@ -147,31 +637,375 @@
       },
       {
         "parameters": {
+          "jsCode": "const row = $input.first().json;\n\nif (!row || !row.user_id) {\n  return [{\n    json: {\n      error: \"USER_NOT_FOUND\"\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    data: {\n      user: {\n        id: row.user_id,\n        telegram_user_id: row.telegram_user_id,\n        username: row.username,\n        first_name: row.first_name,\n        last_name: row.last_name,\n        language_code:\n          row.settings_language_code ||\n          row.user_language_code\n      },\n      settings: row.base_currency\n        ? {\n            base_currency: row.base_currency,\n            report_currency: row.report_currency,\n            language_code: row.settings_language_code,\n            current_workspace_id: row.current_workspace_id,\n            default_expense_account_id: row.default_expense_account_id,\n            default_income_account_id: row.default_income_account_id\n          }\n        : null,\n      workspace: row.workspace_id\n        ? {\n            id: row.workspace_id,\n            name: row.workspace_name,\n            workspace_type: row.workspace_type\n          }\n        : null\n    }\n  }\n}];"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          816,
+          -352
+        ],
+        "id": "58965cce-16bd-4cd4-aa4e-d97d961c08fc",
+        "name": "Format Me Response"
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "with user_ctx as (\n    select\n        u.id as user_id,\n        coalesce(s.base_currency, u.default_currency, 'EUR') as base_currency,\n        coalesce(s.report_currency, s.base_currency, u.default_currency, 'EUR') as report_currency,\n        coalesce(s.language_code, u.language_code, 'en') as language_code\n    from moneytrack.app_users u\n    left join moneytrack.user_settings s\n           on s.user_id = u.id\n    where u.telegram_user_id = {{ $json.telegram_user_id }}::bigint\n    limit 1\n),\n\nperiod_ctx as (\n    select\n        date_trunc('month', current_date)::date as date_from,\n        (date_trunc('month', current_date) + interval '1 month - 1 day')::date as date_to\n),\n\ntx_with_rates as (\n    select\n        t.*,\n        uc.report_currency,\n        rf.usd_rate as from_usd_rate,\n        rt.usd_rate as to_usd_rate,\n        case\n            when rf.usd_rate is not null\n             and rt.usd_rate is not null\n             and rf.usd_rate <> 0\n            then t.amount_original * rt.usd_rate / rf.usd_rate\n            else null\n        end as amount_report\n    from moneytrack.transactions t\n    join user_ctx uc\n      on uc.user_id = t.user_id\n    left join lateral (\n        select r.usd_rate\n        from moneytrack.exchange_rates_usd r\n        where r.currency_code = t.currency_original\n          and r.rate_date <= t.transaction_date::date\n        order by r.rate_date desc\n        limit 1\n    ) rf on true\n    left join lateral (\n        select r.usd_rate\n        from moneytrack.exchange_rates_usd r\n        where r.currency_code = uc.report_currency\n          and r.rate_date <= t.transaction_date::date\n        order by r.rate_date desc\n        limit 1\n    ) rt on true\n),\n\nmonth_summary as (\n    select\n        coalesce(sum(\n            case\n                when transaction_type = 'income'\n                then amount_report\n                else 0\n            end\n        ), 0) as income_month,\n\n        coalesce(sum(\n            case\n                when transaction_type = 'expense'\n                then abs(amount_report)\n                else 0\n            end\n        ), 0) as expenses_month\n    from tx_with_rates t\n    join period_ctx pc on true\n    where t.transaction_date >= pc.date_from\n      and t.transaction_date < pc.date_to + interval '1 day'\n),\n\naccount_balances as (\n    select\n        a.currency_code,\n        coalesce(sum(t.amount_original), 0) as balance\n    from moneytrack.accounts a\n    join user_ctx uc\n      on uc.user_id = a.user_id\n    left join moneytrack.transactions t\n           on t.account_id = a.id\n          and t.user_id = a.user_id\n    where a.is_active = true\n    group by a.currency_code\n),\n\naccount_balances_report as (\n    select\n        ab.currency_code,\n        ab.balance,\n        case\n            when rf.usd_rate is not null\n             and rt.usd_rate is not null\n             and rf.usd_rate <> 0\n            then ab.balance * rt.usd_rate / rf.usd_rate\n            else null\n        end as balance_report\n    from account_balances ab\n    cross join user_ctx uc\n    left join lateral (\n        select r.usd_rate\n        from moneytrack.exchange_rates_usd r\n        where r.currency_code = ab.currency_code\n          and r.rate_date <= current_date\n        order by r.rate_date desc\n        limit 1\n    ) rf on true\n    left join lateral (\n        select r.usd_rate\n        from moneytrack.exchange_rates_usd r\n        where r.currency_code = uc.report_currency\n          and r.rate_date <= current_date\n        order by r.rate_date desc\n        limit 1\n    ) rt on true\n),\n\nnetworth as (\n    select\n        coalesce(sum(balance_report), 0) as net_worth\n    from account_balances_report\n),\n\nlatest_operations as (\n    select jsonb_agg(\n        jsonb_build_object(\n            'id', x.id,\n            'transaction_type', x.transaction_type,\n            'account_id', x.account_id,\n            'account_name', x.account_name,\n            'amount_original', x.amount_original,\n            'currency_original', x.currency_original,\n            'category_id', x.category_id,\n            'description', x.description,\n            'transaction_date', x.transaction_date\n        )\n        order by x.transaction_date desc, x.id desc\n    ) as items\n    from (\n        select\n            t.id,\n            t.transaction_type,\n            t.account_id,\n            a.name as account_name,\n            t.amount_original,\n            t.currency_original,\n            t.category_id,\n            t.description,\n            t.transaction_date\n        from moneytrack.transactions t\n        join user_ctx uc on uc.user_id = t.user_id\n        left join moneytrack.accounts a on a.id = t.account_id\n        order by t.transaction_date desc, t.id desc\n        limit 10\n    ) x\n)\n\nselect\n    uc.user_id,\n    uc.base_currency,\n    uc.report_currency,\n    uc.language_code,\n\n    pc.date_from,\n    pc.date_to,\n\n    nw.net_worth,\n    ms.income_month,\n    ms.expenses_month,\n    ms.income_month - ms.expenses_month as result_month,\n\n    coalesce(\n        (\n            select jsonb_agg(\n                jsonb_build_object(\n                    'currency', ab.currency_code,\n                    'balance', ab.balance\n                )\n                order by ab.currency_code\n            )\n            from account_balances ab\n        ),\n        '[]'::jsonb\n    ) as balances_by_currency,\n\n    coalesce(lo.items, '[]'::jsonb) as latest_operations\n\nfrom user_ctx uc\ncross join period_ctx pc\ncross join month_summary ms\ncross join networth nw\ncross join latest_operations lo;",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          608,
+          -160
+        ],
+        "id": "46380560-ec1c-4e9b-b1bc-5f1a8faede61",
+        "name": "Get Dashboard",
+        "credentials": {
+          "postgres": {
+            "id": "tM27zg5m7tREo2ep",
+            "name": "Postgres account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "const row = $input.first().json;\n\nif (!row || !row.user_id) {\n  return [{ json: { error: \"USER_NOT_FOUND\" } }];\n}\n\nreturn [{\n  json: {\n    data: {\n      period: {\n        date_from: row.date_from,\n        date_to: row.date_to\n      },\n      summary: {\n        net_worth: Number(row.net_worth || 0),\n        income_month: Number(row.income_month || 0),\n        expenses_month: Number(row.expenses_month || 0),\n        result_month: Number(row.result_month || 0),\n        currency: row.report_currency\n      },\n      balances_by_currency: row.balances_by_currency || [],\n      latest_operations: row.latest_operations || []\n    }\n  }\n}];"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          816,
+          -160
+        ],
+        "id": "17c4de6c-8267-48b0-86cb-fb76508e88cf",
+        "name": "Format Dashboard Response"
+      },
+      {
+        "parameters": {
           "options": {}
         },
         "type": "n8n-nodes-base.respondToWebhook",
         "typeVersion": 1.5,
         "position": [
-          416,
-          0
+          1072,
+          -352
         ],
-        "id": "bc444623-a13b-49fc-9d2e-194244ae19e8",
+        "id": "2335ca57-614e-4120-942c-b94381be7519",
+        "name": "Respond to Webhook1"
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "with user_ctx as (\n    select\n        u.id as user_id,\n        coalesce(s.base_currency, u.default_currency, 'EUR') as base_currency\n    from moneytrack.app_users u\n    left join moneytrack.user_settings s\n           on s.user_id = u.id\n    where u.telegram_user_id = {{ $json.telegram_user_id }}::bigint\n    limit 1\n),\n\naccount_balances as (\n    select\n        a.id,\n        a.user_id,\n        a.code,\n        a.name,\n        a.account_type,\n        a.currency_code,\n        a.parent_id,\n        a.sort_order,\n        a.is_active,\n\n        coalesce(sum(t.amount_original), 0) as balance_original,\n\n        coalesce(sum(t.amount_base), 0) as balance_base\n\n    from moneytrack.accounts a\n    join user_ctx uc\n      on uc.user_id = a.user_id\n\n    left join moneytrack.transactions t\n      on t.account_id = a.id\n     and t.user_id = a.user_id\n\n    where a.is_active = true\n\n    group by\n        a.id,\n        a.user_id,\n        a.code,\n        a.name,\n        a.account_type,\n        a.currency_code,\n        a.parent_id,\n        a.sort_order,\n        a.is_active\n),\n\naccounts_json as (\n    select jsonb_agg(\n        jsonb_build_object(\n            'id', ab.id,\n            'code', ab.code,\n            'name', ab.name,\n            'account_type', ab.account_type,\n            'currency_code', ab.currency_code,\n            'parent_id', ab.parent_id,\n            'sort_order', ab.sort_order,\n            'balance_original', ab.balance_original,\n            'balance_base', ab.balance_base\n        )\n        order by\n            coalesce(ab.parent_id, ab.id),\n            ab.parent_id nulls first,\n            ab.sort_order,\n            ab.name\n    ) as accounts\n    from account_balances ab\n),\n\ntotal_base as (\n    select coalesce(sum(balance_base), 0) as total_base\n    from account_balances\n)\n\nselect\n    uc.user_id,\n    uc.base_currency,\n    tb.total_base,\n    coalesce(aj.accounts, '[]'::jsonb) as accounts\nfrom user_ctx uc\ncross join total_base tb\ncross join accounts_json aj;",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          608,
+          32
+        ],
+        "id": "1d99a88c-11a6-4ef6-a060-fe9729428ee5",
+        "name": "Get Accounts",
+        "credentials": {
+          "postgres": {
+            "id": "tM27zg5m7tREo2ep",
+            "name": "Postgres account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "const row = $input.first().json;\n\nif (!row || !row.user_id) {\n  return [{\n    json: {\n      error: \"USER_NOT_FOUND\"\n    }\n  }];\n}\n\nconst flatAccounts = row.accounts || [];\n\nconst byId = new Map();\n\nfor (const account of flatAccounts) {\n  byId.set(account.id, {\n    ...account,\n    balance_original: Number(account.balance_original || 0),\n    balance_base: Number(account.balance_base || 0),\n    children: []\n  });\n}\n\nconst roots = [];\n\nfor (const account of byId.values()) {\n  if (account.parent_id && byId.has(account.parent_id)) {\n    byId.get(account.parent_id).children.push(account);\n  } else {\n    roots.push(account);\n  }\n}\n\nfunction sortTree(items) {\n  items.sort((a, b) => {\n    const sa = Number(a.sort_order || 0);\n    const sb = Number(b.sort_order || 0);\n\n    if (sa !== sb) return sa - sb;\n\n    return String(a.name || \"\").localeCompare(String(b.name || \"\"));\n  });\n\n  for (const item of items) {\n    sortTree(item.children);\n  }\n}\n\nsortTree(roots);\n\nreturn [{\n  json: {\n    data: {\n      base_currency: row.base_currency,\n      total_base: Number(row.total_base || 0),\n      accounts: roots\n    }\n  }\n}];"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          816,
+          32
+        ],
+        "id": "9efc280d-0a9e-4d12-bb75-c24535d0e083",
+        "name": "Format Accounts Response"
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "with user_ctx as (\n    select\n        u.id as user_id,\n        coalesce(s.language_code, u.language_code, 'en') as language_code\n    from moneytrack.app_users u\n    left join moneytrack.user_settings s\n           on s.user_id = u.id\n    where u.telegram_user_id = {{ $json.telegram_user_id }}::bigint\n    limit 1\n),\n\nmessages as (\n    select\n        uc.user_id,\n        uc.language_code,\n        m.message_key,\n        m.message_text\n    from user_ctx uc\n    join moneytrack.i18n_messages m\n      on m.language_code = uc.language_code\n     and m.module = 'miniapp'\n)\n\nselect\n    uc.user_id,\n    uc.language_code,\n    coalesce(\n        (\n            select jsonb_object_agg(\n                msg.message_key,\n                msg.message_text\n                order by msg.message_key\n            )\n            from messages msg\n        ),\n        '{}'::jsonb\n    ) as messages\nfrom user_ctx uc;",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          608,
+          208
+        ],
+        "id": "faa5b61d-93a0-49f1-bc35-c646125deefc",
+        "name": "Get I18n",
+        "credentials": {
+          "postgres": {
+            "id": "tM27zg5m7tREo2ep",
+            "name": "Postgres account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "const row = $input.first().json;\n\nif (!row || !row.user_id) {\n  return [{\n    json: {\n      error: \"USER_NOT_FOUND\"\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    data: {\n      language_code: row.language_code,\n      messages: row.messages || {}\n    }\n  }\n}];"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          816,
+          208
+        ],
+        "id": "94044d19-ea64-4ddf-8296-166c9c65276f",
+        "name": "Format I18n Response"
+      },
+      {
+        "parameters": {
+          "path": "api/v1/dashboard",
+          "responseMode": "responseNode",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2.1,
+        "position": [
+          -176,
+          -160
+        ],
+        "id": "5516e954-9add-41b6-9256-64c9e7150822",
+        "name": "dashboard",
+        "webhookId": "c5a6e8ef-970a-47f8-b44a-320a45472340"
+      },
+      {
+        "parameters": {
+          "path": "api/v1/me",
+          "responseMode": "responseNode",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2.1,
+        "position": [
+          -176,
+          -352
+        ],
+        "id": "77ae5210-2843-42fa-8ce5-32a62decc512",
+        "name": "me",
+        "webhookId": "c5a6e8ef-970a-47f8-b44a-320a45472340"
+      },
+      {
+        "parameters": {
+          "path": "api/v1/accounts",
+          "responseMode": "responseNode",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2.1,
+        "position": [
+          -176,
+          32
+        ],
+        "id": "5c9b351d-e55d-4cb3-ab3e-80528ef09583",
+        "name": "accounts",
+        "webhookId": "c5a6e8ef-970a-47f8-b44a-320a45472340"
+      },
+      {
+        "parameters": {
+          "path": "api/v1/i18n",
+          "responseMode": "responseNode",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2.1,
+        "position": [
+          -176,
+          208
+        ],
+        "id": "68dfaa53-9b6c-4dd0-a0ae-8cd92e9830a5",
+        "name": "i18n",
+        "webhookId": "c5a6e8ef-970a-47f8-b44a-320a45472340"
+      },
+      {
+        "parameters": {
+          "jsCode": "const headers = $json.headers || {};\nconst query = $json.query || {};\n\nconst initData =\n  headers[\"x-telegram-init-data\"] ||\n  headers[\"X-Telegram-Init-Data\"] ||\n  query.initData ||\n  query.init_data ||\n  null;\n\nconst path =\n  query.endpoint ||\n  $json.path ||\n  \"/api/v1/me\";\n\nreturn [{\n  json: {\n    method: $json.httpMethod || \"GET\",\n    path,\n    initData\n  }\n}];"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          96,
+          -352
+        ],
+        "id": "44d62267-441f-483c-9c87-322fd3a665dc",
+        "name": "Normalize Request me"
+      },
+      {
+        "parameters": {
+          "jsCode": "const crypto = require(\"crypto\");\n\nconst initData = $json.initData;\n\nif (!initData) {\n  throw new Error(\"INIT_DATA_MISSING\");\n}\n\nconst botToken = $env.MONEYTRACK_BOT_TOKEN;\n\nif (!botToken) {\n  throw new Error(\"BOT_TOKEN_MISSING\");\n}\n\nfunction parseInitData(initData) {\n  const result = {};\n\n  for (const part of initData.split(\"&\")) {\n    const eqIndex = part.indexOf(\"=\");\n\n    if (eqIndex === -1) continue;\n\n    const key = decodeURIComponent(part.slice(0, eqIndex));\n    const value = decodeURIComponent(part.slice(eqIndex + 1));\n\n    result[key] = value;\n  }\n\n  return result;\n}\n\nconst params = parseInitData(initData);\nconst receivedHash = params.hash;\n\nif (!receivedHash) {\n  throw new Error(\"HASH_MISSING\");\n}\n\ndelete params.hash;\n\nconst dataCheckString = Object.keys(params)\n  .sort()\n  .map((key) => `${key}=${params[key]}`)\n  .join(\"\\n\");\n\nconst secretKey = crypto\n  .createHmac(\"sha256\", \"WebAppData\")\n  .update(botToken)\n  .digest();\n\nconst calculatedHash = crypto\n  .createHmac(\"sha256\", secretKey)\n  .update(dataCheckString)\n  .digest(\"hex\");\n\nif (calculatedHash !== receivedHash) {\n  throw new Error(\"INVALID_INIT_DATA_HASH\");\n}\n\nconst user = JSON.parse(params.user);\n\nreturn [{\n  json: {\n    path: $json.path,\n    method: $json.method,\n\n    telegram_user_id: user.id,\n    username: user.username || null,\n    first_name: user.first_name || null,\n    last_name: user.last_name || null,\n    language_code: user.language_code || null\n  }\n}];"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          320,
+          -352
+        ],
+        "id": "9a4900a3-a868-44ab-8c02-5e0695182c37",
+        "name": "Verify Telegram InitData me"
+      },
+      {
+        "parameters": {
+          "jsCode": "const headers = $json.headers || {};\nconst query = $json.query || {};\n\nconst initData =\n  headers[\"x-telegram-init-data\"] ||\n  headers[\"X-Telegram-Init-Data\"] ||\n  query.initData ||\n  query.init_data ||\n  null;\n\nconst path =\n  query.endpoint ||\n  $json.path ||\n  \"/api/v1/me\";\n\nreturn [{\n  json: {\n    method: $json.httpMethod || \"GET\",\n    path,\n    initData\n  }\n}];"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          96,
+          -160
+        ],
+        "id": "d22c793c-0160-4982-bc04-726de0d9190a",
+        "name": "Normalize Request dashboard"
+      },
+      {
+        "parameters": {
+          "jsCode": "const crypto = require(\"crypto\");\n\nconst initData = $json.initData;\n\nif (!initData) {\n  throw new Error(\"INIT_DATA_MISSING\");\n}\n\nconst botToken = $env.MONEYTRACK_BOT_TOKEN;\n\nif (!botToken) {\n  throw new Error(\"BOT_TOKEN_MISSING\");\n}\n\nfunction parseInitData(initData) {\n  const result = {};\n\n  for (const part of initData.split(\"&\")) {\n    const eqIndex = part.indexOf(\"=\");\n\n    if (eqIndex === -1) continue;\n\n    const key = decodeURIComponent(part.slice(0, eqIndex));\n    const value = decodeURIComponent(part.slice(eqIndex + 1));\n\n    result[key] = value;\n  }\n\n  return result;\n}\n\nconst params = parseInitData(initData);\nconst receivedHash = params.hash;\n\nif (!receivedHash) {\n  throw new Error(\"HASH_MISSING\");\n}\n\ndelete params.hash;\n\nconst dataCheckString = Object.keys(params)\n  .sort()\n  .map((key) => `${key}=${params[key]}`)\n  .join(\"\\n\");\n\nconst secretKey = crypto\n  .createHmac(\"sha256\", \"WebAppData\")\n  .update(botToken)\n  .digest();\n\nconst calculatedHash = crypto\n  .createHmac(\"sha256\", secretKey)\n  .update(dataCheckString)\n  .digest(\"hex\");\n\nif (calculatedHash !== receivedHash) {\n  throw new Error(\"INVALID_INIT_DATA_HASH\");\n}\n\nconst user = JSON.parse(params.user);\n\nreturn [{\n  json: {\n    path: $json.path,\n    method: $json.method,\n\n    telegram_user_id: user.id,\n    username: user.username || null,\n    first_name: user.first_name || null,\n    last_name: user.last_name || null,\n    language_code: user.language_code || null\n  }\n}];"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          320,
+          -160
+        ],
+        "id": "3c8f5841-afd0-485f-a896-cd32dfb5d9c5",
+        "name": "Verify Telegram InitData dashboard"
+      },
+      {
+        "parameters": {
+          "jsCode": "const headers = $json.headers || {};\nconst query = $json.query || {};\n\nconst initData =\n  headers[\"x-telegram-init-data\"] ||\n  headers[\"X-Telegram-Init-Data\"] ||\n  query.initData ||\n  query.init_data ||\n  null;\n\nconst path =\n  query.endpoint ||\n  $json.path ||\n  \"/api/v1/me\";\n\nreturn [{\n  json: {\n    method: $json.httpMethod || \"GET\",\n    path,\n    initData\n  }\n}];"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          96,
+          32
+        ],
+        "id": "3d363581-a672-4b1c-bec0-e24fe4ddd493",
+        "name": "Normalize Request accounts"
+      },
+      {
+        "parameters": {
+          "jsCode": "const crypto = require(\"crypto\");\n\nconst initData = $json.initData;\n\nif (!initData) {\n  throw new Error(\"INIT_DATA_MISSING\");\n}\n\nconst botToken = $env.MONEYTRACK_BOT_TOKEN;\n\nif (!botToken) {\n  throw new Error(\"BOT_TOKEN_MISSING\");\n}\n\nfunction parseInitData(initData) {\n  const result = {};\n\n  for (const part of initData.split(\"&\")) {\n    const eqIndex = part.indexOf(\"=\");\n\n    if (eqIndex === -1) continue;\n\n    const key = decodeURIComponent(part.slice(0, eqIndex));\n    const value = decodeURIComponent(part.slice(eqIndex + 1));\n\n    result[key] = value;\n  }\n\n  return result;\n}\n\nconst params = parseInitData(initData);\nconst receivedHash = params.hash;\n\nif (!receivedHash) {\n  throw new Error(\"HASH_MISSING\");\n}\n\ndelete params.hash;\n\nconst dataCheckString = Object.keys(params)\n  .sort()\n  .map((key) => `${key}=${params[key]}`)\n  .join(\"\\n\");\n\nconst secretKey = crypto\n  .createHmac(\"sha256\", \"WebAppData\")\n  .update(botToken)\n  .digest();\n\nconst calculatedHash = crypto\n  .createHmac(\"sha256\", secretKey)\n  .update(dataCheckString)\n  .digest(\"hex\");\n\nif (calculatedHash !== receivedHash) {\n  throw new Error(\"INVALID_INIT_DATA_HASH\");\n}\n\nconst user = JSON.parse(params.user);\n\nreturn [{\n  json: {\n    path: $json.path,\n    method: $json.method,\n\n    telegram_user_id: user.id,\n    username: user.username || null,\n    first_name: user.first_name || null,\n    last_name: user.last_name || null,\n    language_code: user.language_code || null\n  }\n}];"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          320,
+          32
+        ],
+        "id": "fe865922-5c5d-4f4e-abe4-a7f028e7b69b",
+        "name": "Verify Telegram InitData accounts"
+      },
+      {
+        "parameters": {
+          "jsCode": "const headers = $json.headers || {};\nconst query = $json.query || {};\n\nconst initData =\n  headers[\"x-telegram-init-data\"] ||\n  headers[\"X-Telegram-Init-Data\"] ||\n  query.initData ||\n  query.init_data ||\n  null;\n\nconst path =\n  query.endpoint ||\n  $json.path ||\n  \"/api/v1/me\";\n\nreturn [{\n  json: {\n    method: $json.httpMethod || \"GET\",\n    path,\n    initData\n  }\n}];"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          96,
+          208
+        ],
+        "id": "bc1eb095-3b5e-4620-a933-e88822626308",
+        "name": "Normalize Request i18n"
+      },
+      {
+        "parameters": {
+          "jsCode": "const crypto = require(\"crypto\");\n\nconst initData = $json.initData;\n\nif (!initData) {\n  throw new Error(\"INIT_DATA_MISSING\");\n}\n\nconst botToken = $env.MONEYTRACK_BOT_TOKEN;\n\nif (!botToken) {\n  throw new Error(\"BOT_TOKEN_MISSING\");\n}\n\nfunction parseInitData(initData) {\n  const result = {};\n\n  for (const part of initData.split(\"&\")) {\n    const eqIndex = part.indexOf(\"=\");\n\n    if (eqIndex === -1) continue;\n\n    const key = decodeURIComponent(part.slice(0, eqIndex));\n    const value = decodeURIComponent(part.slice(eqIndex + 1));\n\n    result[key] = value;\n  }\n\n  return result;\n}\n\nconst params = parseInitData(initData);\nconst receivedHash = params.hash;\n\nif (!receivedHash) {\n  throw new Error(\"HASH_MISSING\");\n}\n\ndelete params.hash;\n\nconst dataCheckString = Object.keys(params)\n  .sort()\n  .map((key) => `${key}=${params[key]}`)\n  .join(\"\\n\");\n\nconst secretKey = crypto\n  .createHmac(\"sha256\", \"WebAppData\")\n  .update(botToken)\n  .digest();\n\nconst calculatedHash = crypto\n  .createHmac(\"sha256\", secretKey)\n  .update(dataCheckString)\n  .digest(\"hex\");\n\nif (calculatedHash !== receivedHash) {\n  throw new Error(\"INVALID_INIT_DATA_HASH\");\n}\n\nconst user = JSON.parse(params.user);\n\nreturn [{\n  json: {\n    path: $json.path,\n    method: $json.method,\n\n    telegram_user_id: user.id,\n    username: user.username || null,\n    first_name: user.first_name || null,\n    last_name: user.last_name || null,\n    language_code: user.language_code || null\n  }\n}];"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          320,
+          208
+        ],
+        "id": "e542733b-b753-4901-8855-4e39480b54a0",
+        "name": "Verify Telegram InitData i18n"
+      },
+      {
+        "parameters": {
+          "options": {}
+        },
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.5,
+        "position": [
+          1072,
+          -160
+        ],
+        "id": "44e911ae-c89d-4e39-b485-832060111ee4",
         "name": "Respond to Webhook"
+      },
+      {
+        "parameters": {
+          "options": {}
+        },
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.5,
+        "position": [
+          1072,
+          32
+        ],
+        "id": "153af809-108e-4518-ba3f-a8f23249e206",
+        "name": "Respond to Webhook2"
+      },
+      {
+        "parameters": {
+          "options": {}
+        },
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.5,
+        "position": [
+          1072,
+          208
+        ],
+        "id": "6e0a5c8b-a694-4802-9adc-66181f36635a",
+        "name": "Respond to Webhook3"
       }
     ],
     "connections": {
-      "Webhook": {
+      "Get Me": {
         "main": [
           [
             {
-              "node": "Get miniapp summary",
+              "node": "Format Me Response",
               "type": "main",
               "index": 0
             }
           ]
         ]
       },
-      "Get miniapp summary": {
+      "Format Me Response": {
+        "main": [
+          [
+            {
+              "node": "Respond to Webhook1",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get Dashboard": {
+        "main": [
+          [
+            {
+              "node": "Format Dashboard Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Format Dashboard Response": {
         "main": [
           [
             {
@@ -181,10 +1015,186 @@
             }
           ]
         ]
+      },
+      "Get Accounts": {
+        "main": [
+          [
+            {
+              "node": "Format Accounts Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Format Accounts Response": {
+        "main": [
+          [
+            {
+              "node": "Respond to Webhook2",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get I18n": {
+        "main": [
+          [
+            {
+              "node": "Format I18n Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Format I18n Response": {
+        "main": [
+          [
+            {
+              "node": "Respond to Webhook3",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "dashboard": {
+        "main": [
+          [
+            {
+              "node": "Normalize Request dashboard",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "me": {
+        "main": [
+          [
+            {
+              "node": "Normalize Request me",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "accounts": {
+        "main": [
+          [
+            {
+              "node": "Normalize Request accounts",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "i18n": {
+        "main": [
+          [
+            {
+              "node": "Normalize Request i18n",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Normalize Request me": {
+        "main": [
+          [
+            {
+              "node": "Verify Telegram InitData me",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Verify Telegram InitData me": {
+        "main": [
+          [
+            {
+              "node": "Get Me",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Normalize Request dashboard": {
+        "main": [
+          [
+            {
+              "node": "Verify Telegram InitData dashboard",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Verify Telegram InitData dashboard": {
+        "main": [
+          [
+            {
+              "node": "Get Dashboard",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Normalize Request accounts": {
+        "main": [
+          [
+            {
+              "node": "Verify Telegram InitData accounts",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Verify Telegram InitData accounts": {
+        "main": [
+          [
+            {
+              "node": "Get Accounts",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Normalize Request i18n": {
+        "main": [
+          [
+            {
+              "node": "Verify Telegram InitData i18n",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Verify Telegram InitData i18n": {
+        "main": [
+          [
+            {
+              "node": "Get I18n",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
       }
     },
     "authors": "Anatolii Makeev",
-    "name": "Version f9c97489",
+    "name": "Version f7f6c40e",
     "description": "",
     "autosaved": true
   },

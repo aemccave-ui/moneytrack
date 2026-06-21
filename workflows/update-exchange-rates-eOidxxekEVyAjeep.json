@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-06-07T12:51:57.841Z",
+  "updatedAt": "2026-06-20T13:48:49.049Z",
   "createdAt": "2026-06-07T12:18:50.561Z",
   "id": "eOidxxekEVyAjeep",
   "name": "Update Exchange Rates",
@@ -48,7 +48,7 @@
     },
     {
       "parameters": {
-        "url": "https://open.er-api.com/v6/latest/EUR",
+        "url": "https://open.er-api.com/v6/latest/USD",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -62,7 +62,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const api = $input.first().json;\n\nconst currencies = $('Get active currencies')\n  .all()\n  .map(i => String(i.json.code).toUpperCase());\n\nconst rateDate = api.time_last_update_utc\n  ? new Date(api.time_last_update_utc).toISOString().slice(0, 10)\n  : new Date().toISOString().slice(0, 10);\n\nconst rates = api.rates || {};\n\nconst out = [];\n\nfor (const from of currencies) {\n  for (const to of currencies) {\n    if (from === to) {\n      out.push({\n        json: {\n          rate_date: rateDate,\n          from_currency: from,\n          to_currency: to,\n          rate: 1,\n          source: 'open.er-api.com'\n        }\n      });\n      continue;\n    }\n\n    const fromRate = from === 'EUR' ? 1 : Number(rates[from]);\n    const toRate = to === 'EUR' ? 1 : Number(rates[to]);\n\n    if (!Number.isFinite(fromRate) || !Number.isFinite(toRate)) {\n      continue;\n    }\n\n    out.push({\n      json: {\n        rate_date: rateDate,\n        from_currency: from,\n        to_currency: to,\n        rate: toRate / fromRate,\n        source: 'open.er-api.com'\n      }\n    });\n  }\n}\n\nreturn out;"
+        "jsCode": "const api = $input.first().json;\n\nconst currencies = $('Get active currencies')\n  .all()\n  .map(i => String(i.json.code).toUpperCase());\n\nconst rateDate = api.time_last_update_utc\n  ? new Date(api.time_last_update_utc).toISOString().slice(0, 10)\n  : new Date().toISOString().slice(0, 10);\n\nconst rates = api.rates || {};\nconst out = [];\n\nfor (const code of currencies) {\n  const rate = code === \"USD\" ? 1 : Number(rates[code]);\n\n  if (!Number.isFinite(rate)) {\n    continue;\n  }\n\n  out.push({\n    json: {\n      rate_date: rateDate,\n      currency_code: code,\n      usd_rate: rate,\n      source: \"open.er-api.com\"\n    }\n  });\n}\n\nreturn out;"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -76,7 +76,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "insert into moneytrack.exchange_rates (\n    rate_date,\n    from_currency,\n    to_currency,\n    rate,\n    source\n)\nvalues (\n    '{{ $json.rate_date }}'::date,\n    '{{ $json.from_currency }}',\n    '{{ $json.to_currency }}',\n    {{ $json.rate }},\n    '{{ $json.source }}'\n)\non conflict (rate_date, from_currency, to_currency)\ndo update set\n    rate = excluded.rate,\n    source = excluded.source;",
+        "query": "insert into moneytrack.exchange_rates_usd (\n    rate_date,\n    currency_code,\n    usd_rate,\n    source\n)\nvalues (\n    '{{ $json.rate_date }}'::date,\n    '{{ $json.currency_code }}',\n    {{ $json.usd_rate }},\n    '{{ $json.source }}'\n)\non conflict (rate_date, currency_code)\ndo update set\n    usd_rate = excluded.usd_rate,\n    source = excluded.source,\n    created_at = now();",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
@@ -154,8 +154,8 @@
     "templateCredsSetupCompleted": true
   },
   "pinData": {},
-  "versionId": "1ff8cb57-ce6c-4dc5-86bb-93f9af907c58",
-  "activeVersionId": "1ff8cb57-ce6c-4dc5-86bb-93f9af907c58",
+  "versionId": "2d61a02f-79d6-4e2a-b622-07c6d8a07b58",
+  "activeVersionId": "2d61a02f-79d6-4e2a-b622-07c6d8a07b58",
   "triggerCount": 1,
   "shared": [
     {
@@ -167,9 +167,9 @@
     }
   ],
   "activeVersion": {
-    "updatedAt": "2026-06-07T12:52:02.798Z",
-    "createdAt": "2026-06-07T12:51:57.864Z",
-    "versionId": "1ff8cb57-ce6c-4dc5-86bb-93f9af907c58",
+    "updatedAt": "2026-06-20T13:48:55.779Z",
+    "createdAt": "2026-06-20T13:48:49.055Z",
+    "versionId": "2d61a02f-79d6-4e2a-b622-07c6d8a07b58",
     "workflowId": "eOidxxekEVyAjeep",
     "nodes": [
       {
@@ -214,7 +214,7 @@
       },
       {
         "parameters": {
-          "url": "https://open.er-api.com/v6/latest/EUR",
+          "url": "https://open.er-api.com/v6/latest/USD",
           "options": {}
         },
         "type": "n8n-nodes-base.httpRequest",
@@ -228,7 +228,7 @@
       },
       {
         "parameters": {
-          "jsCode": "const api = $input.first().json;\n\nconst currencies = $('Get active currencies')\n  .all()\n  .map(i => String(i.json.code).toUpperCase());\n\nconst rateDate = api.time_last_update_utc\n  ? new Date(api.time_last_update_utc).toISOString().slice(0, 10)\n  : new Date().toISOString().slice(0, 10);\n\nconst rates = api.rates || {};\n\nconst out = [];\n\nfor (const from of currencies) {\n  for (const to of currencies) {\n    if (from === to) {\n      out.push({\n        json: {\n          rate_date: rateDate,\n          from_currency: from,\n          to_currency: to,\n          rate: 1,\n          source: 'open.er-api.com'\n        }\n      });\n      continue;\n    }\n\n    const fromRate = from === 'EUR' ? 1 : Number(rates[from]);\n    const toRate = to === 'EUR' ? 1 : Number(rates[to]);\n\n    if (!Number.isFinite(fromRate) || !Number.isFinite(toRate)) {\n      continue;\n    }\n\n    out.push({\n      json: {\n        rate_date: rateDate,\n        from_currency: from,\n        to_currency: to,\n        rate: toRate / fromRate,\n        source: 'open.er-api.com'\n      }\n    });\n  }\n}\n\nreturn out;"
+          "jsCode": "const api = $input.first().json;\n\nconst currencies = $('Get active currencies')\n  .all()\n  .map(i => String(i.json.code).toUpperCase());\n\nconst rateDate = api.time_last_update_utc\n  ? new Date(api.time_last_update_utc).toISOString().slice(0, 10)\n  : new Date().toISOString().slice(0, 10);\n\nconst rates = api.rates || {};\nconst out = [];\n\nfor (const code of currencies) {\n  const rate = code === \"USD\" ? 1 : Number(rates[code]);\n\n  if (!Number.isFinite(rate)) {\n    continue;\n  }\n\n  out.push({\n    json: {\n      rate_date: rateDate,\n      currency_code: code,\n      usd_rate: rate,\n      source: \"open.er-api.com\"\n    }\n  });\n}\n\nreturn out;"
         },
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
@@ -242,7 +242,7 @@
       {
         "parameters": {
           "operation": "executeQuery",
-          "query": "insert into moneytrack.exchange_rates (\n    rate_date,\n    from_currency,\n    to_currency,\n    rate,\n    source\n)\nvalues (\n    '{{ $json.rate_date }}'::date,\n    '{{ $json.from_currency }}',\n    '{{ $json.to_currency }}',\n    {{ $json.rate }},\n    '{{ $json.source }}'\n)\non conflict (rate_date, from_currency, to_currency)\ndo update set\n    rate = excluded.rate,\n    source = excluded.source;",
+          "query": "insert into moneytrack.exchange_rates_usd (\n    rate_date,\n    currency_code,\n    usd_rate,\n    source\n)\nvalues (\n    '{{ $json.rate_date }}'::date,\n    '{{ $json.currency_code }}',\n    {{ $json.usd_rate }},\n    '{{ $json.source }}'\n)\non conflict (rate_date, currency_code)\ndo update set\n    usd_rate = excluded.usd_rate,\n    source = excluded.source,\n    created_at = now();",
           "options": {}
         },
         "type": "n8n-nodes-base.postgres",
@@ -308,7 +308,7 @@
       }
     },
     "authors": "Anatolii Makeev",
-    "name": "Version 1ff8cb57",
+    "name": "Version 2d61a02f",
     "description": "",
     "autosaved": true
   },
