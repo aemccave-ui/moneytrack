@@ -37,7 +37,7 @@ function App() {
 
   const summary = dashboard?.summary || {}
   const currency = summary.currency || 'EUR'
-  const transactions = dashboard?.latest_operations || []
+  const transactions = useMemo(() => dashboard?.latest_operations || [], [dashboard?.latest_operations])
   const resultPositive = Number(summary.result_month || 0) >= 0
   const accountItems = useMemo(() => accounts.slice(0, 4), [accounts])
   const hidden = (value) => privacy ? '••••••' : money(value, currency)
