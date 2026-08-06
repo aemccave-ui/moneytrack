@@ -66,10 +66,23 @@ body {
 .balanceRow { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:64px; padding:14px 16px; border-radius:20px; background:rgba(255,255,255,.82); border:1px solid rgba(255,255,255,.9); box-shadow:var(--mt-shadow-card); }
 .currencyBadge { display:inline-grid; place-items:center; min-width:42px; height:36px; padding:0 9px; border-radius:12px; background:var(--mt-teal-100); color:var(--mt-teal-800); font-size:11px; font-weight:900; }
 .balanceRow strong { flex:0 0 auto; font-size:17px; color:var(--mt-teal-900); }
-.balanceIdentity { min-width:0; display:flex; align-items:center; gap:10px; }
-.balanceName { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--mt-teal-900); font-size:13px; font-weight:750; }
-.accountBalanceRow { transition:transform var(--mt-transition),box-shadow var(--mt-transition); }
-.accountBalanceRow:active { transform:scale(.985); box-shadow:0 12px 34px rgba(38,78,82,.13); }
+
+.accountHierarchy { display:grid; grid-template-columns:1fr; gap:12px; }
+.accountGroup { overflow:hidden; border-radius:22px; background:rgba(255,255,255,.84); border:1px solid rgba(255,255,255,.92); box-shadow:var(--mt-shadow-card); }
+.accountGroupHeader { display:flex; align-items:center; justify-content:space-between; gap:14px; min-height:62px; padding:13px 16px; background:rgba(220,235,236,.68); }
+.accountGroupHeader > strong { color:var(--mt-teal-900); font-size:17px; }
+.accountGroupChildren { position:relative; padding:0 16px 4px 24px; }
+.accountGroupChildren::before { content:""; position:absolute; left:16px; top:0; bottom:18px; width:1px; background:rgba(38,113,118,.18); }
+.accountHierarchyRow { display:flex; align-items:center; justify-content:space-between; gap:14px; min-height:58px; padding:11px 0; border-top:1px solid rgba(22,63,67,.075); transition:background var(--mt-transition),transform var(--mt-transition); }
+.accountHierarchyRow:first-child { border-top:0; }
+.accountHierarchyRow:active { transform:scale(.992); }
+.accountHierarchyIdentity { min-width:0; display:flex; align-items:center; gap:10px; }
+.accountBranch { position:relative; flex:0 0 10px; height:1px; background:rgba(38,113,118,.28); }
+.accountBranch::before { content:""; position:absolute; left:-8px; top:-8px; width:8px; height:8px; border-left:1px solid rgba(38,113,118,.22); border-bottom:1px solid rgba(38,113,118,.22); border-radius:0 0 0 6px; }
+.accountHierarchyIdentity > div { min-width:0; display:flex; flex-direction:column; gap:3px; }
+.accountHierarchyIdentity strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--mt-teal-900); font-size:13px; }
+.accountHierarchyIdentity span:last-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:rgba(22,63,67,.48); font-size:10px; }
+.accountHierarchyAmount { flex:0 0 auto; color:var(--mt-teal-900); font-size:15px; white-space:nowrap; }
 
 .transactionPanel { padding-top:5px; padding-bottom:5px; }
 .transaction { gap:11px; padding:11px 0; }
@@ -93,4 +106,6 @@ body {
   .heroMetric { padding-left:7px; }
   .heroMetric strong { font-size:17px; }
   .balanceList { grid-template-columns:1fr; }
+  .accountGroupHeader { padding-left:14px; padding-right:14px; }
+  .accountGroupChildren { padding-right:14px; }
 }
