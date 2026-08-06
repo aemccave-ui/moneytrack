@@ -67,8 +67,14 @@ function App() {
     ?? 'EUR',
   ).toUpperCase()
   const configuredDefaultAccount = settings.setdefaultaccount
+    ?? settings.default_account_id
+    ?? settings.defaultAccountId
     ?? dashboard?.setdefaultaccount
+    ?? dashboard?.default_account_id
+    ?? dashboard?.defaultAccountId
     ?? summary?.setdefaultaccount
+    ?? summary?.default_account_id
+    ?? summary?.defaultAccountId
     ?? null
 
   const transactions = useMemo(() => dashboard?.latest_operations || [], [dashboard?.latest_operations])
@@ -117,26 +123,54 @@ function App() {
   }, [accountItems, baseCurrency])
 
   const primaryAccount = (() => {
-    if (configuredDefaultAccount == null) return null
-    const configuredId = typeof configuredDefaultAccount === 'object'
-      ? configuredDefaultAccount.id ?? configuredDefaultAccount.account_id ?? configuredDefaultAccount.value
+    const configured = typeof configuredDefaultAccount === 'object'
+      ? configuredDefaultAccount.account ?? configuredDefaultAccount
       : configuredDefaultAccount
-    const configuredName = typeof configuredDefaultAccount === 'object'
-      ? configuredDefaultAccount.name ?? configuredDefaultAccount.account_name ?? configuredDefaultAccount.label
-      : configuredDefaultAccount
-    const normalized = String(configuredId ?? configuredName ?? '').trim().toLowerCase()
-    if (!normalized) return null
+
+    const configuredId = typeof configured === 'object'
+      ? configured.id
+        ?? configured.account_id
+        ?? configured.accountId
+        ?? configured.value
+        ?? configured.uuid
+      : configured
+
+    const configuredName = typeof configured === 'object'
+      ? configured.name
+        ?? configured.account_name
+        ?? configured.accountName
+        ?? configured.label
+      : configured
+
+    const normalizedId = String(configuredId ?? '').trim().toLowerCase()
+    const normalizedName = String(configuredName ?? '').trim().toLowerCase()
+
     const account = accountItems.find((item) => (
-      String(item.id ?? '').toLowerCase() === normalized
-      || String(item.account_id ?? '').toLowerCase() === normalized
-      || String(item.name ?? '').trim().toLowerCase() === normalized
+      (normalizedId && (
+        String(item.id ?? '').trim().toLowerCase() === normalizedId
+        || String(item.account_id ?? '').trim().toLowerCase() === normalizedId
+        || String(item.accountId ?? '').trim().toLowerCase() === normalizedId
+        || String(item.uuid ?? '').trim().toLowerCase() === normalizedId
+      ))
+      || (normalizedName
+        && String(item.name ?? '').trim().toLowerCase() === normalizedName)
+    )) ?? accountItems.find((item) => (
+      item.setdefaultaccount === true
+      || item.is_default === true
+      || item.is_default_account === true
     ))
+
     if (!account) return null
+
+    const accountCurrency = String(account.currency_code || baseCurrency).toUpperCase()
+    const originalAmount = Number(account.balance_original ?? account.balance ?? 0)
+
     return {
       account,
-      amountBase: Number(account.balance_base
-        ?? ((account.currency_code || baseCurrency) === baseCurrency ? account.balance_original : 0)
-        ?? 0),
+      amountBase: Number(
+        account.balance_base
+        ?? (accountCurrency === baseCurrency ? originalAmount : 0),
+      ),
     }
   })()
 
@@ -204,8 +238,8 @@ function App() {
       </section>
 
       <section className="section accountsSection compactSectionStart">
-        <div className="sectionHeader accountsSectionHeader"><h2>Баланс по счетам</h2></div>
         {primaryAccount && <article className="primaryAccountCard"><div><span>Основной счёт · {baseCurrency}</span><strong>{primaryAccount.account.name}</strong></div><strong className="sensitive">{hidden(primaryAccount.amountBase, baseCurrency)}</strong></article>}
+        <div className="sectionHeader accountsSectionHeader"><h2>Баланс по счетам</h2></div>
         {accountHierarchy.length ? <div className="accountDistribution">
           <button type="button" className="accountStackButton compactStackButton" onClick={() => setAccountBreakdownOpen((value) => !value)} aria-expanded={accountBreakdownOpen} aria-controls="account-breakdown">
             <span className={`hierarchyChevron ${accountBreakdownOpen ? 'expanded' : ''}`} aria-hidden="true">›</span>
