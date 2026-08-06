@@ -128,7 +128,8 @@ function App() {
       ? configuredDefaultAccount.account ?? configuredDefaultAccount
       : configuredDefaultAccount
 
-    const configuredId = typeof configured === 'object'
+    const configuredId = configured != null
+      && typeof configured === 'object'
       ? configured.id
         ?? configured.account_id
         ?? configured.accountId
@@ -136,7 +137,8 @@ function App() {
         ?? configured.uuid
       : configured
 
-    const configuredName = typeof configured === 'object'
+    const configuredName = configured != null
+      && typeof configured === 'object'
       ? configured.name
         ?? configured.account_name
         ?? configured.accountName
