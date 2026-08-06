@@ -110,6 +110,22 @@ function App() {
         </div>
       </section>
 
+      <section className="section accountsSection">
+        <div className="sectionHeader"><h2>Баланс по счетам</h2><button className="textButton" type="button">Все счета <span aria-hidden="true">›</span></button></div>
+        <div className="balanceList accountBalanceList">
+          {accountItems.map((account) => (
+            <article className="balanceRow accountBalanceRow" key={account.id}>
+              <div className="balanceIdentity">
+                <span className="currencyBadge">{account.currency_code || currency}</span>
+                <span className="balanceName">{account.name}</span>
+              </div>
+              <strong className="sensitive">{hidden(account.balance_original ?? account.balance_base, account.currency_code || currency)}</strong>
+            </article>
+          ))}
+          {!accountItems.length && <div className="emptyCard">Нет счетов с остатком от 1</div>}
+        </div>
+      </section>
+
       <section className="section balanceBreakdownSection">
         <div className="sectionHeader"><h2>Баланс по валютам</h2></div>
         <div className="balanceList">
@@ -120,20 +136,6 @@ function App() {
             </article>
           ))}
           {!currencyBalances.length && <div className="emptyCard">Нет ненулевых валютных остатков</div>}
-        </div>
-      </section>
-
-      <section className="section accountsSection">
-        <div className="sectionHeader"><h2>Баланс по счетам</h2><button className="textButton" type="button">Все счета <span aria-hidden="true">›</span></button></div>
-        <div className="accountRail">
-          {accountItems.map((account, index) => (
-            <article className={`accountCard accountTone${(index % 3) + 1}`} key={account.id}>
-              <div className="accountTop"><div className="accountIcon">{account.currency_code || currency}</div><span className="accountType">{account.account_type || 'Счёт'}</span></div>
-              <div className="accountName">{account.name}</div>
-              <div className="accountBalance sensitive">{hidden(account.balance_original ?? account.balance_base, account.currency_code || currency)}</div>
-            </article>
-          ))}
-          {!accountItems.length && <div className="emptyCard">Нет счетов с остатком от 1</div>}
         </div>
       </section>
 
