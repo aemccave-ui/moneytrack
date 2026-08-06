@@ -65,17 +65,12 @@ body {
 .balanceList { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
 .balanceRow { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:64px; padding:14px 16px; border-radius:20px; background:rgba(255,255,255,.82); border:1px solid rgba(255,255,255,.9); box-shadow:var(--mt-shadow-card); }
 .currencyBadge { display:inline-grid; place-items:center; min-width:42px; height:36px; padding:0 9px; border-radius:12px; background:var(--mt-teal-100); color:var(--mt-teal-800); font-size:11px; font-weight:900; }
-.balanceRow strong { font-size:17px; color:var(--mt-teal-900); }
+.balanceRow strong { flex:0 0 auto; font-size:17px; color:var(--mt-teal-900); }
+.balanceIdentity { min-width:0; display:flex; align-items:center; gap:10px; }
+.balanceName { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--mt-teal-900); font-size:13px; font-weight:750; }
+.accountBalanceRow { transition:transform var(--mt-transition),box-shadow var(--mt-transition); }
+.accountBalanceRow:active { transform:scale(.985); box-shadow:0 12px 34px rgba(38,78,82,.13); }
 
-.accountRail { gap:10px; padding-bottom:10px; }
-.accountCard { min-height:142px; padding:15px; transition:transform var(--mt-transition),box-shadow var(--mt-transition); }
-.accountCard:active { transform:scale(.985); box-shadow:0 12px 34px rgba(38,78,82,.13); }
-.accountTone1 { background:linear-gradient(145deg,#ffffff,#e7f0f0); }
-.accountTone2 { background:linear-gradient(145deg,#f8fbfb,#dce9ea); }
-.accountTone3 { background:linear-gradient(145deg,#ffffff,#e8eeee); }
-.accountIcon { background:var(--mt-teal-100); color:var(--mt-teal-800); }
-.accountName,.accountType { color:rgba(22,63,67,.52); }
-.accountBalance { margin-top:4px; font-size:22px; color:var(--mt-teal-900); }
 .transactionPanel { padding-top:5px; padding-bottom:5px; }
 .transaction { gap:11px; padding:11px 0; }
 .transactionIcon { flex-basis:39px; height:39px; border-radius:13px; }
