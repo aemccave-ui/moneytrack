@@ -42,11 +42,17 @@
   grid-template-columns: 22px minmax(0,1fr);
   align-items: center;
   gap: 9px;
-  min-height: 50px;
-  padding: 10px 12px;
+  min-height: 58px;
+  padding: 9px 12px;
 }
 .compactStackButton:active { transform: scale(.992); }
 .compactStackButton .hierarchyChevron { flex: 0 0 auto; }
+.currencyStackContent,
+.accountStackContent {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
 
 .accountStackBar,
 .currencyStackBar {
@@ -62,6 +68,18 @@
 .currencyStackSegment { display: block; min-width: 3px; height: 100%; }
 .accountStackSegment + .accountStackSegment,
 .currencyStackSegment + .currencyStackSegment { border-left: 1px solid rgba(255,255,255,.72); }
+.stackCaption {
+  min-width: 0;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(22,63,67,.58);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+}
+.stackCount { white-space: nowrap; }
 
 .accountDistribution .accountTree,
 .currencyDistribution .currencyHierarchy { margin-top: 0; }
