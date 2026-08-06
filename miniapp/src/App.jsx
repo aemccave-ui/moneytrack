@@ -63,6 +63,24 @@ function App() {
     [accounts],
   )
 
+  const accountGroups = useMemo(() => {
+    const groups = new Map()
+    accountItems.forEach((account) => {
+      const code = account.currency_code || currency
+      const balance = Number(account.balance_original ?? account.balance_base ?? 0)
+      const group = groups.get(code) || { currency: code, total: 0, accounts: [] }
+      group.total += balance
+      group.accounts.push(account)
+      groups.set(code, group)
+    })
+    return [...groups.values()]
+      .map((group) => ({
+        ...group,
+        accounts: group.accounts.slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ru')),
+      }))
+      .sort((a, b) => a.currency.localeCompare(b.currency))
+  }, [accountItems, currency])
+
   const transactionGroups = useMemo(() => {
     const groups = new Map()
     transactions.forEach((transaction) => {
@@ -112,17 +130,32 @@ function App() {
 
       <section className="section accountsSection">
         <div className="sectionHeader"><h2>Баланс по счетам</h2><button className="textButton" type="button">Все счета <span aria-hidden="true">›</span></button></div>
-        <div className="balanceList accountBalanceList">
-          {accountItems.map((account) => (
-            <article className="balanceRow accountBalanceRow" key={account.id}>
-              <div className="balanceIdentity">
-                <span className="currencyBadge">{account.currency_code || currency}</span>
-                <span className="balanceName">{account.name}</span>
+        <div className="accountHierarchy">
+          {accountGroups.map((group) => (
+            <section className="accountGroup" key={group.currency} aria-label={`Счета в ${group.currency}`}>
+              <header className="accountGroupHeader">
+                <span className="currencyBadge">{group.currency}</span>
+                <strong className="sensitive">{hidden(group.total, group.currency)}</strong>
+              </header>
+              <div className="accountGroupChildren">
+                {group.accounts.map((account) => (
+                  <article className="accountHierarchyRow" key={account.id}>
+                    <div className="accountHierarchyIdentity">
+                      <span className="accountBranch" aria-hidden="true" />
+                      <div>
+                        <strong>{account.name}</strong>
+                        <span>{account.account_type || 'Счёт'}</span>
+                      </div>
+                    </div>
+                    <strong className="accountHierarchyAmount sensitive">
+                      {hidden(account.balance_original ?? account.balance_base, group.currency)}
+                    </strong>
+                  </article>
+                ))}
               </div>
-              <strong className="sensitive">{hidden(account.balance_original ?? account.balance_base, account.currency_code || currency)}</strong>
-            </article>
+            </section>
           ))}
-          {!accountItems.length && <div className="emptyCard">Нет счетов с остатком от 1</div>}
+          {!accountGroups.length && <div className="emptyCard">Нет счетов с остатком от 1</div>}
         </div>
       </section>
 
