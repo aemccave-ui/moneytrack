@@ -1,7 +1,7 @@
 :root {
   --mt-page-pad: 18px;
-  --mt-section-gap: 24px;
-  --mt-radius-card: 28px;
+  --mt-section-gap: 22px;
+  --mt-radius-card: 26px;
   --mt-radius-control: 16px;
   --mt-shadow-card: 0 18px 48px rgba(21, 91, 65, .10);
   --mt-shadow-fab: 0 14px 30px rgba(13, 91, 63, .24);
@@ -17,187 +17,61 @@ body {
   background-attachment: fixed;
 }
 
-.app {
-  padding-top: calc(12px + env(safe-area-inset-top));
-  padding-bottom: calc(108px + env(safe-area-inset-bottom));
-}
+.app { padding-top: calc(12px + env(safe-area-inset-top)); padding-bottom: calc(108px + env(safe-area-inset-bottom)); }
+.balanceHeader { display:flex; align-items:flex-end; justify-content:space-between; gap:18px; margin-bottom:18px; padding:6px 4px 2px; }
+.todayLabel { color:rgba(16,35,27,.58); font-size:13px; font-weight:650; text-transform:capitalize; }
+.balanceLabel { margin-top:9px; color:rgba(16,35,27,.56); font-size:13px; }
+.balanceValue { display:block; margin-top:2px; font-size:clamp(36px,10vw,46px); line-height:1; letter-spacing:-.055em; }
+.balanceHeader .iconButton { flex:0 0 46px; width:46px; height:46px; margin-bottom:1px; border-radius:16px; }
 
-.balanceHeader {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 18px;
-  margin-bottom: 20px;
-  padding: 6px 4px 2px;
-}
+.compactHero { padding:18px 20px 16px; border-radius:28px; box-shadow:0 20px 50px rgba(13,83,59,.20); }
+.compactHero .heroOrbOne { width:150px; height:150px; right:-48px; top:-88px; opacity:.55; }
+.compactHero .heroOrbTwo { width:88px; height:88px; right:30px; bottom:-62px; opacity:.45; }
+.compactHeroSummary { position:relative; display:grid; grid-template-columns:minmax(0,1fr) minmax(120px,1.15fr); align-items:end; gap:16px; }
+.compactHero .heroMonth { display:block; margin-bottom:15px; font-size:14px; text-transform:capitalize; }
+.compactHero .heroLabel { font-size:12px; }
+.compactHero .heroValue { margin-top:2px; font-size:34px; }
+.compactStats { margin-top:14px; padding-top:12px; }
+.compactStats .heroStat strong { font-size:15px; }
+.compactStats .glyph { width:30px; height:30px; border-radius:10px; }
 
-.todayLabel {
-  color: rgba(16, 35, 27, .58);
-  font-size: 13px;
-  font-weight: 650;
-  text-transform: capitalize;
-}
+.dailyChart { min-height:76px; display:flex; align-items:flex-end; justify-content:flex-end; gap:5px; overflow:hidden; }
+.dailyBar { position:relative; display:flex; align-items:center; justify-content:flex-end; width:12px; height:64px; padding-bottom:13px; }
+.dailyBar i { position:absolute; left:2px; width:4px; border-radius:999px; bottom:14px; }
+.dailyBar .incomeBar { left:1px; background:rgba(210,255,228,.95); }
+.dailyBar .expenseBar { left:7px; background:rgba(255,190,190,.92); }
+.dailyBar span { position:absolute; bottom:0; left:50%; transform:translateX(-50%); color:rgba(255,255,255,.58); font-size:8px; }
+.chartEmpty { align-self:center; color:rgba(255,255,255,.62); font-size:11px; }
 
-.balanceLabel {
-  margin-top: 9px;
-  color: rgba(16, 35, 27, .56);
-  font-size: 13px;
-}
+.section { margin-top:var(--mt-section-gap); }
+.netWorthCard,.previewDiagnostics,.diagnostics,.debugPanel { display:none !important; }
+.sectionHeader > h2 { margin:0; }
+.balanceList { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.balanceRow { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:64px; padding:14px 16px; border-radius:20px; background:rgba(255,255,255,.82); border:1px solid rgba(255,255,255,.9); box-shadow:var(--mt-shadow-card); }
+.currencyBadge { display:inline-grid; place-items:center; min-width:42px; height:36px; padding:0 9px; border-radius:12px; background:#d9f5e6; color:var(--emerald-dark); font-size:11px; font-weight:900; }
+.balanceRow strong { font-size:17px; }
 
-.balanceValue {
-  display: block;
-  margin-top: 2px;
-  font-size: clamp(36px, 10vw, 46px);
-  line-height: 1;
-  letter-spacing: -.055em;
-}
+.accountRail { gap:10px; padding-bottom:10px; }
+.accountCard { min-height:142px; padding:15px; transition:transform var(--mt-transition),box-shadow var(--mt-transition); }
+.accountCard:active { transform:scale(.985); box-shadow:0 12px 34px rgba(21,91,65,.12); }
+.accountName,.accountType { color:rgba(16,35,27,.52); }
+.accountBalance { margin-top:4px; font-size:22px; color:var(--text); }
+.transactionPanel { padding-top:5px; padding-bottom:5px; }
+.transaction { gap:11px; padding:11px 0; }
+.transactionIcon { flex-basis:39px; height:39px; border-radius:13px; }
+.transactionBody { gap:2px; }
+.transactionBody strong { font-size:13px; }
+.transactionBody span { color:rgba(16,35,27,.48); font-size:10px; }
+.transactionAmount { color:var(--text); font-size:14px; font-weight:900; }
+.fabMenu { bottom:calc(96px + env(safe-area-inset-bottom)); }
+.fab { width:56px; height:56px; border-radius:19px; box-shadow:var(--mt-shadow-fab); }
+.fabActions { transition:opacity var(--mt-transition),transform var(--mt-transition); }
 
-.balanceHeader .iconButton {
-  flex: 0 0 46px;
-  width: 46px;
-  height: 46px;
-  margin-bottom: 1px;
-  border-radius: 16px;
-}
-
-.hero {
-  padding: 21px 22px 20px;
-  border-radius: 30px;
-  box-shadow: 0 22px 56px rgba(13,83,59,.22);
-}
-
-.heroOrbOne {
-  width: 176px;
-  height: 176px;
-  right: -54px;
-  top: -96px;
-  opacity: .7;
-}
-
-.heroOrbTwo {
-  width: 102px;
-  height: 102px;
-  right: 38px;
-  bottom: -66px;
-  opacity: .6;
-}
-
-.trend {
-  padding: 7px 10px;
-  font-size: 11px;
-  background: rgba(255,255,255,.11);
-}
-
-.heroValueRow {
-  margin-top: 21px;
-}
-
-.heroValue {
-  font-size: 40px;
-}
-
-.sparkline {
-  width: 56px;
-  height: 38px;
-  opacity: .82;
-}
-
-.heroStats {
-  margin-top: 25px;
-  padding-top: 15px;
-}
-
-.section {
-  margin-top: var(--mt-section-gap);
-}
-
-.netWorthCard,
-.previewDiagnostics,
-.diagnostics,
-.debugPanel {
-  display: none !important;
-}
-
-.accountRail {
-  gap: 10px;
-  padding-bottom: 10px;
-}
-
-.accountCard {
-  min-height: 150px;
-  padding: 16px;
-  transition: transform var(--mt-transition), box-shadow var(--mt-transition);
-}
-
-.accountCard:active {
-  transform: scale(.985);
-  box-shadow: 0 12px 34px rgba(21,91,65,.12);
-}
-
-.accountName,
-.accountType {
-  color: rgba(16,35,27,.52);
-}
-
-.accountBalance {
-  margin-top: 4px;
-  font-size: 22px;
-  color: var(--text);
-}
-
-.transactionPanel {
-  padding-top: 5px;
-  padding-bottom: 5px;
-}
-
-.transaction {
-  gap: 11px;
-  padding: 11px 0;
-}
-
-.transactionIcon {
-  flex-basis: 39px;
-  height: 39px;
-  border-radius: 13px;
-}
-
-.transactionBody {
-  gap: 2px;
-}
-
-.transactionBody strong {
-  font-size: 13px;
-}
-
-.transactionBody span {
-  color: rgba(16,35,27,.48);
-  font-size: 10px;
-}
-
-.transactionAmount {
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 900;
-}
-
-.fabMenu {
-  bottom: calc(96px + env(safe-area-inset-bottom));
-}
-
-.fab {
-  width: 56px;
-  height: 56px;
-  border-radius: 19px;
-  box-shadow: var(--mt-shadow-fab);
-}
-
-.fabActions {
-  transition: opacity var(--mt-transition), transform var(--mt-transition);
-}
-
-@media (max-width: 380px) {
-  .balanceHeader { padding-left: 2px; padding-right: 2px; }
-  .balanceLabel { margin-top: 7px; }
-  .hero { padding: 19px; }
-  .heroValue { font-size: 36px; }
+@media (max-width:380px) {
+  .balanceHeader { padding-left:2px; padding-right:2px; }
+  .balanceLabel { margin-top:7px; }
+  .compactHero { padding:16px; }
+  .compactHeroSummary { grid-template-columns:minmax(0,1fr) 122px; gap:10px; }
+  .compactHero .heroValue { font-size:31px; }
+  .balanceList { grid-template-columns:1fr; }
 }
