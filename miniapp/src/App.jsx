@@ -25,6 +25,7 @@ const navigationItems = [
 ]
 
 const parentAccountId = (account) => account.parent_account_id ?? account.parent_id ?? account.account_parent_id ?? null
+const currencySegmentColors = ['#1d5559', '#4f9fa3', '#79b7b9', '#a4cccd', '#c6dddd', '#799397']
 
 function Glyph({ children }) {
   return <span className="glyph" aria-hidden="true">{children}</span>
@@ -35,6 +36,7 @@ function App() {
   const [accounts, setAccounts] = useState([])
   const [privacy, setPrivacy] = useState(false)
   const [actionsOpen, setActionsOpen] = useState(false)
+  const [currencyBreakdownOpen, setCurrencyBreakdownOpen] = useState(false)
   const [expandedCurrencies, setExpandedCurrencies] = useState(() => new Set())
   const [expandedAccounts, setExpandedAccounts] = useState(() => new Set())
   const [error, setError] = useState('')
@@ -66,9 +68,14 @@ function App() {
     const groups = new Map()
     accountItems.forEach((account) => {
       const code = account.currency_code || baseCurrency
-      const balance = Number(account.balance_original ?? account.balance_base ?? 0)
-      const group = groups.get(code) || { currency: code, total: 0, accounts: [] }
-      group.total += balance
+      const originalBalance = Number(account.balance_original ?? account.balance_base ?? 0)
+      const baseBalance = Number(
+        account.balance_base
+        ?? (code === baseCurrency ? originalBalance : 0),
+      )
+      const group = groups.get(code) || { currency: code, total: 0, totalBase: 0, accounts: [] }
+      group.total += originalBalance
+      group.totalBase += baseBalance
       group.accounts.push(account)
       groups.set(code, group)
     })
@@ -78,8 +85,13 @@ function App() {
         accounts: group.accounts.slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ru')),
       }))
       .filter((group) => Math.abs(group.total) >= 1)
-      .sort((a, b) => a.currency.localeCompare(b.currency))
+      .sort((a, b) => Math.abs(b.totalBase) - Math.abs(a.totalBase))
   }, [accountItems, baseCurrency])
+
+  const currencyDistributionTotal = useMemo(
+    () => currencyGroups.reduce((sum, group) => sum + Math.abs(group.totalBase), 0),
+    [currencyGroups],
+  )
 
   const accountHierarchy = useMemo(() => {
     const byId = new Map(accountItems.map((account) => [String(account.id), { account, children: [] }]))
@@ -199,37 +211,72 @@ function App() {
 
       <section className="section balanceBreakdownSection">
         <div className="sectionHeader"><h2>Баланс по валютам</h2></div>
-        <div className="currencyHierarchy">
-          {currencyGroups.map((group) => {
-            const expanded = expandedCurrencies.has(group.currency)
-            return (
-              <section className="currencyGroup" key={group.currency}>
-                <button
-                  type="button"
-                  className="hierarchyToggle currencyGroupHeader"
-                  onClick={() => toggleSetItem(setExpandedCurrencies, group.currency)}
-                  aria-expanded={expanded}
-                >
-                  <span className={`hierarchyChevron ${expanded ? 'expanded' : ''}`} aria-hidden="true">›</span>
-                  <span className="currencyBadge">{group.currency}</span>
-                  <span className="hierarchyCount">{group.accounts.length} сч.</span>
-                  <strong className="sensitive">{hidden(group.total, group.currency)}</strong>
-                </button>
-                {expanded && (
-                  <div className="currencyGroupChildren">
-                    {group.accounts.map((account) => (
-                      <article className="currencyAccountRow" key={account.id}>
-                        <span>{account.name}</span>
-                        <strong className="sensitive">{hidden(account.balance_original ?? account.balance_base, group.currency)}</strong>
-                      </article>
-                    ))}
-                  </div>
-                )}
-              </section>
-            )
-          })}
-          {!currencyGroups.length && <div className="emptyCard">Нет ненулевых валютных остатков</div>}
-        </div>
+        {currencyGroups.length ? (
+          <div className="currencyDistribution">
+            <button
+              type="button"
+              className="currencyStackButton"
+              onClick={() => setCurrencyBreakdownOpen((value) => !value)}
+              aria-expanded={currencyBreakdownOpen}
+              aria-controls="currency-breakdown"
+            >
+              <span className="currencyStackBar" aria-label="Распределение баланса по валютам">
+                {currencyGroups.map((group, index) => {
+                  const width = currencyDistributionTotal > 0
+                    ? Math.abs(group.totalBase) / currencyDistributionTotal * 100
+                    : 100 / currencyGroups.length
+                  return (
+                    <i
+                      key={group.currency}
+                      className="currencyStackSegment"
+                      style={{ width: `${width}%`, background: currencySegmentColors[index % currencySegmentColors.length] }}
+                      title={`${group.currency}: ${width.toFixed(1)}%`}
+                    />
+                  )
+                })}
+              </span>
+              <span className="currencyStackMeta">
+                <span>{currencyGroups.length} валют</span>
+                <span className={`hierarchyChevron ${currencyBreakdownOpen ? 'expanded' : ''}`} aria-hidden="true">›</span>
+              </span>
+            </button>
+
+            {currencyBreakdownOpen && (
+              <div className="currencyHierarchy" id="currency-breakdown">
+                {currencyGroups.map((group) => {
+                  const expanded = expandedCurrencies.has(group.currency)
+                  return (
+                    <section className="currencyGroup" key={group.currency}>
+                      <button
+                        type="button"
+                        className="hierarchyToggle currencyGroupHeader"
+                        onClick={() => toggleSetItem(setExpandedCurrencies, group.currency)}
+                        aria-expanded={expanded}
+                      >
+                        <span className={`hierarchyChevron ${expanded ? 'expanded' : ''}`} aria-hidden="true">›</span>
+                        <span className="currencyBadge">{group.currency}</span>
+                        <span className="hierarchyCount">{group.accounts.length} сч.</span>
+                        <strong className="sensitive">{hidden(group.total, group.currency)}</strong>
+                      </button>
+                      {expanded && (
+                        <div className="currencyGroupChildren">
+                          {group.accounts.map((account) => (
+                            <article className="currencyAccountRow" key={account.id}>
+                              <span>{account.name}</span>
+                              <strong className="sensitive">{hidden(account.balance_original ?? account.balance_base, group.currency)}</strong>
+                            </article>
+                          ))}
+                        </div>
+                      )}
+                    </section>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="emptyCard">Нет ненулевых валютных остатков</div>
+        )}
       </section>
 
       <section className="section transactionsSection">
