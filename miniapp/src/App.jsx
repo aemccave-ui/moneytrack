@@ -102,7 +102,13 @@ function App() {
     return roots.map(normalize).sort((a, b) => Math.abs(b.totalBase) - Math.abs(a.totalBase))
   }, [accountItems, baseCurrency])
 
-  const primaryAccount = accountHierarchy[0] || null
+  const primaryAccount = useMemo(() => {
+    const baseCurrencyAccounts = accountHierarchy.filter(
+      (node) => (node.account.currency_code || baseCurrency) === baseCurrency,
+    )
+    return baseCurrencyAccounts[0] || accountHierarchy[0] || null
+  }, [accountHierarchy, baseCurrency])
+
   const accountDistributionTotal = accountHierarchy.reduce((sum, node) => sum + Math.abs(node.totalBase), 0)
   const currencyDistributionTotal = currencyGroups.reduce((sum, group) => sum + Math.abs(group.totalBase), 0)
 
@@ -147,9 +153,6 @@ function App() {
 
   if (!dashboard && !error) return <main className="app loadingState" aria-busy="true"><div className="skeleton topSkeleton"/><div className="skeleton heroSkeleton"/><div className="skeleton cardSkeleton"/></main>
 
-  const currencyCaption = currencyGroups.map((group) => group.currency).join(' · ')
-  const accountCaption = accountHierarchy.map((node) => node.account.name).join(' · ')
-
   return (
     <main className={`app ${privacy ? 'privacy' : ''}`}>
       <section className="balanceHeader" aria-labelledby="balance-title"><div><div className="todayLabel">{todayLabel()}</div><div className="balanceLabel" id="balance-title">Общий баланс</div><strong className="balanceValue sensitive">{hidden(summary.net_worth)}</strong></div><button className={`iconButton privacyButton ${privacy ? 'selected' : ''}`} onClick={() => setPrivacy((value) => !value)} aria-label={privacy ? 'Показать суммы' : 'Скрыть суммы'} aria-pressed={privacy}>◎</button></section>
@@ -159,27 +162,27 @@ function App() {
 
       <section className="section balanceBreakdownSection noSectionTitle">
         {currencyGroups.length ? <div className="currencyDistribution">
-          <button type="button" className="currencyStackButton" onClick={() => setCurrencyBreakdownOpen((value) => !value)} aria-expanded={currencyBreakdownOpen} aria-controls="currency-breakdown">
+          <button type="button" className="currencyStackButton compactStackButton" onClick={() => setCurrencyBreakdownOpen((value) => !value)} aria-expanded={currencyBreakdownOpen} aria-controls="currency-breakdown">
+            <span className={`hierarchyChevron ${currencyBreakdownOpen ? 'expanded' : ''}`} aria-hidden="true">›</span>
             <span className="currencyStackBar" aria-label="Распределение баланса по валютам">{currencyGroups.map((group, index) => { const width = currencyDistributionTotal > 0 ? Math.abs(group.totalBase) / currencyDistributionTotal * 100 : 100 / currencyGroups.length; return <i key={group.currency} className="currencyStackSegment" style={{ width: `${width}%`, background: segmentColors[index % segmentColors.length] }} /> })}</span>
-            <span className="currencyStackMeta"><span className="distributionCaption" title={currencyCaption}>{currencyCaption}</span><span className="distributionCount">({currencyGroups.length})</span><span className={`hierarchyChevron ${currencyBreakdownOpen ? 'expanded' : ''}`} aria-hidden="true">›</span></span>
           </button>
           {currencyBreakdownOpen && <div className="currencyHierarchy" id="currency-breakdown">{currencyGroups.map((group) => { const expanded = expandedCurrencies.has(group.currency); return <section className="currencyGroup" key={group.currency}><button type="button" className="hierarchyToggle currencyGroupHeader" onClick={() => toggleSetItem(setExpandedCurrencies, group.currency)} aria-expanded={expanded}><span className={`hierarchyChevron ${expanded ? 'expanded' : ''}`} aria-hidden="true">›</span><span className="currencyBadge">{group.currency}</span><span className="hierarchyCount">{group.accounts.length} сч.</span><strong className="sensitive">{hidden(group.total, group.currency)}</strong></button>{expanded && <div className="currencyGroupChildren">{group.accounts.map((account) => <article className="currencyAccountRow" key={account.id}><span>{account.name}</span><strong className="sensitive">{hidden(account.balance_original ?? account.balance_base, group.currency)}</strong></article>)}</div>}</section> })}</div>}
         </div> : <div className="emptyCard">Нет ненулевых валютных остатков</div>}
       </section>
 
       <section className="section accountsSection compactSectionStart">
-        <div className="sectionHeader accountsSectionHeader"><h2>Баланс по счетам</h2><button className="textButton" type="button">Все счета <span aria-hidden="true">›</span></button></div>
-        {primaryAccount && <article className="primaryAccountCard"><div><span>Основной счёт</span><strong>{primaryAccount.account.name}</strong></div><strong className="sensitive">{hidden(primaryAccount.totalBase, baseCurrency)}</strong></article>}
+        <div className="sectionHeader accountsSectionHeader"><h2>Баланс по счетам</h2></div>
+        {primaryAccount && <article className="primaryAccountCard"><div><span>Основной счёт · {baseCurrency}</span><strong>{primaryAccount.account.name}</strong></div><strong className="sensitive">{hidden(primaryAccount.totalBase, baseCurrency)}</strong></article>}
         {accountHierarchy.length ? <div className="accountDistribution">
-          <button type="button" className="accountStackButton" onClick={() => setAccountBreakdownOpen((value) => !value)} aria-expanded={accountBreakdownOpen} aria-controls="account-breakdown">
+          <button type="button" className="accountStackButton compactStackButton" onClick={() => setAccountBreakdownOpen((value) => !value)} aria-expanded={accountBreakdownOpen} aria-controls="account-breakdown">
+            <span className={`hierarchyChevron ${accountBreakdownOpen ? 'expanded' : ''}`} aria-hidden="true">›</span>
             <span className="accountStackBar" aria-label="Распределение баланса по счетам">{accountHierarchy.map((node, index) => { const width = accountDistributionTotal > 0 ? Math.abs(node.totalBase) / accountDistributionTotal * 100 : 100 / accountHierarchy.length; return <i key={node.account.id} className="accountStackSegment" style={{ width: `${width}%`, background: segmentColors[index % segmentColors.length] }} /> })}</span>
-            <span className="accountStackMeta"><span className="distributionCaption" title={accountCaption}>{accountCaption}</span><span className="distributionCount">({accountHierarchy.length})</span><span className={`hierarchyChevron ${accountBreakdownOpen ? 'expanded' : ''}`} aria-hidden="true">›</span></span>
           </button>
           {accountBreakdownOpen && <div className="accountTree" id="account-breakdown">{accountHierarchy.map((node) => renderAccountNode(node))}</div>}
         </div> : <div className="emptyCard">Нет счетов с остатком от 1</div>}
       </section>
 
-      <section className="section transactionsSection"><div className="sectionHeader"><div><span className="eyebrow">История</span><h2>Последние операции</h2></div><button className="textButton" type="button">Все <span aria-hidden="true">›</span></button></div><div className="transactionPanel">{transactionGroups.map(([date, items]) => <div className="transactionGroup" key={date}><div className="dateLabel">{dayLabel(date)}</div>{items.map((tx) => { const income = tx.transaction_type === 'income'; return <article className="transaction" key={tx.id}><div className={`transactionIcon ${income ? 'income' : 'expense'}`}>{income ? '↑' : '↓'}</div><div className="transactionBody"><strong>{tx.description || tx.account_name || 'Операция'}</strong><span>{tx.account_name || 'Счёт'}</span></div><div className={`transactionAmount sensitive ${income ? 'incomeText' : ''}`}>{privacy ? '••••' : `${income ? '+' : '−'}${money(Math.abs(tx.amount_original), tx.currency_original || baseCurrency)}`}</div></article>})}</div>)}{!transactions.length && <div className="emptyCard">Здесь появятся последние операции</div>}</div></section>
+      <section className="section transactionsSection"><div className="sectionHeader"><h2>Последние операции</h2></div><div className="transactionPanel">{transactionGroups.map(([date, items]) => <div className="transactionGroup" key={date}><div className="dateLabel">{dayLabel(date)}</div>{items.map((tx) => { const income = tx.transaction_type === 'income'; return <article className="transaction" key={tx.id}><div className={`transactionIcon ${income ? 'income' : 'expense'}`}>{income ? '↑' : '↓'}</div><div className="transactionBody"><strong>{tx.description || tx.account_name || 'Операция'}</strong><span>{tx.account_name || 'Счёт'}</span></div><div className={`transactionAmount sensitive ${income ? 'incomeText' : ''}`}>{privacy ? '••••' : `${income ? '+' : '−'}${money(Math.abs(tx.amount_original), tx.currency_original || baseCurrency)}`}</div></article>})}</div>)}{!transactions.length && <div className="emptyCard">Здесь появятся последние операции</div>}</div></section>
 
       <div className={`fabMenu ${actionsOpen ? 'open' : ''}`}><div className="fabActions" aria-hidden={!actionsOpen}><button type="button" className="fabAction"><span>Фото</span><Glyph>▣</Glyph></button><button type="button" className="fabAction"><span>Голос</span><Glyph>●</Glyph></button><button type="button" className="fabAction"><span>Текст</span><Glyph>✎</Glyph></button></div><button type="button" className="fab" onClick={() => setActionsOpen((value) => !value)} aria-label={actionsOpen ? 'Закрыть быстрое добавление' : 'Открыть быстрое добавление'} aria-expanded={actionsOpen}><span aria-hidden="true">{actionsOpen ? '×' : '+'}</span></button></div>
       <LabBottomNavigation items={navigationItems} activeId="home" />
