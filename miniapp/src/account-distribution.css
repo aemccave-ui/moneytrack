@@ -1,41 +1,55 @@
-.noSectionTitle { margin-top: 16px; }
-.compactSectionStart { margin-top: 16px; }
-.accountsSectionHeader { margin-bottom: 8px; transform: translateY(-2px); }
+.noSectionTitle { margin-top: 12px; }
+.compactSectionStart { margin-top: 12px; }
+.accountsSectionHeader { margin-bottom: 6px; transform: translateY(-4px); }
+.transactionsSection { margin-top: 16px; }
+.transactionsSection .sectionHeader { margin-bottom: 8px; }
 
 .primaryAccountCard {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  min-height: 66px;
-  margin-bottom: 10px;
-  padding: 13px 15px;
+  gap: 14px;
+  min-height: 60px;
+  margin-bottom: 8px;
+  padding: 11px 14px;
   border: 1px solid rgba(255,255,255,.94);
-  border-radius: 20px;
+  border-radius: 18px;
   background: linear-gradient(145deg, rgba(255,255,255,.9), rgba(220,235,236,.82));
   box-shadow: var(--mt-shadow-card);
 }
-.primaryAccountCard > div { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.primaryAccountCard span { color: rgba(22,63,67,.54); font-size: 11px; line-height: 15px; font-weight: 500; }
+.primaryAccountCard > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.primaryAccountCard span { color: rgba(22,63,67,.54); font-size: 10px; line-height: 14px; font-weight: 500; }
 .primaryAccountCard strong { color: var(--mt-teal-900); }
 .primaryAccountCard > div strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
 .primaryAccountCard > strong { flex: 0 0 auto; font-size: 18px; }
 
-.accountDistribution { display: grid; gap: 10px; }
-.accountStackButton {
+.accountDistribution,
+.currencyDistribution { display: grid; gap: 8px; }
+
+.accountStackButton,
+.currencyStackButton {
   width: 100%;
-  display: grid;
-  gap: 11px;
-  padding: 15px;
   border: 1px solid rgba(255,255,255,.92);
-  border-radius: 20px;
+  border-radius: 18px;
   background: rgba(255,255,255,.84);
   box-shadow: var(--mt-shadow-card);
   color: var(--mt-teal-900);
   text-align: left;
 }
-.accountStackButton:active { transform: scale(.992); }
-.accountStackBar {
+
+.compactStackButton {
+  display: grid;
+  grid-template-columns: 22px minmax(0,1fr);
+  align-items: center;
+  gap: 9px;
+  min-height: 50px;
+  padding: 10px 12px;
+}
+.compactStackButton:active { transform: scale(.992); }
+.compactStackButton .hierarchyChevron { flex: 0 0 auto; }
+
+.accountStackBar,
+.currencyStackBar {
   display: flex;
   width: 100%;
   height: 18px;
@@ -44,25 +58,15 @@
   background: rgba(22,63,67,.08);
   box-shadow: inset 0 1px 2px rgba(22,63,67,.09);
 }
-.accountStackSegment { display: block; min-width: 3px; height: 100%; }
-.accountStackSegment + .accountStackSegment { border-left: 1px solid rgba(255,255,255,.72); }
-.accountStackMeta,
-.currencyStackMeta {
-  display: grid;
-  grid-template-columns: minmax(0,1fr) auto 22px;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  color: rgba(22,63,67,.58);
-  font-size: 12px;
-  line-height: 16px;
-  font-weight: 500;
-}
-.distributionCaption { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.distributionCount { white-space: nowrap; }
-.accountDistribution .accountTree { margin-top: 0; }
+.accountStackSegment,
+.currencyStackSegment { display: block; min-width: 3px; height: 100%; }
+.accountStackSegment + .accountStackSegment,
+.currencyStackSegment + .currencyStackSegment { border-left: 1px solid rgba(255,255,255,.72); }
+
+.accountDistribution .accountTree,
+.currencyDistribution .currencyHierarchy { margin-top: 0; }
 
 @media (max-width: 380px) {
-  .primaryAccountCard { padding-left: 13px; padding-right: 13px; }
-  .accountStackButton { padding: 13px; }
+  .primaryAccountCard { padding-left: 12px; padding-right: 12px; }
+  .compactStackButton { padding-left: 10px; padding-right: 10px; }
 }
