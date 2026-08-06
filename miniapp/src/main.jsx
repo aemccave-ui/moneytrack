@@ -4,6 +4,7 @@ import App from './App.jsx'
 import '../packages/lab-design-system/navigation.css'
 import './styles.css'
 import './polish.css'
+import './currency-layout.css'
 import './currency-summary.js'
 
 createRoot(document.getElementById('root')).render(
