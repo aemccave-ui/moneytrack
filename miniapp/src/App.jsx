@@ -34,6 +34,7 @@ function Glyph({ children }) {
 function App() {
   const [dashboard, setDashboard] = useState(null)
   const [accounts, setAccounts] = useState([])
+  const [defaultAccount, setDefaultAccount] = useState(null)
   const [privacy, setPrivacy] = useState(false)
   const [actionsOpen, setActionsOpen] = useState(false)
   const [currencyBreakdownOpen, setCurrencyBreakdownOpen] = useState(false)
@@ -50,6 +51,11 @@ function App() {
       .then(([dash, accountData]) => {
         setDashboard(dash)
         setAccounts(accountData?.accounts || accountData?.items || [])
+        setDefaultAccount(
+          accountData?.default_account
+          ?? accountData?.data?.default_account
+          ?? null,
+        )
       })
       .catch((reason) => setError(reason.message || 'Не удалось загрузить данные'))
     return () => controller.abort()
@@ -66,7 +72,8 @@ function App() {
     ?? dashboard?.base_currency
     ?? 'EUR',
   ).toUpperCase()
-  const configuredDefaultAccount = settings.setdefaultaccount
+  const configuredDefaultAccount = defaultAccount
+    ?? settings.setdefaultaccount
     ?? settings.default_account_id
     ?? settings.defaultAccountId
     ?? dashboard?.setdefaultaccount
