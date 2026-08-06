@@ -63,25 +63,6 @@ function App() {
     [accounts],
   )
 
-  const dailyBars = useMemo(() => {
-    const grouped = new Map()
-    transactions.forEach((transaction) => {
-      const key = String(transaction.transaction_date || '').slice(0, 10)
-      if (!key) return
-      const current = grouped.get(key) || { date: key, income: 0, expense: 0 }
-      const amount = Math.abs(Number(transaction.amount_original || 0))
-      if (transaction.transaction_type === 'income') current.income += amount
-      if (transaction.transaction_type === 'expense') current.expense += amount
-      grouped.set(key, current)
-    })
-    return [...grouped.values()].sort((a, b) => a.date.localeCompare(b.date)).slice(-10)
-  }, [transactions])
-
-  const chartMax = useMemo(
-    () => Math.max(1, ...dailyBars.flatMap((item) => [item.income, item.expense])),
-    [dailyBars],
-  )
-
   const transactionGroups = useMemo(() => {
     const groups = new Map()
     transactions.forEach((transaction) => {
@@ -112,26 +93,20 @@ function App() {
 
       <section className="hero compactHero" aria-labelledby="month-result-title">
         <div className="heroOrb heroOrbOne"/><div className="heroOrb heroOrbTwo"/>
-        <div className="compactHeroSummary">
-          <div>
-            <span className="heroMonth">{monthLabel(dashboard?.period?.date_from)}</span>
-            <div className="heroLabel" id="month-result-title">Сальдо месяца</div>
-            <div className="heroValue sensitive">{hidden(summary.result_month)}</div>
+        <span className="heroMonth">{monthLabel(dashboard?.period?.date_from)}</span>
+        <div className="heroMetricRow">
+          <div className="heroMetric resultMetric">
+            <span id="month-result-title">Сальдо</span>
+            <strong className="sensitive">{hidden(summary.result_month)}</strong>
           </div>
-          <div className="dailyChart" aria-label="Подневная диаграмма последних операций">
-            {dailyBars.map((item) => (
-              <div className="dailyBar" key={item.date} title={dayLabel(item.date)}>
-                <i className="incomeBar" style={{ height: `${Math.max(3, item.income / chartMax * 34)}px` }} />
-                <i className="expenseBar" style={{ height: `${Math.max(3, item.expense / chartMax * 34)}px` }} />
-                <span>{new Date(item.date).getDate()}</span>
-              </div>
-            ))}
-            {!dailyBars.length && <span className="chartEmpty">Нет операций</span>}
+          <div className="heroMetric incomeMetric">
+            <span><Glyph>↑</Glyph>Доход</span>
+            <strong className="sensitive">{hidden(summary.income_month)}</strong>
           </div>
-        </div>
-        <div className="heroStats compactStats">
-          <div className="heroStat"><Glyph>↑</Glyph><span>Доход</span><strong className="sensitive">{hidden(summary.income_month)}</strong></div>
-          <div className="heroStat"><Glyph>↓</Glyph><span>Расход</span><strong className="sensitive">{hidden(summary.expenses_month)}</strong></div>
+          <div className="heroMetric expenseMetric">
+            <span><Glyph>↓</Glyph>Расход</span>
+            <strong className="sensitive">{hidden(summary.expenses_month)}</strong>
+          </div>
         </div>
       </section>
 
