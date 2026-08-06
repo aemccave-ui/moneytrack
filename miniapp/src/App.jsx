@@ -123,7 +123,8 @@ function App() {
   }, [accountItems, baseCurrency])
 
   const primaryAccount = (() => {
-    const configured = typeof configuredDefaultAccount === 'object'
+    const configured = configuredDefaultAccount != null
+      && typeof configuredDefaultAccount === 'object'
       ? configuredDefaultAccount.account ?? configuredDefaultAccount
       : configuredDefaultAccount
 
