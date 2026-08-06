@@ -56,7 +56,21 @@ function App() {
   }, [])
 
   const summary = dashboard?.summary || {}
-  const baseCurrency = summary.base_currency || summary.currency || dashboard?.base_currency || 'EUR'
+  const settings = dashboard?.settings || dashboard?.user_settings || summary?.settings || {}
+  const baseCurrency = String(
+    settings.setbasecurrency
+    ?? dashboard?.setbasecurrency
+    ?? summary?.setbasecurrency
+    ?? summary.base_currency
+    ?? summary.currency
+    ?? dashboard?.base_currency
+    ?? 'EUR',
+  ).toUpperCase()
+  const configuredDefaultAccount = settings.setdefaultaccount
+    ?? dashboard?.setdefaultaccount
+    ?? summary?.setdefaultaccount
+    ?? null
+
   const transactions = useMemo(() => dashboard?.latest_operations || [], [dashboard?.latest_operations])
   const hidden = (value, valueCurrency = baseCurrency) => privacy ? '••••••' : money(value, valueCurrency)
 
@@ -103,14 +117,33 @@ function App() {
   }, [accountItems, baseCurrency])
 
   const primaryAccount = useMemo(() => {
-    const baseCurrencyAccounts = accountHierarchy.filter(
-      (node) => (node.account.currency_code || baseCurrency) === baseCurrency,
-    )
-    return baseCurrencyAccounts[0] || accountHierarchy[0] || null
-  }, [accountHierarchy, baseCurrency])
+    if (configuredDefaultAccount == null) return null
+    const configuredId = typeof configuredDefaultAccount === 'object'
+      ? configuredDefaultAccount.id ?? configuredDefaultAccount.account_id ?? configuredDefaultAccount.value
+      : configuredDefaultAccount
+    const configuredName = typeof configuredDefaultAccount === 'object'
+      ? configuredDefaultAccount.name ?? configuredDefaultAccount.account_name ?? configuredDefaultAccount.label
+      : configuredDefaultAccount
+    const normalized = String(configuredId ?? configuredName ?? '').trim().toLowerCase()
+    if (!normalized) return null
+    const account = accountItems.find((item) => (
+      String(item.id ?? '').toLowerCase() === normalized
+      || String(item.account_id ?? '').toLowerCase() === normalized
+      || String(item.name ?? '').trim().toLowerCase() === normalized
+    ))
+    if (!account) return null
+    return {
+      account,
+      amountBase: Number(account.balance_base
+        ?? ((account.currency_code || baseCurrency) === baseCurrency ? account.balance_original : 0)
+        ?? 0),
+    }
+  }, [accountItems, baseCurrency, configuredDefaultAccount])
 
   const accountDistributionTotal = accountHierarchy.reduce((sum, node) => sum + Math.abs(node.totalBase), 0)
   const currencyDistributionTotal = currencyGroups.reduce((sum, group) => sum + Math.abs(group.totalBase), 0)
+  const currencyCaption = currencyGroups.map((group) => group.currency).join(' · ')
+  const accountCaption = accountHierarchy.map((node) => node.account.name).join(' · ')
 
   const transactionGroups = useMemo(() => {
     const groups = new Map()
@@ -164,7 +197,7 @@ function App() {
         {currencyGroups.length ? <div className="currencyDistribution">
           <button type="button" className="currencyStackButton compactStackButton" onClick={() => setCurrencyBreakdownOpen((value) => !value)} aria-expanded={currencyBreakdownOpen} aria-controls="currency-breakdown">
             <span className={`hierarchyChevron ${currencyBreakdownOpen ? 'expanded' : ''}`} aria-hidden="true">›</span>
-            <span className="currencyStackBar" aria-label="Распределение баланса по валютам">{currencyGroups.map((group, index) => { const width = currencyDistributionTotal > 0 ? Math.abs(group.totalBase) / currencyDistributionTotal * 100 : 100 / currencyGroups.length; return <i key={group.currency} className="currencyStackSegment" style={{ width: `${width}%`, background: segmentColors[index % segmentColors.length] }} /> })}</span>
+            <span className="currencyStackContent"><span className="currencyStackBar" aria-label="Распределение баланса по валютам">{currencyGroups.map((group, index) => { const width = currencyDistributionTotal > 0 ? Math.abs(group.totalBase) / currencyDistributionTotal * 100 : 100 / currencyGroups.length; return <i key={group.currency} className="currencyStackSegment" style={{ width: `${width}%`, background: segmentColors[index % segmentColors.length] }} /> })}</span><span className="stackCaption" title={currencyCaption}>{currencyCaption}<span className="stackCount"> ({currencyGroups.length})</span></span></span>
           </button>
           {currencyBreakdownOpen && <div className="currencyHierarchy" id="currency-breakdown">{currencyGroups.map((group) => { const expanded = expandedCurrencies.has(group.currency); return <section className="currencyGroup" key={group.currency}><button type="button" className="hierarchyToggle currencyGroupHeader" onClick={() => toggleSetItem(setExpandedCurrencies, group.currency)} aria-expanded={expanded}><span className={`hierarchyChevron ${expanded ? 'expanded' : ''}`} aria-hidden="true">›</span><span className="currencyBadge">{group.currency}</span><span className="hierarchyCount">{group.accounts.length} сч.</span><strong className="sensitive">{hidden(group.total, group.currency)}</strong></button>{expanded && <div className="currencyGroupChildren">{group.accounts.map((account) => <article className="currencyAccountRow" key={account.id}><span>{account.name}</span><strong className="sensitive">{hidden(account.balance_original ?? account.balance_base, group.currency)}</strong></article>)}</div>}</section> })}</div>}
         </div> : <div className="emptyCard">Нет ненулевых валютных остатков</div>}
@@ -172,11 +205,11 @@ function App() {
 
       <section className="section accountsSection compactSectionStart">
         <div className="sectionHeader accountsSectionHeader"><h2>Баланс по счетам</h2></div>
-        {primaryAccount && <article className="primaryAccountCard"><div><span>Основной счёт · {baseCurrency}</span><strong>{primaryAccount.account.name}</strong></div><strong className="sensitive">{hidden(primaryAccount.totalBase, baseCurrency)}</strong></article>}
+        {primaryAccount && <article className="primaryAccountCard"><div><span>Основной счёт · {baseCurrency}</span><strong>{primaryAccount.account.name}</strong></div><strong className="sensitive">{hidden(primaryAccount.amountBase, baseCurrency)}</strong></article>}
         {accountHierarchy.length ? <div className="accountDistribution">
           <button type="button" className="accountStackButton compactStackButton" onClick={() => setAccountBreakdownOpen((value) => !value)} aria-expanded={accountBreakdownOpen} aria-controls="account-breakdown">
             <span className={`hierarchyChevron ${accountBreakdownOpen ? 'expanded' : ''}`} aria-hidden="true">›</span>
-            <span className="accountStackBar" aria-label="Распределение баланса по счетам">{accountHierarchy.map((node, index) => { const width = accountDistributionTotal > 0 ? Math.abs(node.totalBase) / accountDistributionTotal * 100 : 100 / accountHierarchy.length; return <i key={node.account.id} className="accountStackSegment" style={{ width: `${width}%`, background: segmentColors[index % segmentColors.length] }} /> })}</span>
+            <span className="accountStackContent"><span className="accountStackBar" aria-label="Распределение баланса по счетам">{accountHierarchy.map((node, index) => { const width = accountDistributionTotal > 0 ? Math.abs(node.totalBase) / accountDistributionTotal * 100 : 100 / accountHierarchy.length; return <i key={node.account.id} className="accountStackSegment" style={{ width: `${width}%`, background: segmentColors[index % segmentColors.length] }} /> })}</span><span className="stackCaption" title={accountCaption}>{accountCaption}<span className="stackCount"> ({accountHierarchy.length})</span></span></span>
           </button>
           {accountBreakdownOpen && <div className="accountTree" id="account-breakdown">{accountHierarchy.map((node) => renderAccountNode(node))}</div>}
         </div> : <div className="emptyCard">Нет счетов с остатком от 1</div>}
