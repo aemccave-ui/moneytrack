@@ -16,6 +16,8 @@
   --mt-gray-100: #edf2f2;
   --mt-income: #63d69a;
   --mt-expense: #ff8c8c;
+  --mt-meta-size: 12px;
+  --mt-meta-line: 16px;
   --lab-nav-active-bg: #dcebec;
   --lab-nav-active-color: #1d5559;
   --lab-nav-inactive-color: #68797a;
@@ -64,7 +66,7 @@ body {
 .textButton,.eyebrow { color:var(--mt-teal-700); }
 .balanceList { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
 .balanceRow { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:64px; padding:14px 16px; border-radius:20px; background:rgba(255,255,255,.82); border:1px solid rgba(255,255,255,.9); box-shadow:var(--mt-shadow-card); }
-.currencyBadge { display:inline-grid; place-items:center; min-width:42px; height:36px; padding:0 9px; border-radius:12px; background:var(--mt-teal-100); color:var(--mt-teal-800); font-size:11px; font-weight:900; }
+.currencyBadge { display:inline-grid; place-items:center; min-width:42px; height:36px; padding:0 9px; border-radius:12px; background:var(--mt-teal-100); color:var(--mt-teal-800); font-size:var(--mt-meta-size); line-height:var(--mt-meta-line); font-weight:600; }
 .balanceRow strong { flex:0 0 auto; font-size:17px; color:var(--mt-teal-900); }
 
 .accountTree,
@@ -76,7 +78,7 @@ body {
 .currencyGroupHeader { display:grid; align-items:center; gap:10px; min-height:62px; padding:12px 15px; background:rgba(255,255,255,.76); }
 .accountTreeRow { grid-template-columns:22px minmax(0,1fr) auto; padding-left:calc(15px + var(--account-depth, 0) * 18px); }
 .currencyGroupHeader { grid-template-columns:22px auto minmax(0,1fr) auto; background:rgba(220,235,236,.68); }
-.hierarchyChevron { display:inline-grid; place-items:center; width:22px; height:22px; border-radius:8px; color:var(--mt-teal-700); background:var(--mt-teal-100); font-size:20px; line-height:1; transform:rotate(0deg); transition:transform var(--mt-transition); }
+.hierarchyChevron { display:inline-grid; place-items:center; width:22px; height:22px; border-radius:8px; color:var(--mt-teal-700); background:var(--mt-teal-100); font-size:20px; line-height:1; font-weight:500; transform:rotate(0deg); transition:transform var(--mt-transition); }
 .hierarchyChevron.expanded { transform:rotate(90deg); }
 .accountTreeIdentity { min-width:0; display:flex; flex-direction:column; gap:3px; }
 .accountTreeIdentity strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--mt-teal-900); font-size:13px; }
@@ -86,7 +88,7 @@ body {
 .accountTreeChildren { border-top:1px solid rgba(22,63,67,.075); background:rgba(246,250,250,.72); }
 .accountTreeChildren .accountTreeNode { border:0; border-radius:0; box-shadow:none; background:transparent; }
 .accountTreeChildren .accountTreeNode + .accountTreeNode { border-top:1px solid rgba(22,63,67,.06); }
-.hierarchyCount { color:rgba(22,63,67,.48); font-size:10px; }
+.hierarchyCount { color:rgba(22,63,67,.58); font-size:var(--mt-meta-size); line-height:var(--mt-meta-line); font-weight:500; }
 .currencyGroupChildren { padding:0 15px 5px 47px; border-top:1px solid rgba(22,63,67,.075); }
 .currencyAccountRow { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:48px; padding:9px 0; border-top:1px solid rgba(22,63,67,.06); }
 .currencyAccountRow:first-child { border-top:0; }
@@ -123,8 +125,9 @@ body {
   transition:width var(--mt-transition), filter var(--mt-transition);
 }
 .currencyStackSegment + .currencyStackSegment { border-left:1px solid rgba(255,255,255,.72); }
-.currencyStackMeta { display:flex; align-items:center; justify-content:space-between; gap:12px; color:rgba(22,63,67,.58); font-size:11px; font-weight:750; }
-.currencyStackMeta .hierarchyChevron { flex:0 0 auto; }
+.currencyStackMeta { display:flex; align-items:center; justify-content:space-between; gap:12px; color:rgba(22,63,67,.58); font-size:var(--mt-meta-size); line-height:var(--mt-meta-line); font-weight:500; }
+.currencyStackMeta > span:first-child { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.currencyStackMeta .hierarchyChevron { flex:0 0 22px; width:22px; height:22px; font-size:20px; line-height:1; }
 
 .transactionPanel { padding-top:5px; padding-bottom:5px; }
 .transaction { gap:11px; padding:11px 0; }
