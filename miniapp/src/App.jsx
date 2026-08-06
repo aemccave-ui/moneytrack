@@ -1,226 +1,708 @@
-import { useEffect, useMemo, useState } from 'react'
-import { LabBottomNavigation } from '../packages/lab-design-system/navigation.jsx'
-import { getAccounts, getDashboard } from './api.js'
+import { useEffect, useState } from "react";
+import "./App.css";
 
-const money = (value, currency = 'EUR') => new Intl.NumberFormat('ru-RU', {
-  style: 'currency', currency, maximumFractionDigits: 0,
-}).format(Number(value || 0))
-
-const monthLabel = (date) => new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric' })
-  .format(date ? new Date(date) : new Date())
-
-const todayLabel = () => new Intl.DateTimeFormat('ru-RU', {
-  day: 'numeric', month: 'long', weekday: 'long',
-}).format(new Date()).replace(/^./, (char) => char.toUpperCase())
-
-const dayLabel = (date) => new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' })
-  .format(new Date(date))
-
-const navigationItems = [
-  { id: 'home', icon: 'home', label: 'Главная' },
-  { id: 'accounts', icon: 'accounts', label: 'Счета' },
-  { id: 'budgets', icon: 'budgets', label: 'Бюджеты' },
-  { id: 'stats', icon: 'stats', label: 'Статистика' },
-  { id: 'settings', icon: 'settings', label: 'Настройки' },
-]
-
-const parentAccountId = (account) => account.parent_account_id ?? account.parent_id ?? account.account_parent_id ?? null
-const segmentColors = ['#1d5559', '#4f9fa3', '#79b7b9', '#a4cccd', '#c6dddd', '#799397']
-
-function Glyph({ children }) {
-  return <span className="glyph" aria-hidden="true">{children}</span>
-}
+const API_BASE = "https://n8n.moneytrackapp.xyz/webhook";
 
 function App() {
-  const [dashboard, setDashboard] = useState(null)
-  const [accounts, setAccounts] = useState([])
-  const [privacy, setPrivacy] = useState(false)
-  const [actionsOpen, setActionsOpen] = useState(false)
-  const [currencyBreakdownOpen, setCurrencyBreakdownOpen] = useState(false)
-  const [accountBreakdownOpen, setAccountBreakdownOpen] = useState(false)
-  const [expandedCurrencies, setExpandedCurrencies] = useState(() => new Set())
-  const [expandedAccounts, setExpandedAccounts] = useState(() => new Set())
-  const [error, setError] = useState('')
+  const [dashboard, setDashboard] = useState(null);
+  const [accountsData, setAccountsData] = useState(null);
+  const [accountDetails, setAccountDetails] = useState(null);
+  const [texts, setTexts] = useState({});
+  const [languageCode, setLanguageCode] = useState("en");
+  const [view, setView] = useState("dashboard");
+  const [error, setError] = useState(null);
+  const [updatedAt, setUpdatedAt] = useState(null);
+  const [showTextInput, setShowTextInput] = useState(false);
+  const [operationText, setOperationText] = useState("");
+  const [toast, setToast] = useState(null);
 
-  useEffect(() => {
-    window.Telegram?.WebApp?.ready?.()
-    window.Telegram?.WebApp?.expand?.()
-    const controller = new AbortController()
-    Promise.all([getDashboard(controller.signal), getAccounts(controller.signal)])
-      .then(([dash, accountData]) => {
-        setDashboard(dash)
-        setAccounts(accountData?.accounts || accountData?.items || [])
-      })
-      .catch((reason) => setError(reason.message || 'Не удалось загрузить данные'))
-    return () => controller.abort()
-  }, [])
+  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState(null);
 
-  const summary = dashboard?.summary || {}
-  const settings = dashboard?.settings || dashboard?.user_settings || summary?.settings || {}
-  const baseCurrency = String(
-    settings.setbasecurrency
-    ?? dashboard?.setbasecurrency
-    ?? summary?.setbasecurrency
-    ?? summary.base_currency
-    ?? summary.currency
-    ?? dashboard?.base_currency
-    ?? 'EUR',
-  ).toUpperCase()
-  const configuredDefaultAccount = settings.setdefaultaccount
-    ?? dashboard?.setdefaultaccount
-    ?? summary?.setdefaultaccount
-    ?? null
+  const [hideBalances, setHideBalances] = useState(() => {
+    return localStorage.getItem("moneytrack_hide_balances") !== "false";
+  });
 
-  const transactions = useMemo(() => dashboard?.latest_operations || [], [dashboard?.latest_operations])
-  const hidden = (value, valueCurrency = baseCurrency) => privacy ? '••••••' : money(value, valueCurrency)
+  const t = (key, fallback) => texts[key] || fallback;
 
-  const accountItems = useMemo(
-    () => accounts.filter((account) => Math.abs(Number(account.balance_original ?? account.balance_base ?? 0)) >= 1),
-    [accounts],
-  )
-
-  const currencyGroups = useMemo(() => {
-    const groups = new Map()
-    accountItems.forEach((account) => {
-      const code = account.currency_code || baseCurrency
-      const originalBalance = Number(account.balance_original ?? account.balance_base ?? 0)
-      const baseBalance = Number(account.balance_base ?? (code === baseCurrency ? originalBalance : 0))
-      const group = groups.get(code) || { currency: code, total: 0, totalBase: 0, accounts: [] }
-      group.total += originalBalance
-      group.totalBase += baseBalance
-      group.accounts.push(account)
-      groups.set(code, group)
-    })
-    return [...groups.values()]
-      .filter((group) => Math.abs(group.total) >= 1)
-      .sort((a, b) => Math.abs(b.totalBase) - Math.abs(a.totalBase))
-  }, [accountItems, baseCurrency])
-
-  const accountHierarchy = useMemo(() => {
-    const byId = new Map(accountItems.map((account) => [String(account.id), { account, children: [] }]))
-    const roots = []
-    byId.forEach((node) => {
-      const parentId = parentAccountId(node.account)
-      const parent = parentId == null ? null : byId.get(String(parentId))
-      if (parent && parent !== node) parent.children.push(node)
-      else roots.push(node)
-    })
-    const normalize = (node) => {
-      const children = node.children.map(normalize)
-        .sort((a, b) => String(a.account.name || '').localeCompare(String(b.account.name || ''), 'ru'))
-      const ownBase = Number(node.account.balance_base
-        ?? ((node.account.currency_code || baseCurrency) === baseCurrency ? node.account.balance_original : 0)
-        ?? 0)
-      return { account: node.account, children, totalBase: ownBase + children.reduce((sum, child) => sum + child.totalBase, 0) }
-    }
-    return roots.map(normalize).sort((a, b) => Math.abs(b.totalBase) - Math.abs(a.totalBase))
-  }, [accountItems, baseCurrency])
-
-  const primaryAccount = useMemo(() => {
-    if (configuredDefaultAccount == null) return null
-    const configuredId = typeof configuredDefaultAccount === 'object'
-      ? configuredDefaultAccount.id ?? configuredDefaultAccount.account_id ?? configuredDefaultAccount.value
-      : configuredDefaultAccount
-    const configuredName = typeof configuredDefaultAccount === 'object'
-      ? configuredDefaultAccount.name ?? configuredDefaultAccount.account_name ?? configuredDefaultAccount.label
-      : configuredDefaultAccount
-    const normalized = String(configuredId ?? configuredName ?? '').trim().toLowerCase()
-    if (!normalized) return null
-    const account = accountItems.find((item) => (
-      String(item.id ?? '').toLowerCase() === normalized
-      || String(item.account_id ?? '').toLowerCase() === normalized
-      || String(item.name ?? '').trim().toLowerCase() === normalized
-    ))
-    if (!account) return null
-    return {
-      account,
-      amountBase: Number(account.balance_base
-        ?? ((account.currency_code || baseCurrency) === baseCurrency ? account.balance_original : 0)
-        ?? 0),
-    }
-  }, [accountItems, baseCurrency, configuredDefaultAccount])
-
-  const accountDistributionTotal = accountHierarchy.reduce((sum, node) => sum + Math.abs(node.totalBase), 0)
-  const currencyDistributionTotal = currencyGroups.reduce((sum, group) => sum + Math.abs(group.totalBase), 0)
-  const currencyCaption = currencyGroups.map((group) => group.currency).join(' · ')
-  const accountCaption = accountHierarchy.map((node) => node.account.name).join(' · ')
-
-  const transactionGroups = useMemo(() => {
-    const groups = new Map()
-    transactions.forEach((transaction) => {
-      const date = transaction.transaction_date || new Date().toISOString()
-      const key = String(date).slice(0, 10)
-      if (!groups.has(key)) groups.set(key, [])
-      groups.get(key).push(transaction)
-    })
-    return [...groups.entries()]
-  }, [transactions])
-
-  const toggleSetItem = (setter, id) => setter((current) => {
-    const next = new Set(current)
-    if (next.has(id)) next.delete(id)
-    else next.add(id)
-    return next
-  })
-
-  const renderAccountNode = (node, depth = 0) => {
-    const id = String(node.account.id)
-    const hasChildren = node.children.length > 0
-    const expanded = expandedAccounts.has(id)
-    const accountCurrency = node.account.currency_code || baseCurrency
-    const displayedAmount = hasChildren
-      ? hidden(node.totalBase, baseCurrency)
-      : hidden(node.account.balance_original ?? node.account.balance_base, accountCurrency)
-    return (
-      <div className="accountTreeNode" key={id} style={{ '--account-depth': depth }}>
-        <button type="button" className={`hierarchyToggle accountTreeRow ${hasChildren ? 'hasChildren' : ''}`}
-          onClick={() => hasChildren && toggleSetItem(setExpandedAccounts, id)} aria-expanded={hasChildren ? expanded : undefined}>
-          <span className={`hierarchyChevron ${expanded ? 'expanded' : ''}`} aria-hidden="true">{hasChildren ? '›' : '•'}</span>
-          <span className="accountTreeIdentity"><strong>{node.account.name}</strong><span>{node.account.account_type || 'Счёт'}{hasChildren ? ` · ${node.children.length}` : ` · ${accountCurrency}`}</span></span>
-          <strong className="accountTreeAmount sensitive">{displayedAmount}</strong>
-        </button>
-        {hasChildren && expanded && <div className="accountTreeChildren">{node.children.map((child) => renderAccountNode(child, depth + 1))}</div>}
-      </div>
-    )
+  function locale() {
+    return languageCode || "en";
   }
 
-  if (!dashboard && !error) return <main className="app loadingState" aria-busy="true"><div className="skeleton topSkeleton"/><div className="skeleton heroSkeleton"/><div className="skeleton cardSkeleton"/></main>
+  function apiUrl(path) {
+    return `${API_BASE}${path}`;
+  }
+
+  function headers() {
+    const tg = window.Telegram?.WebApp;
+
+    return {
+      "X-Telegram-Init-Data": tg?.initData || "",
+    };
+  }
+
+  function showToast(message, timeout = 2500) {
+    setToast(message);
+
+    if (timeout) {
+      setTimeout(() => setToast(null), timeout);
+    }
+  }
+
+  function toggleBalances() {
+    const next = !hideBalances;
+    setHideBalances(next);
+    localStorage.setItem("moneytrack_hide_balances", String(next));
+  }
+
+  function formatMoney(value) {
+    return new Intl.NumberFormat(locale(), {
+      maximumFractionDigits: 0,
+    }).format(Number(value || 0));
+  }
+
+  function privateMoney(value, currency = "") {
+    if (hideBalances) {
+      return currency ? `*** ${currency}` : "***";
+    }
+
+    return currency ? `${formatMoney(value)} ${currency}` : formatMoney(value);
+  }
+
+  function privateSignedMoney(value, currency, sign = "") {
+    if (hideBalances) {
+      return `*** ${currency}`;
+    }
+
+    return `${sign}${formatMoney(value)} ${currency}`;
+  }
+
+  function formatDate(value) {
+    return new Date(value).toLocaleDateString(locale());
+  }
+
+  function formatDateTime(value) {
+    return new Date(value).toLocaleString(locale(), {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  function txSign(type) {
+    return type === "income" ? "+" : "-";
+  }
+
+  async function reloadData() {
+    const dashboardResponse = await fetch(apiUrl("/api/v1/dashboard"), {
+      headers: headers(),
+    });
+
+    if (!dashboardResponse.ok) {
+      throw new Error(`Dashboard API error: ${dashboardResponse.status}`);
+    }
+
+    const dashboardJson = await dashboardResponse.json();
+
+    const accountsResponse = await fetch(apiUrl("/api/v1/accounts"), {
+      headers: headers(),
+    });
+
+    if (!accountsResponse.ok) {
+      throw new Error(`Accounts API error: ${accountsResponse.status}`);
+    }
+
+    const accountsJson = await accountsResponse.json();
+
+    setDashboard(dashboardJson.data);
+    setAccountsData(accountsJson.data);
+    setUpdatedAt(new Date());
+  }
+
+  async function uploadReceipt(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) return;
+
+    setToast(t("receipt_processing", "Receipt accepted for processing..."));
+
+    try {
+      const formData = new FormData();
+      formData.append("receipt", file);
+
+      const response = await fetch(apiUrl("/api/v1/transaction/photo"), {
+        method: "POST",
+        headers: headers(),
+        body: formData,
+      });
+
+      const responseText = await response.text();
+
+      console.log("PHOTO STATUS", response.status);
+      console.log("PHOTO RESPONSE", responseText);
+
+      if (!response.ok) {
+        throw new Error(`Photo API error: ${response.status}: ${responseText}`);
+      }
+
+      await reloadData();
+      setToast(null);
+    } catch (e) {
+      console.error(e);
+      setToast(null);
+      setError(e.message);
+    }
+  }
+
+  async function startRecording() {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("Microphone is not available in this browser");
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        const blob = new Blob(chunks, { type: "audio/webm" });
+        stream.getTracks().forEach((track) => track.stop());
+        await sendVoiceBlob(blob);
+      };
+
+      setMediaRecorder(recorder);
+      setRecording(true);
+      recorder.start();
+    } catch (e) {
+      console.error(e);
+      setShowVoiceRecorder(false);
+      setRecording(false);
+      setError(e.message);
+    }
+  }
+
+  function stopRecording() {
+    if (mediaRecorder && recording) {
+      mediaRecorder.stop();
+      setRecording(false);
+      setShowVoiceRecorder(false);
+    }
+  }
+
+  function cancelRecording() {
+    if (mediaRecorder && recording) {
+      mediaRecorder.stream?.getTracks?.().forEach((track) => track.stop());
+    }
+
+    setRecording(false);
+    setMediaRecorder(null);
+    setShowVoiceRecorder(false);
+  }
+
+  async function sendVoiceBlob(blob) {
+    setToast(t("voice_processing", "Voice accepted for processing..."));
+
+    try {
+      const formData = new FormData();
+      formData.append("voice", blob, "voice.webm");
+
+      const response = await fetch(apiUrl("/api/v1/transaction/voice"), {
+        method: "POST",
+        headers: headers(),
+        body: formData,
+      });
+
+      const responseText = await response.text();
+
+      console.log("VOICE STATUS", response.status);
+      console.log("VOICE RESPONSE", responseText);
+
+      if (!response.ok) {
+        throw new Error(`Voice API error: ${response.status}: ${responseText}`);
+      }
+
+      await reloadData();
+      showToast(t("operation_added", "Operation added"));
+    } catch (e) {
+      console.error(e);
+      setToast(null);
+      setError(e.message);
+    } finally {
+      setMediaRecorder(null);
+    }
+  }
+
+  async function saveTextOperation() {
+    const text = operationText.trim();
+
+    if (!text) return;
+
+    setShowTextInput(false);
+    setOperationText("");
+    setToast(t("processing", "Processing..."));
+
+    try {
+      const response = await fetch(apiUrl("/api/v1/transaction/text"), {
+        method: "POST",
+        headers: {
+          ...headers(),
+          "Content-Type": "text/plain",
+        },
+        body: JSON.stringify({ text }),
+      });
+
+      const responseText = await response.text();
+
+      console.log("TEXT OP STATUS", response.status);
+      console.log("TEXT OP RESPONSE", responseText);
+
+      if (!response.ok) {
+        throw new Error(
+          `Text operation API error: ${response.status}: ${responseText}`
+        );
+      }
+
+      await reloadData();
+      showToast(t("operation_added", "Operation added"));
+    } catch (e) {
+      console.error(e);
+      setToast(null);
+      setError(e.message);
+    }
+  }
+
+  async function openAccount(accountId) {
+    try {
+      const response = await fetch(apiUrl(`/api/v1/account?id=${accountId}`), {
+        headers: headers(),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Account API error: ${response.status}`);
+      }
+
+      const json = await response.json();
+
+      setAccountDetails(json.data);
+      setView("account");
+    } catch (e) {
+      console.error(e);
+      setError(e.message);
+    }
+  }
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const i18nResponse = await fetch(apiUrl("/api/v1/i18n"), {
+          headers: headers(),
+        });
+
+        if (!i18nResponse.ok) {
+          throw new Error(`i18n API error: ${i18nResponse.status}`);
+        }
+
+        const i18nJson = await i18nResponse.json();
+
+        setTexts(i18nJson.data?.messages || {});
+        setLanguageCode(i18nJson.data?.language_code || "en");
+
+        await reloadData();
+      } catch (e) {
+        console.error(e);
+        setError(e.message);
+      }
+    }
+
+    loadData();
+  }, []);
+
+  if (error) {
+    return (
+      <div className="loading">
+        {t("error", "Error")}: {error}
+      </div>
+    );
+  }
+
+  if (!dashboard || !accountsData) {
+    return <div className="loading">{t("loading", "Loading...")}</div>;
+  }
+
+  const result = Number(dashboard.summary.result_month || 0);
+  const accounts = accountsData.accounts || [];
 
   return (
-    <main className={`app ${privacy ? 'privacy' : ''}`}>
-      <section className="balanceHeader" aria-labelledby="balance-title"><div><div className="todayLabel">{todayLabel()}</div><div className="balanceLabel" id="balance-title">Общий баланс</div><strong className="balanceValue sensitive">{hidden(summary.net_worth)}</strong></div><button className={`iconButton privacyButton ${privacy ? 'selected' : ''}`} onClick={() => setPrivacy((value) => !value)} aria-label={privacy ? 'Показать суммы' : 'Скрыть суммы'} aria-pressed={privacy}>◎</button></section>
-      {error && <div className="notice" role="alert">{error}</div>}
+    <main>
+      {toast && <div className="toast">{toast}</div>}
 
-      <section className="hero compactHero" aria-labelledby="month-result-title"><div className="heroOrb heroOrbOne"/><div className="heroOrb heroOrbTwo"/><span className="heroMonth">{monthLabel(dashboard?.period?.date_from)}</span><div className="heroMetricRow"><div className="heroMetric resultMetric"><span id="month-result-title">Сальдо</span><strong className="sensitive">{hidden(summary.result_month)}</strong></div><div className="heroMetric incomeMetric"><span><Glyph>↑</Glyph>Доход</span><strong className="sensitive">{hidden(summary.income_month)}</strong></div><div className="heroMetric expenseMetric"><span><Glyph>↓</Glyph>Расход</span><strong className="sensitive">{hidden(summary.expenses_month)}</strong></div></div></section>
 
-      <section className="section balanceBreakdownSection noSectionTitle">
-        {currencyGroups.length ? <div className="currencyDistribution">
-          <button type="button" className="currencyStackButton compactStackButton" onClick={() => setCurrencyBreakdownOpen((value) => !value)} aria-expanded={currencyBreakdownOpen} aria-controls="currency-breakdown">
-            <span className={`hierarchyChevron ${currencyBreakdownOpen ? 'expanded' : ''}`} aria-hidden="true">›</span>
-            <span className="currencyStackContent"><span className="currencyStackBar" aria-label="Распределение баланса по валютам">{currencyGroups.map((group, index) => { const width = currencyDistributionTotal > 0 ? Math.abs(group.totalBase) / currencyDistributionTotal * 100 : 100 / currencyGroups.length; return <i key={group.currency} className="currencyStackSegment" style={{ width: `${width}%`, background: segmentColors[index % segmentColors.length] }} /> })}</span><span className="stackCaption" title={currencyCaption}>{currencyCaption}<span className="stackCount"> ({currencyGroups.length})</span></span></span>
+
+
+	<header className="app-header">
+	  <div className="top-bar compact">
+	    <div className="updated-at">
+	      {t("updated_at", "Updated")}: {formatDateTime(updatedAt)}
+	    </div>
+
+	    <button
+	      className="privacy-toggle"
+	      onClick={toggleBalances}
+	      title={
+	        hideBalances
+	          ? t("show_balances", "Show balances")
+	          : t("hide_balances", "Hide balances")
+	      }
+	    >
+	      {hideBalances ? "👁️‍🗨️" : "👁️"}
+	    </button>
+	  </div>
+
+	  {view !== "account" && (
+	    <nav className="tabs">
+	      <button
+	        className={view === "dashboard" ? "tab active" : "tab"}
+	        onClick={() => setView("dashboard")}
+	      >
+	        {t("summary", "Summary")}
+	      </button>
+
+	      <button
+	        className={view === "accounts" ? "tab active" : "tab"}
+	        onClick={() => setView("accounts")}
+	      >
+	        {t("accounts", "Accounts")}
+	      </button>
+	    </nav>
+	  )}
+	</header>
+
+
+
+
+      {view === "dashboard" && (
+        <>
+          <section>
+            <h2>{t("add_operation_title", "Add transaction")}</h2>
+
+            <div className="quick-actions">
+              <button
+                className="quick-action"
+                onClick={() => document.getElementById("receipt-gallery").click()}
+                title={t("choose_photo", "Choose photo")}
+              >
+                🖼️
+              </button>
+
+              <button
+                className="quick-action"
+                onClick={() => setShowVoiceRecorder(true)}
+                title={t("add_voice", "Voice")}
+              >
+                🎤
+              </button>
+
+              <button
+                className="quick-action"
+                onClick={() => setShowTextInput(true)}
+                title={t("add_text_operation", "Text")}
+              >
+                ⌨️
+              </button>
+
+              <input
+                id="receipt-gallery"
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={uploadReceipt}
+              />
+            </div>
+
+            {showTextInput && (
+              <div className="modal-overlay">
+                <div className="modal">
+                  <h3>{t("add_text_operation", "Text operation")}</h3>
+
+                  <textarea
+                    className="text-operation-input"
+                    value={operationText}
+                    onChange={(e) => setOperationText(e.target.value)}
+                    placeholder="coffee 5 eur"
+                  />
+
+                  <div className="modal-buttons">
+                    <button
+                      className="secondary-button"
+                      onClick={() => {
+                        setShowTextInput(false);
+                        setOperationText("");
+                      }}
+                    >
+                      {t("cancel", "Cancel")}
+                    </button>
+
+                    <button className="primary-button" onClick={saveTextOperation}>
+                      {t("save", "Save")}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showVoiceRecorder && (
+              <div className="modal-overlay">
+                <div className="modal">
+                  <h3>{t("add_voice", "Voice")}</h3>
+
+                  <div className="voice-recorder">
+                    {recording
+                      ? t("recording", "Recording...")
+                      : t("ready_to_record", "Ready to record")}
+                  </div>
+
+                  <div className="modal-buttons">
+                    <button className="secondary-button" onClick={cancelRecording}>
+                      {t("cancel", "Cancel")}
+                    </button>
+
+                    {!recording ? (
+                      <button className="primary-button" onClick={startRecording}>
+                        {t("start_recording", "Start")}
+                      </button>
+                    ) : (
+                      <button className="primary-button" onClick={stopRecording}>
+                        {t("stop_recording", "Stop")}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section>
+            <h2>{t("period_summary", "Period")}</h2>
+
+            <div className="period">
+              {formatDate(dashboard.period.date_from)} —{" "}
+              {formatDate(dashboard.period.date_to)}
+            </div>
+
+            <div className="cards">
+              <div className="card">
+                <div className="label">💰 {t("income", "Income")}</div>
+                <div className="value positive">
+                  {privateSignedMoney(
+                    dashboard.summary.income_month,
+                    dashboard.summary.currency,
+                    "+"
+                  )}
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="label">💸 {t("expenses", "Expenses")}</div>
+                <div className="value negative">
+                  {privateMoney(
+                    dashboard.summary.expenses_month,
+                    dashboard.summary.currency
+                  )}
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="label">
+                  📈 {t("period_balance", "Period balance")}
+                </div>
+                <div className={`value ${result >= 0 ? "positive" : "negative"}`}>
+                  {privateSignedMoney(
+                    result,
+                    dashboard.summary.currency,
+                    result >= 0 ? "+" : ""
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <h2>{t("today_status", "Today")}</h2>
+
+            <div className="cards cards-single">
+              <div className="card">
+                <div className="label">
+                  🏦 {t("net_worth_today", "Net worth today")}
+                </div>
+                <div className="value">
+                  {privateMoney(
+                    dashboard.summary.net_worth,
+                    dashboard.summary.currency
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <h2>{t("currency_balances", "Balances by currency")}</h2>
+
+            <div className="accounts">
+              {(dashboard.balances_by_currency || [])
+                .filter((item) => Number(item.balance) !== 0)
+                .map((item) => (
+                  <div className="account compact-account" key={item.currency}>
+                    <div className="account-name">{item.currency}</div>
+                    <div className="account-balance">
+                      {privateMoney(item.balance)}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </section>
+
+          <section>
+            <h2>{t("latest_operations", "Latest operations")}</h2>
+
+            <div className="transactions">
+              {(dashboard.latest_operations || []).slice(0, 5).map((tx) => (
+                <div className="transaction" key={tx.id}>
+                  <div className="tx-icon">
+                    {tx.transaction_type === "income" ? "●" : "○"}
+                  </div>
+
+                  <div className="tx-main">
+                    <div className="tx-title">{tx.description || "-"}</div>
+                    <div className="tx-meta">
+                      #{tx.id} · {tx.account_name || "-"}
+                    </div>
+                  </div>
+
+                  <div
+                    className={`tx-amount ${
+                      tx.transaction_type === "income" ? "positive" : "negative"
+                    }`}
+                  >
+                    {hideBalances
+                      ? `*** ${tx.currency_original}`
+                      : `${txSign(tx.transaction_type)}${formatMoney(
+                          tx.amount_original
+                        )} ${tx.currency_original}`}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </>
+      )}
+
+      {view === "accounts" && (
+        <section>
+          <h2>{t("accounts", "Accounts")}</h2>
+
+          <div className="cards cards-single">
+            <div className="card">
+              <div className="label">🏦 {t("net_worth_today", "Total")}</div>
+              <div className="value">
+                {privateMoney(accountsData.total_base, accountsData.base_currency)}
+              </div>
+            </div>
+          </div>
+
+          <div className="account-tree">
+            {accounts.map((account) => (
+              <div
+                className={`account-row level-${account.level}`}
+                key={account.id}
+                onClick={() => openAccount(account.id)}
+              >
+                <div className="account-left">
+                  <div className="account-title">
+                    {account.level === 0 ? "📁" : "▫️"} {account.name}
+                  </div>
+
+                  <div className="tx-meta">{account.currency_code}</div>
+                </div>
+
+                <div className="account-right">
+                  <div className="account-balance">
+                    {privateMoney(account.balance, account.currency_code)}
+                  </div>
+
+                  {account.currency_code !== accountsData.base_currency && (
+                    <div className="tx-meta">
+                      ≈{" "}
+                      {privateMoney(
+                        account.balance_base,
+                        accountsData.base_currency
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {view === "account" && accountDetails && (
+        <section>
+          <button className="back-button" onClick={() => setView("accounts")}>
+            ← {t("accounts", "Accounts")}
           </button>
-          {currencyBreakdownOpen && <div className="currencyHierarchy" id="currency-breakdown">{currencyGroups.map((group) => { const expanded = expandedCurrencies.has(group.currency); return <section className="currencyGroup" key={group.currency}><button type="button" className="hierarchyToggle currencyGroupHeader" onClick={() => toggleSetItem(setExpandedCurrencies, group.currency)} aria-expanded={expanded}><span className={`hierarchyChevron ${expanded ? 'expanded' : ''}`} aria-hidden="true">›</span><span className="currencyBadge">{group.currency}</span><span className="hierarchyCount">{group.accounts.length} сч.</span><strong className="sensitive">{hidden(group.total, group.currency)}</strong></button>{expanded && <div className="currencyGroupChildren">{group.accounts.map((account) => <article className="currencyAccountRow" key={account.id}><span>{account.name}</span><strong className="sensitive">{hidden(account.balance_original ?? account.balance_base, group.currency)}</strong></article>)}</div>}</section> })}</div>}
-        </div> : <div className="emptyCard">Нет ненулевых валютных остатков</div>}
-      </section>
 
-      <section className="section accountsSection compactSectionStart">
-        <div className="sectionHeader accountsSectionHeader"><h2>Баланс по счетам</h2></div>
-        {primaryAccount && <article className="primaryAccountCard"><div><span>Основной счёт · {baseCurrency}</span><strong>{primaryAccount.account.name}</strong></div><strong className="sensitive">{hidden(primaryAccount.amountBase, baseCurrency)}</strong></article>}
-        {accountHierarchy.length ? <div className="accountDistribution">
-          <button type="button" className="accountStackButton compactStackButton" onClick={() => setAccountBreakdownOpen((value) => !value)} aria-expanded={accountBreakdownOpen} aria-controls="account-breakdown">
-            <span className={`hierarchyChevron ${accountBreakdownOpen ? 'expanded' : ''}`} aria-hidden="true">›</span>
-            <span className="accountStackContent"><span className="accountStackBar" aria-label="Распределение баланса по счетам">{accountHierarchy.map((node, index) => { const width = accountDistributionTotal > 0 ? Math.abs(node.totalBase) / accountDistributionTotal * 100 : 100 / accountHierarchy.length; return <i key={node.account.id} className="accountStackSegment" style={{ width: `${width}%`, background: segmentColors[index % segmentColors.length] }} /> })}</span><span className="stackCaption" title={accountCaption}>{accountCaption}<span className="stackCount"> ({accountHierarchy.length})</span></span></span>
-          </button>
-          {accountBreakdownOpen && <div className="accountTree" id="account-breakdown">{accountHierarchy.map((node) => renderAccountNode(node))}</div>}
-        </div> : <div className="emptyCard">Нет счетов с остатком от 1</div>}
-      </section>
+          <h2>{accountDetails.account.name}</h2>
 
-      <section className="section transactionsSection"><div className="sectionHeader"><h2>Последние операции</h2></div><div className="transactionPanel">{transactionGroups.map(([date, items]) => <div className="transactionGroup" key={date}><div className="dateLabel">{dayLabel(date)}</div>{items.map((tx) => { const income = tx.transaction_type === 'income'; return <article className="transaction" key={tx.id}><div className={`transactionIcon ${income ? 'income' : 'expense'}`}>{income ? '↑' : '↓'}</div><div className="transactionBody"><strong>{tx.description || tx.account_name || 'Операция'}</strong><span>{tx.account_name || 'Счёт'}</span></div><div className={`transactionAmount sensitive ${income ? 'incomeText' : ''}`}>{privacy ? '••••' : `${income ? '+' : '−'}${money(Math.abs(tx.amount_original), tx.currency_original || baseCurrency)}`}</div></article>})}</div>)}{!transactions.length && <div className="emptyCard">Здесь появятся последние операции</div>}</div></section>
+          <div className="cards cards-single">
+            <div className="card">
+              <div className="label">{t("balance", "Balance")}</div>
+              <div className="value">
+                {privateMoney(
+                  accountDetails.account.balance,
+                  accountDetails.account.currency_code
+                )}
+              </div>
+            </div>
+          </div>
 
-      <div className={`fabMenu ${actionsOpen ? 'open' : ''}`}><div className="fabActions" aria-hidden={!actionsOpen}><button type="button" className="fabAction"><span>Фото</span><Glyph>▣</Glyph></button><button type="button" className="fabAction"><span>Голос</span><Glyph>●</Glyph></button><button type="button" className="fabAction"><span>Текст</span><Glyph>✎</Glyph></button></div><button type="button" className="fab" onClick={() => setActionsOpen((value) => !value)} aria-label={actionsOpen ? 'Закрыть быстрое добавление' : 'Открыть быстрое добавление'} aria-expanded={actionsOpen}><span aria-hidden="true">{actionsOpen ? '×' : '+'}</span></button></div>
-      <LabBottomNavigation items={navigationItems} activeId="home" />
+          <h3>{t("latest_operations", "Latest operations")}</h3>
+
+          <div className="account-operations">
+            {(accountDetails.operations || []).map((tx) => (
+              <div className="account-operation" key={tx.id}>
+                <div className="op-main">
+                  <div className="op-title">{tx.description || "Операция"}</div>
+                  <div className="op-date">{formatDate(tx.transaction_date)}</div>
+                </div>
+
+                <div
+                  className={`op-amount ${
+                    tx.transaction_type === "income" ? "positive" : "negative"
+                  }`}
+                >
+                  {hideBalances
+                    ? "***"
+                    : `${tx.transaction_type === "income" ? "+" : "-"}${formatMoney(
+                        tx.amount_original
+                      )}`}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </main>
-  )
+  );
 }
 
-export default App
+export default App;

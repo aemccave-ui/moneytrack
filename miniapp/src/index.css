@@ -1,0 +1,33 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f6f7f9;
+  color: #1f2937;
+}
+
+#root {
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100svh;
+  background: white;
+  padding: 16px;
+}
+
+h1 {
+  font-size: 32px;
+  margin: 8px 0 20px;
+}
+
+h2 {
+  font-size: 20px;
+  margin: 20px 0 12px;
+}
+
+p {
+  margin: 4px 0;
+}
