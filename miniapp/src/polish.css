@@ -1,0 +1,115 @@
+body {
+  background:
+    radial-gradient(circle at 78% 0%, rgba(156, 232, 198, .86) 0, rgba(156, 232, 198, 0) 34%),
+    radial-gradient(circle at 5% 42%, rgba(199, 241, 220, .88) 0, rgba(199, 241, 220, 0) 32%),
+    linear-gradient(180deg, #dff7eb 0%, #bfe8d3 38%, #d8f1e4 68%, #eaf7f0 100%);
+  background-attachment: fixed;
+}
+
+.app {
+  padding-top: calc(14px + env(safe-area-inset-top));
+  padding-bottom: calc(112px + env(safe-area-inset-bottom));
+}
+
+.balanceHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 16px;
+  padding: 10px 4px 6px;
+}
+
+.todayLabel {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 750;
+  text-transform: capitalize;
+}
+
+.balanceLabel {
+  margin-top: 17px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.balanceValue {
+  display: block;
+  margin-top: 3px;
+  font-size: clamp(34px, 10vw, 46px);
+  line-height: 1;
+  letter-spacing: -.055em;
+}
+
+.balanceHeader .iconButton {
+  flex: 0 0 48px;
+  margin-bottom: 2px;
+}
+
+.hero {
+  padding: 22px;
+  border-radius: 31px;
+}
+
+.heroValueRow {
+  margin-top: 23px;
+}
+
+.heroStats {
+  margin-top: 22px;
+  padding-top: 16px;
+}
+
+.netWorthCard,
+.previewDiagnostics,
+.diagnostics,
+.debugPanel {
+  display: none !important;
+}
+
+.bottomNav {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  width: min(calc(100% - 20px), 620px);
+  padding: 8px 6px;
+  border-radius: 26px;
+}
+
+.bottomNav button {
+  min-width: 0;
+  min-height: 58px;
+  padding: 7px 2px;
+  gap: 4px;
+  border-radius: 18px;
+  font-size: 9px;
+}
+
+.bottomNav button svg {
+  width: 23px;
+  height: 23px;
+}
+
+.bottomNav button > span {
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+  line-height: 1.1;
+}
+
+.bottomNav button.active {
+  background: rgba(215, 246, 229, .96);
+}
+
+.fabMenu {
+  bottom: calc(90px + env(safe-area-inset-bottom));
+}
+
+@media (max-width: 380px) {
+  .balanceHeader { padding-left: 2px; padding-right: 2px; }
+  .balanceLabel { margin-top: 13px; }
+  .hero { padding: 19px; }
+  .bottomNav { width: calc(100% - 14px); }
+  .bottomNav button { font-size: 8px; }
+  .bottomNav button > span { font-size: 8px; }
+}
