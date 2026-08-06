@@ -4,7 +4,7 @@ function telegramInitData() {
   return window.Telegram?.WebApp?.initData || ''
 }
 
-async function request(path, signal) {
+async function request(path, signal, { allowEmpty = false } = {}) {
   const response = await fetch(`${API_BASE}/${path}`, {
     method: 'GET',
     headers: {
@@ -14,11 +14,24 @@ async function request(path, signal) {
     signal,
   })
 
+  const body = await response.text()
+
   if (!response.ok) {
-    throw new Error(`API ${response.status}`)
+    throw new Error(`API ${response.status}${body ? `: ${body.slice(0, 120)}` : ''}`)
   }
 
-  const payload = await response.json()
+  if (!body.trim()) {
+    if (allowEmpty) return null
+    throw new Error(`Пустой ответ API: ${path}`)
+  }
+
+  let payload
+  try {
+    payload = JSON.parse(body)
+  } catch {
+    throw new Error(`Некорректный JSON API: ${path}`)
+  }
+
   if (payload?.error) throw new Error(payload.error)
   return payload?.data ?? payload
 }
@@ -27,6 +40,7 @@ export function getDashboard(signal) {
   return request('api/v1/dashboard', signal)
 }
 
-export function getAccounts(signal) {
-  return request('api/v1/accounts', signal)
+export async function getAccounts(signal) {
+  const payload = await request('api/v1/accounts', signal, { allowEmpty: true })
+  return payload ?? { accounts: [] }
 }

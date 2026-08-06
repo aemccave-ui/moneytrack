@@ -1,0 +1,89 @@
+:root {
+  --lab-nav-height: 72px;
+  --lab-nav-radius: 23px;
+  --lab-nav-icon-size: 20px;
+  --lab-nav-label-size: 9px;
+  --lab-nav-gap: 2px;
+  --lab-nav-active-bg: rgba(213, 244, 226, .9);
+  --lab-nav-active-color: #16875e;
+  --lab-nav-inactive-color: #64776f;
+  --lab-nav-transition: 180ms ease;
+}
+
+.labBottomNav {
+  position: fixed;
+  z-index: 20;
+  left: 50%;
+  bottom: calc(9px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(calc(100% - 20px), 620px);
+  min-height: var(--lab-nav-height);
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  padding: 7px;
+  border-radius: var(--lab-nav-radius);
+  background: rgba(255,255,255,.91);
+  border: 1px solid rgba(255,255,255,.95);
+  backdrop-filter: blur(24px);
+  box-shadow: 0 18px 48px rgba(22,71,54,.14);
+}
+
+.labBottomNavItem {
+  min-width: 0;
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--lab-nav-gap);
+  padding: 5px 2px;
+  border: 0;
+  border-radius: 16px;
+  background: transparent;
+  color: var(--lab-nav-inactive-color);
+  font-size: var(--lab-nav-label-size);
+  line-height: 1;
+  font-weight: 600;
+  transition: color var(--lab-nav-transition), background var(--lab-nav-transition), transform var(--lab-nav-transition);
+}
+
+.labBottomNavItem svg {
+  width: var(--lab-nav-icon-size);
+  height: var(--lab-nav-icon-size);
+  flex: 0 0 auto;
+}
+
+.labBottomNavItem span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.labBottomNavItem.isActive {
+  color: var(--lab-nav-active-color);
+  background: var(--lab-nav-active-bg);
+}
+
+.labBottomNavItem:active {
+  transform: scale(.96);
+}
+
+@media (max-width: 380px) {
+  :root {
+    --lab-nav-icon-size: 19px;
+    --lab-nav-label-size: 8px;
+  }
+
+  .labBottomNav {
+    width: calc(100% - 12px);
+    padding: 6px 4px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .labBottomNavItem {
+    transition-duration: .01ms;
+  }
+}
