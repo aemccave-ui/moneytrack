@@ -42,6 +42,21 @@ function App() {
   const accountItems = useMemo(() => accounts.slice(0, 4), [accounts])
   const hidden = (value) => privacy ? '••••••' : money(value, currency)
 
+  const telegramDebug = useMemo(() => {
+    const telegram = window.Telegram
+    const webApp = telegram?.WebApp
+    const initData = webApp?.initData || ''
+    return {
+      telegram: Boolean(telegram),
+      webApp: Boolean(webApp),
+      initDataLength: initData.length,
+      user: Boolean(webApp?.initDataUnsafe?.user),
+      platform: webApp?.platform || 'unknown',
+      version: webApp?.version || 'unknown',
+      location: `${window.location.origin}${window.location.pathname}`,
+    }
+  }, [])
+
   const transactionGroups = useMemo(() => {
     const groups = new Map()
     transactions.forEach((transaction) => {
@@ -84,6 +99,31 @@ function App() {
       </header>
 
       {error && <div className="notice" role="alert">{error}</div>}
+
+      <section
+        aria-label="Telegram diagnostics"
+        style={{
+          marginBottom: 14,
+          padding: '13px 15px',
+          borderRadius: 16,
+          background: 'rgba(255,255,255,.82)',
+          border: '1px solid rgba(22,122,85,.14)',
+          color: '#0b4c36',
+          fontSize: 12,
+          lineHeight: 1.55,
+          boxShadow: '0 10px 30px rgba(21,91,65,.08)',
+          wordBreak: 'break-word',
+        }}
+      >
+        <strong style={{ display: 'block', marginBottom: 5 }}>Preview diagnostics</strong>
+        <div>Telegram: {telegramDebug.telegram ? 'yes' : 'no'}</div>
+        <div>WebApp: {telegramDebug.webApp ? 'yes' : 'no'}</div>
+        <div>initData length: {telegramDebug.initDataLength}</div>
+        <div>User: {telegramDebug.user ? 'yes' : 'no'}</div>
+        <div>Platform: {telegramDebug.platform}</div>
+        <div>Version: {telegramDebug.version}</div>
+        <div>URL: {telegramDebug.location}</div>
+      </section>
 
       <section className="hero" aria-labelledby="month-result-title">
         <div className="heroOrb heroOrbOne" />
