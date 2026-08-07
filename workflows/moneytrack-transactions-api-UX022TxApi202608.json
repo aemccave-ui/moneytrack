@@ -1,0 +1,186 @@
+{
+  "id": "UX022TxApi202608",
+  "name": "MoneyTrack Transactions API",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "path": "api/v1/transactions",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-400, 0],
+      "id": "89e78656-bb2b-4b31-a849-5b934fd27125",
+      "name": "transactions",
+      "webhookId": "23e7ab30-aeed-4c08-8ef7-5f1467302434"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require(\"crypto\");\n\nconst headers = $json.headers || {};\nconst query = $json.query || {};\n\nconst fail = (httpStatus, error) => [{\n  json: {\n    ok: false,\n    http_status: httpStatus,\n    error\n  }\n}];\n\nconst accountId = String(query.account_id || \"\").trim();\nconst dateFrom = String(query.date_from || \"\").trim();\nconst dateTo = String(query.date_to || \"\").trim();\nconst includeDescendants = String(query.include_descendants ?? \"true\").toLowerCase() !== \"false\";\n\nif (!accountId) return fail(400, \"ACCOUNT_ID_REQUIRED\");\nif (!/^[A-Za-z0-9_-]{1,128}$/.test(accountId)) return fail(400, \"ACCOUNT_ID_INVALID\");\nif (!/^\\d{4}-\\d{2}-\\d{2}$/.test(dateFrom) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(dateTo)) {\n  return fail(400, \"DATE_RANGE_INVALID\");\n}\nif (dateFrom > dateTo) return fail(400, \"DATE_RANGE_INVALID\");\n\nconst initData =\n  headers[\"x-telegram-init-data\"] ||\n  headers[\"X-Telegram-Init-Data\"] ||\n  query.initData ||\n  query.init_data ||\n  null;\n\nif (!initData) return fail(401, \"INIT_DATA_MISSING\");\n\nconst botToken = $env.MONEYTRACK_BOT_TOKEN;\nif (!botToken) return fail(500, \"BOT_TOKEN_MISSING\");\n\nfunction parseInitData(value) {\n  const result = {};\n  for (const part of value.split(\"&\")) {\n    const eqIndex = part.indexOf(\"=\");\n    if (eqIndex === -1) continue;\n    const key = decodeURIComponent(part.slice(0, eqIndex));\n    const itemValue = decodeURIComponent(part.slice(eqIndex + 1));\n    result[key] = itemValue;\n  }\n  return result;\n}\n\nlet params;\ntry {\n  params = parseInitData(initData);\n} catch {\n  return fail(401, \"INVALID_INIT_DATA\");\n}\n\nconst receivedHash = params.hash;\nif (!receivedHash) return fail(401, \"HASH_MISSING\");\ndelete params.hash;\n\nconst dataCheckString = Object.keys(params)\n  .sort()\n  .map((key) => `${key}=${params[key]}`)\n  .join(\"\\n\");\n\nconst secretKey = crypto\n  .createHmac(\"sha256\", \"WebAppData\")\n  .update(botToken)\n  .digest();\nconst calculatedHash = crypto\n  .createHmac(\"sha256\", secretKey)\n  .update(dataCheckString)\n  .digest(\"hex\");\n\nif (calculatedHash !== receivedHash) return fail(401, \"INVALID_INIT_DATA_HASH\");\nif (!params.user) return fail(401, \"USER_MISSING\");\n\nlet user;\ntry {\n  user = JSON.parse(params.user);\n} catch {\n  return fail(401, \"INVALID_USER_DATA\");\n}\n\nif (!user?.id) return fail(401, \"INVALID_USER_DATA\");\n\nreturn [{\n  json: {\n    ok: true,\n    telegram_user_id: user.id,\n    account_id: accountId,\n    date_from: dateFrom,\n    date_to: dateTo,\n    include_descendants: includeDescendants\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-160, 0],
+      "id": "c388cd69-ec77-4a58-8152-796faee95afe",
+      "name": "Validate Transactions Request"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "aefb4c25-d178-432f-96fe-4eaa1af6b385",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [80, 0],
+      "id": "5dc11cd1-419f-4e06-a311-9a085e42ce63",
+      "name": "Request Valid?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with recursive user_ctx as (\n    select\n        u.id as user_id,\n        coalesce(s.base_currency, u.default_currency, 'EUR') as base_currency\n    from moneytrack.app_users u\n    left join moneytrack.user_settings s\n           on s.user_id = u.id\n    where u.telegram_user_id = {{ $json.telegram_user_id }}::bigint\n    limit 1\n),\nrequested_account as (\n    select a.id\n    from moneytrack.accounts a\n    join user_ctx uc on uc.user_id = a.user_id\n    where a.id::text = '{{ $json.account_id }}'\n      and a.is_active = true\n    limit 1\n),\nscope_accounts as (\n    select ra.id\n    from requested_account ra\n\n    union all\n\n    select child.id\n    from moneytrack.accounts child\n    join scope_accounts parent on child.parent_id = parent.id\n    join user_ctx uc on uc.user_id = child.user_id\n    where child.is_active = true\n      and {{ $json.include_descendants ? 'true' : 'false' }}\n),\nfiltered_transactions as (\n    select\n        t.id,\n        t.transaction_type,\n        t.account_id,\n        a.name as account_name,\n        t.amount_original,\n        t.amount_base,\n        t.currency_original,\n        t.category_id,\n        t.description,\n        t.transaction_date\n    from moneytrack.transactions t\n    join user_ctx uc on uc.user_id = t.user_id\n    join scope_accounts sa on sa.id = t.account_id\n    left join moneytrack.accounts a on a.id = t.account_id\n    where t.transaction_date >= '{{ $json.date_from }}'::date\n      and t.transaction_date < ('{{ $json.date_to }}'::date + interval '1 day')\n),\nsummary as (\n    select\n        coalesce(sum(case when transaction_type = 'income' then abs(coalesce(amount_base, 0)) else 0 end), 0) as income,\n        coalesce(sum(case when transaction_type = 'expense' then abs(coalesce(amount_base, 0)) else 0 end), 0) as expense,\n        coalesce(sum(case when transaction_type = 'transfer' then abs(coalesce(amount_base, 0)) else 0 end), 0) as transfers,\n        count(*)::bigint as count\n    from filtered_transactions\n),\nitems as (\n    select coalesce(\n        jsonb_agg(\n            jsonb_build_object(\n                'id', x.id,\n                'transaction_type', x.transaction_type,\n                'account_id', x.account_id,\n                'account_name', x.account_name,\n                'amount_original', x.amount_original,\n                'amount_base', x.amount_base,\n                'currency_original', x.currency_original,\n                'category_id', x.category_id,\n                'description', x.description,\n                'transaction_date', x.transaction_date\n            )\n            order by x.transaction_date desc, x.id desc\n        ),\n        '[]'::jsonb\n    ) as transactions\n    from filtered_transactions x\n)\nselect\n    uc.user_id,\n    uc.base_currency,\n    '{{ $json.account_id }}'::text as account_id,\n    '{{ $json.date_from }}'::date as date_from,\n    '{{ $json.date_to }}'::date as date_to,\n    {{ $json.include_descendants ? 'true' : 'false' }}::boolean as include_descendants,\n    (select count(*) from scope_accounts)::bigint as account_scope_count,\n    s.income,\n    s.expense,\n    s.transfers,\n    s.count,\n    i.transactions\nfrom user_ctx uc\ncross join summary s\ncross join items i;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [336, -96],
+      "id": "11b8d6cf-818a-4fa2-a351-2cda9d387a33",
+      "name": "Get Account Transactions",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "tM27zg5m7tREo2ep",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first().json;\n\nif (!row || !row.user_id) {\n  return [{ json: { ok: false, http_status: 404, error: \"USER_NOT_FOUND\" } }];\n}\nif (Number(row.account_scope_count || 0) === 0) {\n  return [{ json: { ok: false, http_status: 404, error: \"ACCOUNT_NOT_FOUND\" } }];\n}\n\nreturn [{\n  json: {\n    ok: true,\n    data: {\n      account_id: row.account_id,\n      include_descendants: row.include_descendants === true || row.include_descendants === \"true\",\n      base_currency: row.base_currency,\n      period: {\n        date_from: row.date_from,\n        date_to: row.date_to\n      },\n      summary: {\n        income: Number(row.income || 0),\n        expense: Number(row.expense || 0),\n        transfers: Number(row.transfers || 0),\n        count: Number(row.count || 0)\n      },\n      transactions: row.transactions || []\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [592, -96],
+      "id": "62458846-1353-43ff-9a24-f57339a77c3a",
+      "name": "Format Transactions Result"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "4176b055-e2a8-4f02-a8e3-84038e3810c3",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [832, -96],
+      "id": "921a9a42-bec4-43dc-85df-fb9aa1152e35",
+      "name": "Result Valid?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ data: $json.data }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1088, -160],
+      "id": "bf7e2108-f2a0-4a8c-8814-90968328f789",
+      "name": "Respond Transactions"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: $json.error }) }}",
+        "options": {
+          "responseCode": "={{ $json.http_status }}"
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1088, 96],
+      "id": "79c52a65-84ef-42a1-af57-4147b968a02f",
+      "name": "Respond Transactions Error"
+    }
+  ],
+  "connections": {
+    "transactions": {
+      "main": [[{"node": "Validate Transactions Request", "type": "main", "index": 0}]]
+    },
+    "Validate Transactions Request": {
+      "main": [[{"node": "Request Valid?", "type": "main", "index": 0}]]
+    },
+    "Request Valid?": {
+      "main": [
+        [{"node": "Get Account Transactions", "type": "main", "index": 0}],
+        [{"node": "Respond Transactions Error", "type": "main", "index": 0}]
+      ]
+    },
+    "Get Account Transactions": {
+      "main": [[{"node": "Format Transactions Result", "type": "main", "index": 0}]]
+    },
+    "Format Transactions Result": {
+      "main": [[{"node": "Result Valid?", "type": "main", "index": 0}]]
+    },
+    "Result Valid?": {
+      "main": [
+        [{"node": "Respond Transactions", "type": "main", "index": 0}],
+        [{"node": "Respond Transactions Error", "type": "main", "index": 0}]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "triggerCount": 1
+}

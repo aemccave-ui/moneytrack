@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { LabBottomNavigation } from '../packages/lab-design-system/navigation.jsx'
 import { getAccounts, getDashboard } from './api.js'
 import { RecentOperations } from './RecentOperations.jsx'
+import AccountsExplorer from './AccountsExplorer.jsx'
 
 const money = (value, currency = 'EUR') => new Intl.NumberFormat('ru-RU', {
   style: 'currency', currency, maximumFractionDigits: 0,
@@ -41,6 +42,8 @@ function App() {
   const [dashboard, setDashboard] = useState(null)
   const [accounts, setAccounts] = useState([])
   const [defaultAccount, setDefaultAccount] = useState(null)
+  const [activeScreen, setActiveScreen] = useState('home')
+  const [explorerAccountId, setExplorerAccountId] = useState(null)
   const [privacy, setPrivacy] = useState(false)
   const [actionsOpen, setActionsOpen] = useState(false)
   const [currencyBreakdownOpen, setCurrencyBreakdownOpen] = useState(false)
@@ -246,6 +249,18 @@ function App() {
     return next
   })
 
+  const openExplorer = (accountId = null) => {
+    setExplorerAccountId(accountId)
+    setActiveScreen('accounts')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const navigationItemsWithHandlers = navigationItems.map((item) => {
+    if (item.id === 'home') return { ...item, onClick: () => setActiveScreen('home') }
+    if (item.id === 'accounts') return { ...item, onClick: () => openExplorer() }
+    return item
+  })
+
   const renderAccountNode = (node, depth = 0) => {
     const id = String(node.account.id)
     const hasChildren = node.children.length > 0
@@ -269,6 +284,21 @@ function App() {
 
   if (!dashboard && !error) return <main className="app loadingState" aria-busy="true"><div className="skeleton topSkeleton"/><div className="skeleton heroSkeleton"/><div className="skeleton cardSkeleton"/></main>
 
+  if (activeScreen === 'accounts') {
+    return (
+      <main className={`app ${privacy ? 'privacy' : ''}`}>
+        <AccountsExplorer
+          accounts={accounts}
+          baseCurrency={baseCurrency}
+          privacy={privacy}
+          initialAccountId={explorerAccountId}
+          onBack={() => setActiveScreen('home')}
+        />
+        <LabBottomNavigation items={navigationItemsWithHandlers} activeId="accounts" />
+      </main>
+    )
+  }
+
   return (
     <main className={`app ${privacy ? 'privacy' : ''}`}>
       <section className="balanceHeader" aria-labelledby="balance-title"><div><div className="todayLabel">{todayLabel()}</div><div className="balanceLabel" id="balance-title">Общий баланс</div><strong className="balanceValue sensitive">{hidden(summary.net_worth)}</strong></div><button className={`iconButton privacyButton ${privacy ? 'selected' : ''}`} onClick={() => setPrivacy((value) => !value)} aria-label={privacy ? 'Показать суммы' : 'Скрыть суммы'} aria-pressed={privacy}>◎</button></section>
@@ -289,7 +319,7 @@ function App() {
 
       <section className="section accountsSection compactSectionStart">
         <div className="sectionHeader accountsSectionHeader"><h2>Баланс по счетам</h2></div>
-        {primaryAccount && <article className="primaryAccountCard"><div><span>Основной счёт · {baseCurrency}</span><strong>{primaryAccount.account.name}</strong></div><strong className="sensitive">{hidden(primaryAccount.amountBase, baseCurrency)}</strong></article>}
+        {primaryAccount && <button type="button" className="primaryAccountCard" onClick={() => openExplorer(primaryAccount.account.id)}><div><span>Основной счёт · {baseCurrency}</span><strong>{primaryAccount.account.name}</strong></div><strong className="sensitive">{hidden(primaryAccount.amountBase, baseCurrency)}</strong></button>}
         {accountHierarchy.length ? <div className="accountDistribution">
           <button type="button" className="accountStackButton compactStackButton" onClick={() => setAccountBreakdownOpen((value) => !value)} aria-expanded={accountBreakdownOpen} aria-controls="account-breakdown">
             <span className={`hierarchyChevron ${accountBreakdownOpen ? 'expanded' : ''}`} aria-hidden="true">›</span>
@@ -310,7 +340,7 @@ function App() {
       />
 
       <div className={`fabMenu ${actionsOpen ? 'open' : ''}`}><div className="fabActions" aria-hidden={!actionsOpen}><button type="button" className="fabAction"><span>Фото</span><Glyph>▣</Glyph></button><button type="button" className="fabAction"><span>Голос</span><Glyph>●</Glyph></button><button type="button" className="fabAction"><span>Текст</span><Glyph>✎</Glyph></button></div><button type="button" className="fab" onClick={() => setActionsOpen((value) => !value)} aria-label={actionsOpen ? 'Закрыть быстрое добавление' : 'Открыть быстрое добавление'} aria-expanded={actionsOpen}><span aria-hidden="true">{actionsOpen ? '×' : '+'}</span></button></div>
-      <LabBottomNavigation items={navigationItems} activeId="home" />
+      <LabBottomNavigation items={navigationItemsWithHandlers} activeId="home" />
     </main>
   )
 }

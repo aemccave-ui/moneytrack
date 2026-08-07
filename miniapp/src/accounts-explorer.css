@@ -1,0 +1,39 @@
+.accountsExplorer { display:grid; gap:16px; }
+.accountsExplorerHeader { display:flex; align-items:flex-end; justify-content:space-between; gap:14px; padding:4px 3px 0; }
+.accountsExplorerTitle { display:flex; flex-direction:column; gap:4px; }
+.accountsExplorerTitle span { color:rgba(22,63,67,.54); font-size:11px; font-weight:650; }
+.accountsExplorerTitle h1 { margin:0; color:var(--mt-teal-900); font-size:28px; }
+.accountsExplorerBack { width:42px; height:42px; border:0; border-radius:14px; background:rgba(255,255,255,.82); color:var(--mt-teal-800); box-shadow:var(--mt-shadow-card); font-size:22px; }
+.periodTabs { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; padding:5px; border-radius:18px; background:rgba(255,255,255,.62); box-shadow:var(--mt-shadow-card); }
+.periodTabs button { min-height:40px; border:0; border-radius:14px; background:transparent; color:rgba(22,63,67,.58); font-weight:750; }
+.periodTabs button.isActive { background:var(--mt-teal-100); color:var(--mt-teal-800); }
+.dateRange { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:8px; }
+.dateRange input { min-width:0; width:100%; height:42px; padding:0 10px; border:1px solid rgba(255,255,255,.94); border-radius:14px; background:rgba(255,255,255,.8); color:var(--mt-teal-900); }
+.dateRange span { color:rgba(22,63,67,.44); }
+.accountsExplorerTree { display:grid; gap:8px; }
+.explorerAccountNode { overflow:hidden; border-radius:20px; background:rgba(255,255,255,.84); border:1px solid rgba(255,255,255,.92); box-shadow:var(--mt-shadow-card); }
+.explorerAccountRow { display:grid; grid-template-columns:22px minmax(0,1fr) auto; align-items:center; gap:10px; min-height:64px; padding:11px 14px 11px calc(14px + var(--account-depth, 0) * 18px); }
+.explorerAccountToggle { width:22px; height:22px; padding:0; border:0; background:transparent; }
+.explorerAccountToggle.isLeaf { cursor:default; }
+.explorerAccountCard { min-width:0; display:flex; flex-direction:column; gap:3px; border:0; padding:0; background:transparent; color:inherit; text-align:left; }
+.explorerAccountCard strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--mt-teal-900); font-size:14px; }
+.explorerAccountCard span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:rgba(22,63,67,.48); font-size:10px; }
+.explorerAccountAmount { color:var(--mt-teal-900); font-size:15px; white-space:nowrap; }
+.explorerAccountNode.isSelected { outline:2px solid rgba(79,159,163,.3); }
+.explorerAccountChildren { border-top:1px solid rgba(22,63,67,.075); background:rgba(246,250,250,.7); }
+.explorerAccountChildren .explorerAccountNode { border:0; border-radius:0; box-shadow:none; background:transparent; }
+.explorerSelection { display:grid; gap:10px; }
+.selectionHeader { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; padding:0 3px; }
+.selectionHeader div { min-width:0; }
+.selectionHeader span { display:block; color:rgba(22,63,67,.5); font-size:10px; }
+.selectionHeader strong { display:block; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--mt-teal-900); font-size:19px; }
+.selectionHeader em { color:rgba(22,63,67,.52); font-size:11px; font-style:normal; white-space:nowrap; }
+.accountSummary { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px; transition:opacity var(--mt-transition); }
+.accountSummary[aria-busy="true"] { opacity:.55; }
+.accountSummary article { min-width:0; padding:10px 9px; border-radius:16px; background:rgba(255,255,255,.8); border:1px solid rgba(255,255,255,.92); box-shadow:var(--mt-shadow-card); }
+.accountSummary span { display:block; color:rgba(22,63,67,.48); font-size:9px; }
+.accountSummary strong { display:block; margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--mt-teal-900); font-size:13px; }
+.historyPlaceholder { min-height:56px; display:flex; align-items:center; justify-content:center; border:1px dashed rgba(22,63,67,.14); border-radius:18px; color:rgba(22,63,67,.38); font-size:10px; }
+.explorerInlineError { padding:11px 13px; border-radius:14px; background:rgba(255,243,243,.88); color:#913f45; font-size:11px; }
+.explorerTransactionsLoading { padding:22px 8px; color:rgba(22,63,67,.5); text-align:center; font-size:11px; }
+@media (max-width:390px) { .accountSummary { grid-template-columns:repeat(2,minmax(0,1fr)); } .explorerAccountRow { padding-left:calc(11px + var(--account-depth, 0) * 15px); padding-right:11px; } }

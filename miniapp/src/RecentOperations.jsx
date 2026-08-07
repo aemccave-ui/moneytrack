@@ -246,7 +246,7 @@ function TransactionRow({ tx, privacy, baseCurrency, money, expanded, actionsOpe
   </article>
 }
 
-export function RecentOperations({ groups, transactions, privacy, baseCurrency, money, dayLabel, onDeleted }) {
+export function RecentOperations({ groups, transactions, privacy, baseCurrency, money, dayLabel, onDeleted, title = 'Последние операции', emptyLabel = 'Здесь появятся последние операции' }) {
   const [expandedId, setExpandedId] = useState(null)
   const [actionsId, setActionsId] = useState(null)
   const [editor, setEditor] = useState(null)
@@ -291,9 +291,9 @@ export function RecentOperations({ groups, transactions, privacy, baseCurrency, 
   }
 
   return <>
-    <section className="section transactionsSection"><div className="sectionHeader"><h2>Последние операции</h2></div><div className="transactionPanel">
+    <section className="section transactionsSection"><div className="sectionHeader"><h2>{title}</h2></div><div className="transactionPanel">
       {groups.map(([date, items]) => <div className="transactionGroup" key={date}><div className="dateLabel">{dayLabel(date)}</div>{items.map((tx) => <TransactionRow key={tx.id} tx={tx} privacy={privacy} baseCurrency={baseCurrency} money={money} expanded={String(expandedId) === String(tx.id)} actionsOpen={String(actionsId) === String(tx.id)} onExpand={() => { setActionsId(null); setExpandedId((current) => String(current) === String(tx.id) ? null : tx.id) }} onActions={(open) => { setExpandedId(null); setActionsId(open ? tx.id : null) }} onRepeat={() => openEditor(tx, 'repeat')} onEdit={() => openEditor(tx, 'edit')} onDelete={() => remove(tx)} />)}</div>)}
-      {!transactions.length && <div className="emptyCard">Здесь появятся последние операции</div>}
+      {!transactions.length && <div className="emptyCard">{emptyLabel}</div>}
     </div></section>
     {editor && <Editor operation={editor.operation} mode={editor.mode} onClose={() => setEditor(null)} referenceData={referenceData} referenceLoading={referenceLoading} referenceError={referenceError} />}
     {busyId != null && <div className="transactionBusy" aria-live="polite">Удаление…</div>}

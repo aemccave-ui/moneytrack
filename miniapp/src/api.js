@@ -76,3 +76,17 @@ export async function deleteTransaction(id) {
     throw error
   }
 }
+
+export function getTransactions(
+  { accountId, dateFrom, dateTo, includeDescendants = true },
+  signal,
+) {
+  const params = new URLSearchParams({
+    account_id: String(accountId),
+    date_from: dateFrom,
+    date_to: dateTo,
+    include_descendants: String(includeDescendants),
+  })
+
+  return request(`api/v1/transactions?${params.toString()}`, signal)
+}
