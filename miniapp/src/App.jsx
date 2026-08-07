@@ -276,6 +276,7 @@ function App() {
       <section className="hero compactHero" aria-labelledby="month-result-title"><div className="heroOrb heroOrbOne"/><div className="heroOrb heroOrbTwo"/><span className="heroMonth">{monthLabel(dashboard?.period?.date_from)}</span><div className="heroMetricRow"><div className="heroMetric resultMetric"><span id="month-result-title">Сальдо</span><strong className="sensitive">{hidden(summary.result_month)}</strong></div><div className="heroMetric incomeMetric"><span><Glyph>↑</Glyph>Доход</span><strong className="sensitive">{hidden(summary.income_month)}</strong></div><div className="heroMetric expenseMetric"><span><Glyph>↓</Glyph>Расход</span><strong className="sensitive">{hidden(summary.expenses_month)}</strong></div></div></section>
 
       <section className="section balanceBreakdownSection noSectionTitle">
+        <div className="sectionHeader currencyBalancesHeader"><h2>Баланс по валютам</h2></div>
         {currencyGroups.length ? <div className="currencyDistribution">
           <button type="button" className="currencyStackButton compactStackButton" onClick={() => setCurrencyBreakdownOpen((value) => !value)} aria-expanded={currencyBreakdownOpen} aria-controls="currency-breakdown">
             <span className={`hierarchyChevron ${currencyBreakdownOpen ? 'expanded' : ''}`} aria-hidden="true">›</span>
@@ -286,9 +287,8 @@ function App() {
       </section>
 
       <section className="section accountsSection compactSectionStart">
-        <div className="sectionHeader currencyBalancesHeader"><h2>Баланс по валютам</h2></div>
-        {primaryAccount && <article className="primaryAccountCard"><div><span>Основной счёт · {baseCurrency}</span><strong>{primaryAccount.account.name}</strong></div><strong className="sensitive">{hidden(primaryAccount.amountBase, baseCurrency)}</strong></article>}
         <div className="sectionHeader accountsSectionHeader"><h2>Баланс по счетам</h2></div>
+        {primaryAccount && <article className="primaryAccountCard"><div><span>Основной счёт · {baseCurrency}</span><strong>{primaryAccount.account.name}</strong></div><strong className="sensitive">{hidden(primaryAccount.amountBase, baseCurrency)}</strong></article>}
         {accountHierarchy.length ? <div className="accountDistribution">
           <button type="button" className="accountStackButton compactStackButton" onClick={() => setAccountBreakdownOpen((value) => !value)} aria-expanded={accountBreakdownOpen} aria-controls="account-breakdown">
             <span className={`hierarchyChevron ${accountBreakdownOpen ? 'expanded' : ''}`} aria-hidden="true">›</span>

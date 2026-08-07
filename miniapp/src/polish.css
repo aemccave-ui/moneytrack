@@ -31,7 +31,11 @@ body {
   background-attachment: fixed;
 }
 
-.app { padding-top: calc(12px + env(safe-area-inset-top)); padding-bottom: calc(108px + env(safe-area-inset-bottom)); }
+.app {
+  padding-top:calc(12px + env(safe-area-inset-top));
+  padding-bottom:calc(184px + env(safe-area-inset-bottom));
+  scroll-padding-bottom:calc(184px + env(safe-area-inset-bottom));
+}
 .balanceHeader { display:flex; align-items:flex-end; justify-content:space-between; gap:18px; margin-bottom:18px; padding:6px 4px 2px; }
 .todayLabel { color:rgba(22,63,67,.58); font-size:13px; font-weight:650; text-transform:capitalize; }
 .balanceLabel { margin-top:9px; color:rgba(22,63,67,.56); font-size:13px; }
