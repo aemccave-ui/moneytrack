@@ -286,6 +286,7 @@ function App() {
       </section>
 
       <section className="section accountsSection compactSectionStart">
+        <div className="sectionHeader currencyBalancesHeader"><h2>Баланс по валютам</h2></div>
         {primaryAccount && <article className="primaryAccountCard"><div><span>Основной счёт · {baseCurrency}</span><strong>{primaryAccount.account.name}</strong></div><strong className="sensitive">{hidden(primaryAccount.amountBase, baseCurrency)}</strong></article>}
         <div className="sectionHeader accountsSectionHeader"><h2>Баланс по счетам</h2></div>
         {accountHierarchy.length ? <div className="accountDistribution">
