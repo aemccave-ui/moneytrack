@@ -1,5 +1,6 @@
 {
   "name": "MoneyTrack MiniApp Delete Transaction",
+  "id": "MTxDel7Qp2Vn9Kc4",
   "active": false,
   "isArchived": false,
   "nodes": [
@@ -77,29 +78,14 @@
     }
   ],
   "connections": {
-    "transaction delete": {
-      "main": [[{"node": "Normalize Delete Request", "type": "main", "index": 0}]]
-    },
-    "Normalize Delete Request": {
-      "main": [[{"node": "Verify Telegram InitData delete", "type": "main", "index": 0}]]
-    },
-    "Verify Telegram InitData delete": {
-      "main": [[{"node": "Delete Transaction", "type": "main", "index": 0}]]
-    },
-    "Delete Transaction": {
-      "main": [[{"node": "Format Delete Response", "type": "main", "index": 0}]]
-    },
-    "Format Delete Response": {
-      "main": [[{"node": "Respond Delete", "type": "main", "index": 0}]]
-    }
+    "transaction delete": {"main": [[{"node": "Normalize Delete Request", "type": "main", "index": 0}]]},
+    "Normalize Delete Request": {"main": [[{"node": "Verify Telegram InitData delete", "type": "main", "index": 0}]]},
+    "Verify Telegram InitData delete": {"main": [[{"node": "Delete Transaction", "type": "main", "index": 0}]]},
+    "Delete Transaction": {"main": [[{"node": "Format Delete Response", "type": "main", "index": 0}]]},
+    "Format Delete Response": {"main": [[{"node": "Respond Delete", "type": "main", "index": 0}]]}
   },
-  "settings": {
-    "executionOrder": "v1",
-    "binaryMode": "separate"
-  },
+  "settings": {"executionOrder": "v1", "binaryMode": "separate"},
   "staticData": null,
-  "meta": {
-    "templateCredsSetupCompleted": true
-  },
+  "meta": {"templateCredsSetupCompleted": true},
   "pinData": {}
 }
