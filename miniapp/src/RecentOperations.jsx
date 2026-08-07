@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { deleteTransaction } from './api.js'
 
 const ACTION_REVEAL = 176
@@ -44,7 +45,7 @@ function Editor({ operation, mode, onClose }) {
 
   const update = (field) => (event) => setForm((current) => ({ ...current, [field]: event.target.value }))
 
-  return <div className="transactionEditorBackdrop visible" onClick={(event) => event.target === event.currentTarget && onClose()}>
+  const modal = <div className="transactionEditorBackdrop visible" onClick={(event) => event.target === event.currentTarget && onClose()}>
     <section className="transactionEditorSheet" role="dialog" aria-modal="true" aria-label={repeat ? 'Повторить операцию' : 'Изменить операцию'}>
       <div className="transactionEditorHeader"><div><span>{repeat ? 'Новая операция' : 'Операция'}</span><strong>{repeat ? 'Повторить' : 'Изменить'}</strong></div><button type="button" className="transactionEditorClose" onClick={onClose} aria-label="Закрыть">×</button></div>
       <div className="transactionEditorForm">
@@ -60,6 +61,8 @@ function Editor({ operation, mode, onClose }) {
       <button type="button" className="transactionEditorSave" disabled>Сохранить · скоро</button>
     </section>
   </div>
+
+  return createPortal(modal, document.body)
 }
 
 function TransactionRow({ tx, privacy, baseCurrency, money, expanded, actionsOpen, onExpand, onActions, onEdit, onRepeat, onDelete }) {
