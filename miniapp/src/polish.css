@@ -121,11 +121,11 @@ body {
   font-size:16px;
 }
 .hierarchyCount { color:rgba(22,63,67,.58); font-size:var(--mt-meta-size); line-height:var(--mt-meta-line); font-weight:500; }
-.currencyGroupChildren { padding:0 15px 5px 47px; border-top:1px solid rgba(22,63,67,.075); }
-.currencyAccountRow { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:48px; padding:9px 0; border-top:1px solid rgba(22,63,67,.06); }
+.currencyGroupChildren { padding:6px 10px 10px 36px; border-top:1px solid rgba(22,63,67,.075); }
+.currencyAccountRow { display:grid; grid-template-columns:18px minmax(0,1fr) auto; align-items:center; gap:10px; min-height:56px; padding:8px; border-top:1px solid rgba(22,63,67,.06); background:rgba(255,255,255,.5); }
 .currencyAccountRow:first-child { border-top:0; }
-.currencyAccountRow span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--mt-teal-900); font-size:12px; }
 .currencyAccountRow strong { flex:0 0 auto; color:var(--mt-teal-900); font-size:14px; }
+.currencyAccountMarker { width:18px; height:18px; border-radius:999px; font-size:16px; }
 
 .currencyDistribution { display:grid; gap:10px; }
 .currencyStackButton {
