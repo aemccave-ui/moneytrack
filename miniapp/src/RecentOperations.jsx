@@ -83,6 +83,7 @@ function TransactionRow({ tx, privacy, baseCurrency, money, expanded, actionsOpe
     const dy = event.clientY - state.startY
     if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8) {
       state.dragging = false
+      state.swiped = false
       setDragX(0)
       return
     }
@@ -97,6 +98,7 @@ function TransactionRow({ tx, privacy, baseCurrency, money, expanded, actionsOpe
     const dx = event.clientX - state.startX
     const wasSwipe = state.swiped
     state.dragging = false
+    state.swiped = false
     setDragX(0)
     if (wasSwipe) {
       if (dx >= SWIPE_THRESHOLD) onActions(true)
@@ -105,12 +107,14 @@ function TransactionRow({ tx, privacy, baseCurrency, money, expanded, actionsOpe
   }
 
   const activate = () => {
-    if (pointer.current.swiped) {
-      pointer.current.swiped = false
-      return
-    }
     if (actionsOpen) onActions(false)
     else onExpand()
+  }
+
+  const actionPointerUp = (handler) => (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    handler()
   }
 
   return <article
@@ -123,13 +127,13 @@ function TransactionRow({ tx, privacy, baseCurrency, money, expanded, actionsOpe
     onPointerDown={pointerDown}
     onPointerMove={pointerMove}
     onPointerUp={pointerUp}
-    onPointerCancel={() => { pointer.current.dragging = false; setDragX(0) }}
+    onPointerCancel={() => { pointer.current.dragging = false; pointer.current.swiped = false; setDragX(0) }}
     onClick={activate}
     onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate() } }}
   >
     <div className="transactionSwipeActions" aria-hidden={!actionsOpen}>
-      <button type="button" className="transactionSwipeAction repeat" onClick={(event) => { event.stopPropagation(); onRepeat() }}><span aria-hidden="true">↻</span><small>Повторить</small></button>
-      <button type="button" className="transactionSwipeAction edit" onClick={(event) => { event.stopPropagation(); onEdit() }}><span aria-hidden="true">✎</span><small>Изменить</small></button>
+      <button type="button" className="transactionSwipeAction repeat" onPointerUp={actionPointerUp(onRepeat)} onClick={(event) => { event.preventDefault(); event.stopPropagation() }}><span aria-hidden="true">↻</span><small>Повторить</small></button>
+      <button type="button" className="transactionSwipeAction edit" onPointerUp={actionPointerUp(onEdit)} onClick={(event) => { event.preventDefault(); event.stopPropagation() }}><span aria-hidden="true">✎</span><small>Изменить</small></button>
       <button type="button" className="transactionSwipeAction delete" onClick={(event) => { event.stopPropagation(); onDelete() }}><span aria-hidden="true">×</span><small>Удалить</small></button>
     </div>
     <div className={`transactionIcon ${income ? 'income' : 'expense'}`}>{income ? '↑' : '↓'}</div>
