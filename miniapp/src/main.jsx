@@ -8,7 +8,6 @@ import './currency-layout.css'
 import './account-distribution.css'
 import './recent-operations.css'
 import './currency-summary.js'
-import './recent-operations.js'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
