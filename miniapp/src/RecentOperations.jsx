@@ -32,6 +32,29 @@ const validTime = (value) => {
   return Boolean(match && Number(match[1]) <= 23 && Number(match[2]) <= 59)
 }
 
+const formatDateInput = (value) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''))
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : ''
+}
+
+const normalizeDateInput = (value) => {
+  const digits = String(value || '').replace(/\D/g, '').slice(0, 8)
+  if (digits.length <= 2) return digits
+  if (digits.length <= 4) return `${digits.slice(0, 2)}.${digits.slice(2)}`
+  return `${digits.slice(0, 2)}.${digits.slice(2, 4)}.${digits.slice(4)}`
+}
+
+const dateInputToIso = (value) => {
+  const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(value)
+  if (!match) return null
+  const day = Number(match[1])
+  const month = Number(match[2])
+  const year = Number(match[3])
+  const date = new Date(Date.UTC(year, month - 1, day))
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null
+  return `${match[3]}-${match[2]}-${match[1]}`
+}
+
 const formatDateTime = (value) => {
   if (!value) return '—'
   const date = new Date(value)
@@ -61,7 +84,7 @@ const flattenHierarchy = (items = []) => {
   }
   const result = []
   const visit = (node, depth) => {
-    result.push({ ...node.item, depth })
+    result.push({ ...node.item, depth, hasChildren: node.children.length > 0 })
     node.children.sort(compare).forEach((child) => visit(child, depth + 1))
   }
   roots.sort(compare).forEach((node) => visit(node, 0))
@@ -92,18 +115,22 @@ function DetailRow({ label, value }) {
   return <div className="transactionDetailRow"><span>{label}</span><strong>{value ?? '—'}</strong></div>
 }
 
-function ChoiceField({ label, value, options, placeholder = 'Выбрать', onChange, disabled = false }) {
-  const [open, setOpen] = useState(false)
+function ChoiceField({ fieldId, label, value, options, placeholder = 'Выбрать', onChange, disabled = false, openField, setOpenField }) {
+  const open = openField === fieldId
   const selected = options.find((option) => String(option.value) === String(value))
-  return <div className={`transactionEditorField transactionChoiceField ${open ? 'open' : ''}`}>
+  return <div className={`transactionEditorField transactionChoiceField ${open ? 'open' : ''}`} data-choice-field={fieldId}>
     <span>{label}</span>
-    <button type="button" className="transactionChoiceButton" disabled={disabled} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+    <button type="button" className="transactionChoiceButton" disabled={disabled} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpenField(open ? null : fieldId)}>
       <span className={selected ? '' : 'placeholder'}>{selected?.label || placeholder}</span><i aria-hidden="true">⌄</i>
     </button>
     {open && <div className="transactionChoiceMenu" role="listbox">
-      {options.length ? options.map((option) => <button type="button" role="option" aria-selected={String(option.value) === String(value)} className={`${String(option.value) === String(value) ? 'selected' : ''} ${option.depth ? 'nested' : ''}`} style={{ '--choice-depth': option.depth || 0 }} key={String(option.value)} onClick={() => { onChange(option.value); setOpen(false) }}>
-        <span className="transactionChoiceLabel">{option.depth > 0 && <i className="transactionChoiceBranch" aria-hidden="true">↳</i>}{option.label}</span>{option.meta && <small>{option.meta}</small>}{String(option.value) === String(value) && <b aria-hidden="true">✓</b>}
-      </button>) : <div className="transactionChoiceEmpty">Нет доступных значений</div>}
+      {options.length ? options.map((option) => {
+        const selectable = option.selectable !== false
+        const selectedOption = String(option.value) === String(value)
+        return <button type="button" role="option" aria-selected={selectedOption} aria-disabled={!selectable} disabled={!selectable} className={`${selectedOption ? 'selected' : ''} ${option.depth ? 'nested' : ''} ${!selectable ? 'branchOnly' : ''}`} style={{ '--choice-depth': option.depth || 0 }} key={String(option.value)} onClick={() => { if (!selectable) return; onChange(option.value); setOpenField(null) }}>
+          <span className="transactionChoiceLabel">{option.depth > 0 && <i className="transactionChoiceBranch" aria-hidden="true">↳</i>}{option.label}</span>{option.meta && <small>{option.meta}</small>}{selectedOption && <b aria-hidden="true">✓</b>}
+        </button>
+      }) : <div className="transactionChoiceEmpty">Нет доступных значений</div>}
     </div>}
   </div>
 }
@@ -111,36 +138,64 @@ function ChoiceField({ label, value, options, placeholder = 'Выбрать', on
 function Editor({ operation, mode, onClose, referenceData, referenceLoading, referenceError }) {
   const repeat = mode === 'repeat'
   const initialTime = repeat ? localTimeValue() : sourceTimeValue(operation.transaction_date)
+  const initialDate = repeat ? localDateValue() : String(operation.transaction_date || '').slice(0, 10)
   const [form, setForm] = useState(() => ({
     transaction_type: operation.transaction_type || 'expense',
     amount: Math.abs(Number(operation.amount_original || 0)),
     currency: operation.currency_original || 'EUR',
     account_id: operation.account_id ?? '',
     category_id: operation.category_id ?? '',
-    date: repeat ? localDateValue() : String(operation.transaction_date || '').slice(0, 10),
+    date: initialDate,
     time: initialTime,
     description: operation.description || '',
   }))
+  const [dateText, setDateText] = useState(() => formatDateInput(initialDate))
+  const [openField, setOpenField] = useState(null)
+  const editorRef = useRef(null)
+  const datePickerRef = useRef(null)
   const update = (field) => (event) => setForm((current) => ({ ...current, [field]: event.target.value }))
   const setValue = (field) => (value) => setForm((current) => ({ ...current, [field]: value }))
   const typeOptions = [{ value: 'expense', label: 'Расход' }, { value: 'income', label: 'Доход' }, { value: 'adjustment', label: 'Корректировка' }]
   const currencyOptions = referenceData.currencies.map((item) => ({ value: item.code, label: item.code, meta: Number(item.usage_count || 0) > 0 ? 'использовалась' : '' }))
-  const accountOptions = flattenHierarchy(referenceData.accounts).map((item) => ({ value: idOf(item), label: item.name || item.account_name || 'Счёт', meta: item.currency_code || '', depth: item.depth }))
-  const categoryOptions = flattenHierarchy(referenceData.categories).map((item) => ({ value: item.id, label: item.name || item.code, meta: item.code && item.name !== item.code ? item.code : '', depth: item.depth }))
+  const accountOptions = flattenHierarchy(referenceData.accounts).map((item) => ({ value: idOf(item), label: item.name || item.account_name || 'Счёт', meta: item.currency_code || '', depth: item.depth, selectable: !item.hasChildren }))
+  const categoryOptions = flattenHierarchy(referenceData.categories).map((item) => ({ value: item.id, label: item.name || item.code, meta: item.code && item.name !== item.code ? item.code : '', depth: item.depth, selectable: !item.hasChildren }))
   const timeInvalid = form.time.length === 5 && !validTime(form.time)
+  const dateInvalid = dateText.length === 10 && !dateInputToIso(dateText)
+
+  useEffect(() => {
+    const closeMenus = (event) => {
+      if (!event.target.closest('[data-choice-field]')) setOpenField(null)
+    }
+    document.addEventListener('pointerdown', closeMenus)
+    return () => document.removeEventListener('pointerdown', closeMenus)
+  }, [])
+
+  const updateDateText = (value) => {
+    const normalized = normalizeDateInput(value)
+    setDateText(normalized)
+    const iso = dateInputToIso(normalized)
+    if (iso) setForm((current) => ({ ...current, date: iso }))
+  }
+
+  const openNativeDatePicker = () => {
+    const picker = datePickerRef.current
+    if (!picker) return
+    if (typeof picker.showPicker === 'function') picker.showPicker()
+    else picker.click()
+  }
 
   return createPortal(<div className="transactionEditorBackdrop visible" onClick={(event) => event.target === event.currentTarget && onClose()}>
-    <section className="transactionEditorSheet" role="dialog" aria-modal="true" aria-label={repeat ? 'Повторить операцию' : 'Изменить операцию'}>
+    <section ref={editorRef} className="transactionEditorSheet" role="dialog" aria-modal="true" aria-label={repeat ? 'Повторить операцию' : 'Изменить операцию'}>
       <div className="transactionEditorHeader"><div><span>{repeat ? 'Новая операция' : 'Операция'}</span><strong>{repeat ? 'Повторить' : 'Изменить'}</strong></div><button type="button" className="transactionEditorClose" onClick={onClose} aria-label="Закрыть">×</button></div>
       <div className="transactionEditorForm">
-        <ChoiceField label="Тип" value={form.transaction_type} options={typeOptions} onChange={setValue('transaction_type')} />
+        <ChoiceField fieldId="type" label="Тип" value={form.transaction_type} options={typeOptions} onChange={setValue('transaction_type')} openField={openField} setOpenField={setOpenField} />
         <label className="transactionEditorField"><span>Сумма</span><input type="number" inputMode="decimal" value={form.amount} onChange={update('amount')} /></label>
-        <ChoiceField label="Валюта" value={form.currency} options={currencyOptions} placeholder={referenceLoading ? 'Загрузка…' : 'Выбрать валюту'} onChange={setValue('currency')} disabled={referenceLoading} />
-        <ChoiceField label="Счёт" value={form.account_id} options={accountOptions} placeholder={referenceLoading ? 'Загрузка…' : operation.account_name || 'Выбрать счёт'} onChange={setValue('account_id')} disabled={referenceLoading} />
-        <ChoiceField label="Категория" value={form.category_id} options={categoryOptions} placeholder={referenceLoading ? 'Загрузка…' : operation.category_name || 'Выбрать категорию'} onChange={setValue('category_id')} disabled={referenceLoading} />
-        <label className="transactionEditorField transactionDateField"><span>Дата</span><div className="transactionNativePicker"><input type="date" value={form.date} onChange={update('date')} /><i className="transactionPickerIcon"><CalendarIcon /></i></div></label>
-        <label className={`transactionEditorField transactionTimeField ${timeInvalid ? 'invalid' : ''}`}><span>Время</span><div className="transactionNativePicker transactionTime24"><input type="text" inputMode="numeric" autoComplete="off" maxLength="5" placeholder="HH:MM" value={form.time} onChange={(event) => setForm((current) => ({ ...current, time: normalizeTimeInput(event.target.value) }))} onBlur={() => { if (!validTime(form.time)) setForm((current) => ({ ...current, time: initialTime })) }} /><i className="transactionPickerIcon"><ClockIcon /></i></div></label>
-        <label className="transactionEditorField transactionDescriptionField"><span>Описание</span><input type="text" value={form.description} onChange={update('description')} /></label>
+        <ChoiceField fieldId="currency" label="Валюта" value={form.currency} options={currencyOptions} placeholder={referenceLoading ? 'Загрузка…' : 'Выбрать валюту'} onChange={setValue('currency')} disabled={referenceLoading} openField={openField} setOpenField={setOpenField} />
+        <ChoiceField fieldId="account" label="Счёт" value={form.account_id} options={accountOptions} placeholder={referenceLoading ? 'Загрузка…' : operation.account_name || 'Выбрать счёт'} onChange={setValue('account_id')} disabled={referenceLoading} openField={openField} setOpenField={setOpenField} />
+        <ChoiceField fieldId="category" label="Категория" value={form.category_id} options={categoryOptions} placeholder={referenceLoading ? 'Загрузка…' : operation.category_name || 'Выбрать категорию'} onChange={setValue('category_id')} disabled={referenceLoading} openField={openField} setOpenField={setOpenField} />
+        <label className={`transactionEditorField transactionDateField ${dateInvalid ? 'invalid' : ''}`}><span>Дата</span><div className="transactionNativePicker transactionDateText"><input type="text" inputMode="numeric" autoComplete="off" maxLength="10" placeholder="ДД.ММ.ГГГГ" value={dateText} onFocus={() => setOpenField(null)} onChange={(event) => updateDateText(event.target.value)} onBlur={() => { if (!dateInputToIso(dateText)) setDateText(formatDateInput(form.date)) }} /><button type="button" className="transactionPickerButton" aria-label="Выбрать дату" onClick={openNativeDatePicker}><CalendarIcon /></button><input ref={datePickerRef} className="transactionHiddenDatePicker" type="date" value={form.date} onChange={(event) => { setForm((current) => ({ ...current, date: event.target.value })); setDateText(formatDateInput(event.target.value)) }} tabIndex="-1" aria-hidden="true" /></div></label>
+        <label className={`transactionEditorField transactionTimeField ${timeInvalid ? 'invalid' : ''}`}><span>Время</span><div className="transactionNativePicker transactionTime24"><input type="text" inputMode="numeric" autoComplete="off" maxLength="5" placeholder="HH:MM" value={form.time} onFocus={() => setOpenField(null)} onChange={(event) => setForm((current) => ({ ...current, time: normalizeTimeInput(event.target.value) }))} onBlur={() => { if (!validTime(form.time)) setForm((current) => ({ ...current, time: initialTime })) }} /><i className="transactionPickerIcon"><ClockIcon /></i></div></label>
+        <label className="transactionEditorField transactionDescriptionField"><span>Описание</span><input type="text" value={form.description} onFocus={() => setOpenField(null)} onChange={update('description')} /></label>
       </div>
       {referenceError && <p className="transactionEditorReferenceError">Справочники сейчас недоступны. Исходные значения сохранены.</p>}
       <p className="transactionEditorNote">{repeat ? 'Интерфейс готов. Сохранение повторённой операции будет подключено следующим этапом.' : 'Интерфейс готов. Сохранение изменений будет подключено следующим этапом.'}</p>
