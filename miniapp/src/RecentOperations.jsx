@@ -21,23 +21,71 @@ const sourceTimeValue = (value) => {
   return Number.isNaN(date.getTime()) ? localTimeValue() : localTimeValue(date)
 }
 
+const normalizeTimeInput = (value) => {
+  const digits = String(value || '').replace(/\D/g, '').slice(0, 4)
+  if (digits.length <= 2) return digits
+  return `${digits.slice(0, 2)}:${digits.slice(2)}`
+}
+
+const validTime = (value) => {
+  const match = /^(\d{2}):(\d{2})$/.exec(value)
+  return Boolean(match && Number(match[1]) <= 23 && Number(match[2]) <= 59)
+}
+
 const formatDateTime = (value) => {
   if (!value) return '—'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return String(value)
-  return new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(date)
+  return new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(date)
 }
 
 const operationTypeLabel = (type) => ({ income: 'Доход', expense: 'Расход', openingbalance: 'Начальный остаток', adjustment: 'Корректировка' }[type] || type || 'Операция')
 
-const flattenAccounts = (items = []) => {
-  const result = []
-  const visit = (account) => {
-    result.push(account)
-    ;(account.children || account.accounts || []).forEach(visit)
+const idOf = (item) => item.id ?? item.account_id
+const parentOf = (item) => item.parent_id ?? item.parent_account_id ?? item.parent_category_id ?? null
+
+const flattenHierarchy = (items = []) => {
+  const nodes = new Map(items.map((item) => [String(idOf(item)), { item, children: [] }]))
+  const roots = []
+  nodes.forEach((node) => {
+    const parentId = parentOf(node.item)
+    const parent = parentId == null ? null : nodes.get(String(parentId))
+    if (parent && parent !== node) parent.children.push(node)
+    else roots.push(node)
+  })
+  const compare = (a, b) => {
+    const aOrder = Number(a.item.sort_order ?? 0)
+    const bOrder = Number(b.item.sort_order ?? 0)
+    if (aOrder !== bOrder) return aOrder - bOrder
+    return String(a.item.name || a.item.account_name || a.item.code || '').localeCompare(String(b.item.name || b.item.account_name || b.item.code || ''), 'ru')
   }
-  items.forEach(visit)
+  const result = []
+  const visit = (node, depth) => {
+    result.push({ ...node.item, depth })
+    node.children.sort(compare).forEach((child) => visit(child, depth + 1))
+  }
+  roots.sort(compare).forEach((node) => visit(node, 0))
   return result
+}
+
+const normalizeAccounts = (items = []) => {
+  const result = []
+  const visit = (account, inheritedParentId = null) => {
+    const normalized = inheritedParentId == null || parentOf(account) != null ? account : { ...account, parent_id: inheritedParentId }
+    result.push(normalized)
+    const id = idOf(account)
+    ;(account.children || account.accounts || []).forEach((child) => visit(child, id))
+  }
+  items.forEach((account) => visit(account))
+  return result
+}
+
+function CalendarIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2v3M17 2v3M3.5 9h17M5.5 4h13a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+}
+
+function ClockIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" strokeWidth="1.8"/><path d="M12 7.5V12l3.2 2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
 }
 
 function DetailRow({ label, value }) {
@@ -47,21 +95,22 @@ function DetailRow({ label, value }) {
 function ChoiceField({ label, value, options, placeholder = 'Выбрать', onChange, disabled = false }) {
   const [open, setOpen] = useState(false)
   const selected = options.find((option) => String(option.value) === String(value))
-  return <label className={`transactionEditorField transactionChoiceField ${open ? 'open' : ''}`}>
+  return <div className={`transactionEditorField transactionChoiceField ${open ? 'open' : ''}`}>
     <span>{label}</span>
     <button type="button" className="transactionChoiceButton" disabled={disabled} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
       <span className={selected ? '' : 'placeholder'}>{selected?.label || placeholder}</span><i aria-hidden="true">⌄</i>
     </button>
     {open && <div className="transactionChoiceMenu" role="listbox">
-      {options.length ? options.map((option) => <button type="button" role="option" aria-selected={String(option.value) === String(value)} className={String(option.value) === String(value) ? 'selected' : ''} key={String(option.value)} onClick={() => { onChange(option.value); setOpen(false) }}>
-        <span>{option.label}</span>{option.meta && <small>{option.meta}</small>}{String(option.value) === String(value) && <b aria-hidden="true">✓</b>}
+      {options.length ? options.map((option) => <button type="button" role="option" aria-selected={String(option.value) === String(value)} className={`${String(option.value) === String(value) ? 'selected' : ''} ${option.depth ? 'nested' : ''}`} style={{ '--choice-depth': option.depth || 0 }} key={String(option.value)} onClick={() => { onChange(option.value); setOpen(false) }}>
+        <span className="transactionChoiceLabel">{option.depth > 0 && <i className="transactionChoiceBranch" aria-hidden="true">↳</i>}{option.label}</span>{option.meta && <small>{option.meta}</small>}{String(option.value) === String(value) && <b aria-hidden="true">✓</b>}
       </button>) : <div className="transactionChoiceEmpty">Нет доступных значений</div>}
     </div>}
-  </label>
+  </div>
 }
 
 function Editor({ operation, mode, onClose, referenceData, referenceLoading, referenceError }) {
   const repeat = mode === 'repeat'
+  const initialTime = repeat ? localTimeValue() : sourceTimeValue(operation.transaction_date)
   const [form, setForm] = useState(() => ({
     transaction_type: operation.transaction_type || 'expense',
     amount: Math.abs(Number(operation.amount_original || 0)),
@@ -69,15 +118,16 @@ function Editor({ operation, mode, onClose, referenceData, referenceLoading, ref
     account_id: operation.account_id ?? '',
     category_id: operation.category_id ?? '',
     date: repeat ? localDateValue() : String(operation.transaction_date || '').slice(0, 10),
-    time: repeat ? localTimeValue() : sourceTimeValue(operation.transaction_date),
+    time: initialTime,
     description: operation.description || '',
   }))
   const update = (field) => (event) => setForm((current) => ({ ...current, [field]: event.target.value }))
   const setValue = (field) => (value) => setForm((current) => ({ ...current, [field]: value }))
   const typeOptions = [{ value: 'expense', label: 'Расход' }, { value: 'income', label: 'Доход' }, { value: 'adjustment', label: 'Корректировка' }]
-  const currencyOptions = referenceData.currencies.map((item) => ({ value: item.code, label: item.code }))
-  const accountOptions = referenceData.accounts.map((item) => ({ value: item.id ?? item.account_id, label: item.name || item.account_name || 'Счёт', meta: item.currency_code || '' }))
-  const categoryOptions = referenceData.categories.map((item) => ({ value: item.id, label: item.name || item.code, meta: item.code && item.name !== item.code ? item.code : '' }))
+  const currencyOptions = referenceData.currencies.map((item) => ({ value: item.code, label: item.code, meta: Number(item.usage_count || 0) > 0 ? 'использовалась' : '' }))
+  const accountOptions = flattenHierarchy(referenceData.accounts).map((item) => ({ value: idOf(item), label: item.name || item.account_name || 'Счёт', meta: item.currency_code || '', depth: item.depth }))
+  const categoryOptions = flattenHierarchy(referenceData.categories).map((item) => ({ value: item.id, label: item.name || item.code, meta: item.code && item.name !== item.code ? item.code : '', depth: item.depth }))
+  const timeInvalid = form.time.length === 5 && !validTime(form.time)
 
   return createPortal(<div className="transactionEditorBackdrop visible" onClick={(event) => event.target === event.currentTarget && onClose()}>
     <section className="transactionEditorSheet" role="dialog" aria-modal="true" aria-label={repeat ? 'Повторить операцию' : 'Изменить операцию'}>
@@ -88,8 +138,8 @@ function Editor({ operation, mode, onClose, referenceData, referenceLoading, ref
         <ChoiceField label="Валюта" value={form.currency} options={currencyOptions} placeholder={referenceLoading ? 'Загрузка…' : 'Выбрать валюту'} onChange={setValue('currency')} disabled={referenceLoading} />
         <ChoiceField label="Счёт" value={form.account_id} options={accountOptions} placeholder={referenceLoading ? 'Загрузка…' : operation.account_name || 'Выбрать счёт'} onChange={setValue('account_id')} disabled={referenceLoading} />
         <ChoiceField label="Категория" value={form.category_id} options={categoryOptions} placeholder={referenceLoading ? 'Загрузка…' : operation.category_name || 'Выбрать категорию'} onChange={setValue('category_id')} disabled={referenceLoading} />
-        <label className="transactionEditorField transactionDateField"><span>Дата</span><div className="transactionNativePicker"><input type="date" value={form.date} onChange={update('date')} /><i aria-hidden="true">▦</i></div></label>
-        <label className="transactionEditorField transactionTimeField"><span>Время</span><div className="transactionNativePicker"><input type="time" value={form.time} onChange={update('time')} step="60" /><i aria-hidden="true">◷</i></div></label>
+        <label className="transactionEditorField transactionDateField"><span>Дата</span><div className="transactionNativePicker"><input type="date" value={form.date} onChange={update('date')} /><i className="transactionPickerIcon"><CalendarIcon /></i></div></label>
+        <label className={`transactionEditorField transactionTimeField ${timeInvalid ? 'invalid' : ''}`}><span>Время</span><div className="transactionNativePicker transactionTime24"><input type="text" inputMode="numeric" autoComplete="off" maxLength="5" placeholder="HH:MM" value={form.time} onChange={(event) => setForm((current) => ({ ...current, time: normalizeTimeInput(event.target.value) }))} onBlur={() => { if (!validTime(form.time)) setForm((current) => ({ ...current, time: initialTime })) }} /><i className="transactionPickerIcon"><ClockIcon /></i></div></label>
         <label className="transactionEditorField transactionDescriptionField"><span>Описание</span><input type="text" value={form.description} onChange={update('description')} /></label>
       </div>
       {referenceError && <p className="transactionEditorReferenceError">Справочники сейчас недоступны. Исходные значения сохранены.</p>}
@@ -156,7 +206,7 @@ export function RecentOperations({ groups, transactions, privacy, baseCurrency, 
     const controller = new AbortController()
     Promise.all([getTransactionReference(controller.signal), getAccounts(controller.signal)])
       .then(([reference, accountData]) => {
-        setReferenceData({ currencies: reference?.currencies || [], categories: reference?.categories || [], accounts: flattenAccounts(accountData?.accounts || accountData?.items || []) })
+        setReferenceData({ currencies: reference?.currencies || [], categories: reference?.categories || [], accounts: normalizeAccounts(accountData?.accounts || accountData?.items || []) })
         setReferenceLoaded(true)
       })
       .catch((error) => { if (error?.name !== 'AbortError') setReferenceError(error?.message || 'Не удалось загрузить справочники') })
