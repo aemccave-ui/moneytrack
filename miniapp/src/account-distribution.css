@@ -79,7 +79,24 @@
   line-height: 16px;
   font-weight: 500;
 }
-.stackCount { white-space: nowrap; }
+.accountStackMeta {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(22,63,67,.58);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+}
+.accountStackNames {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stackCount { flex: 0 0 auto; white-space: nowrap; }
 
 .accountDistribution .accountTree,
 .currencyDistribution .currencyHierarchy { margin-top: 0; }

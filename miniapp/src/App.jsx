@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { LabBottomNavigation } from '../packages/lab-design-system/navigation.jsx'
 import { getAccounts, getDashboard } from './api.js'
 
@@ -39,6 +39,9 @@ function App() {
   const [actionsOpen, setActionsOpen] = useState(false)
   const [currencyBreakdownOpen, setCurrencyBreakdownOpen] = useState(false)
   const [accountBreakdownOpen, setAccountBreakdownOpen] = useState(false)
+  const [accountCaptionOverflow, setAccountCaptionOverflow] = useState(false)
+  const accountCaptionMetaRef = useRef(null)
+  const accountCaptionRef = useRef(null)
   const [expandedCurrencies, setExpandedCurrencies] = useState(() => new Set())
   const [expandedAccounts, setExpandedAccounts] = useState(() => new Set())
   const [error, setError] = useState('')
@@ -189,6 +192,24 @@ function App() {
   const currencyCaption = currencyGroups.map((group) => group.currency).join(' · ')
   const accountCaption = accountHierarchy.map((node) => node.account.name).join(' · ')
 
+  useEffect(() => {
+    const meta = accountCaptionMetaRef.current
+    const label = accountCaptionRef.current
+    if (!meta || !label) return undefined
+
+    const updateOverflow = () => {
+      setAccountCaptionOverflow(label.scrollWidth > meta.clientWidth)
+    }
+
+    const frame = requestAnimationFrame(updateOverflow)
+    const observer = new ResizeObserver(updateOverflow)
+    observer.observe(meta)
+    return () => {
+      cancelAnimationFrame(frame)
+      observer.disconnect()
+    }
+  }, [accountCaption])
+
   const transactionGroups = useMemo(() => {
     const groups = new Map()
     transactions.forEach((transaction) => {
@@ -253,7 +274,7 @@ function App() {
         {accountHierarchy.length ? <div className="accountDistribution">
           <button type="button" className="accountStackButton compactStackButton" onClick={() => setAccountBreakdownOpen((value) => !value)} aria-expanded={accountBreakdownOpen} aria-controls="account-breakdown">
             <span className={`hierarchyChevron ${accountBreakdownOpen ? 'expanded' : ''}`} aria-hidden="true">›</span>
-            <span className="accountStackContent"><span className="accountStackBar" aria-label="Распределение баланса по счетам">{accountHierarchy.map((node, index) => { const width = accountDistributionTotal > 0 ? Math.abs(node.totalBase) / accountDistributionTotal * 100 : 100 / accountHierarchy.length; return <i key={node.account.id} className="accountStackSegment" style={{ width: `${width}%`, background: segmentColors[index % segmentColors.length] }} /> })}</span><span className="stackCaption" title={accountCaption}>{accountCaption}<span className="stackCount"> ({accountHierarchy.length})</span></span></span>
+            <span className="accountStackContent"><span className="accountStackBar" aria-label="Распределение баланса по счетам">{accountHierarchy.map((node, index) => { const width = accountDistributionTotal > 0 ? Math.abs(node.totalBase) / accountDistributionTotal * 100 : 100 / accountHierarchy.length; return <i key={node.account.id} className="accountStackSegment" style={{ width: `${width}%`, background: segmentColors[index % segmentColors.length] }} /> })}</span><span ref={accountCaptionMetaRef} className="accountStackMeta" title={accountCaption}><span ref={accountCaptionRef} className="accountStackNames">{accountCaption}</span>{accountCaptionOverflow && <span className="stackCount">({accountHierarchy.length})</span>}</span></span>
           </button>
           {accountBreakdownOpen && <div className="accountTree" id="account-breakdown">{accountHierarchy.map((node) => renderAccountNode(node))}</div>}
         </div> : <div className="emptyCard">Нет счетов с остатком от 1</div>}
