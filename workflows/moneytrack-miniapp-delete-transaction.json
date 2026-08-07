@@ -1,0 +1,105 @@
+{
+  "name": "MoneyTrack MiniApp Delete Transaction",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "DELETE",
+        "path": "api/v1/transaction",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-240, 0],
+      "id": "b84c6820-d605-4a25-8627-5d0c9e4e9fe9",
+      "name": "transaction delete",
+      "webhookId": "bc5c9c6f-137d-4cbe-9302-1308a2af4a3d"
+    },
+    {
+      "parameters": {
+        "jsCode": "const headers = $json.headers || {};\nconst query = $json.query || {};\n\nconst initData =\n  headers[\"x-telegram-init-data\"] ||\n  headers[\"X-Telegram-Init-Data\"] ||\n  query.initData ||\n  query.init_data ||\n  null;\n\nconst transactionId = String(query.id || \"\").trim();\nif (!/^\\d+$/.test(transactionId)) {\n  throw new Error(\"TRANSACTION_ID_INVALID\");\n}\n\nreturn [{\n  json: {\n    initData,\n    transaction_id: transactionId\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "id": "aa032927-769c-460d-8802-b08aeac52cec",
+      "name": "Normalize Delete Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require(\"crypto\");\n\nconst initData = $json.initData;\nif (!initData) throw new Error(\"INIT_DATA_MISSING\");\n\nconst botToken = $env.MONEYTRACK_BOT_TOKEN;\nif (!botToken) throw new Error(\"BOT_TOKEN_MISSING\");\n\nfunction parseInitData(value) {\n  const result = {};\n  for (const part of value.split(\"&\")) {\n    const eqIndex = part.indexOf(\"=\");\n    if (eqIndex === -1) continue;\n    result[decodeURIComponent(part.slice(0, eqIndex))] =\n      decodeURIComponent(part.slice(eqIndex + 1));\n  }\n  return result;\n}\n\nconst params = parseInitData(initData);\nconst receivedHash = params.hash;\nif (!receivedHash) throw new Error(\"HASH_MISSING\");\ndelete params.hash;\n\nconst dataCheckString = Object.keys(params)\n  .sort()\n  .map((key) => `${key}=${params[key]}`)\n  .join(\"\\n\");\n\nconst secretKey = crypto\n  .createHmac(\"sha256\", \"WebAppData\")\n  .update(botToken)\n  .digest();\n\nconst calculatedHash = crypto\n  .createHmac(\"sha256\", secretKey)\n  .update(dataCheckString)\n  .digest(\"hex\");\n\nif (calculatedHash !== receivedHash) {\n  throw new Error(\"INVALID_INIT_DATA_HASH\");\n}\n\nconst user = JSON.parse(params.user);\nreturn [{\n  json: {\n    telegram_user_id: user.id,\n    transaction_id: $json.transaction_id\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 0],
+      "id": "35b04e19-1848-4d62-9e50-29058820b65b",
+      "name": "Verify Telegram InitData delete"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with user_ctx as (\n    select u.id as user_id\n    from moneytrack.app_users u\n    where u.telegram_user_id = {{ $json.telegram_user_id }}::bigint\n    limit 1\n),\n\ntarget_tx as (\n    select\n        t.id,\n        t.description,\n        t.amount_original,\n        t.currency_original,\n        t.transaction_date\n    from moneytrack.transactions t\n    join user_ctx uc on uc.user_id = t.user_id\n    where t.id = {{ $json.transaction_id }}::bigint\n),\n\ndeleted_receipt_items as (\n    delete from moneytrack.receipt_items ri\n    using moneytrack.receipts r, target_tx tx\n    where ri.receipt_id = r.id\n      and r.transaction_id = tx.id\n    returning ri.id\n),\n\ndeleted_receipts as (\n    delete from moneytrack.receipts r\n    using target_tx tx\n    where r.transaction_id = tx.id\n    returning r.id\n),\n\ndeleted_tx as (\n    delete from moneytrack.transactions t\n    using target_tx tx\n    where t.id = tx.id\n    returning\n        t.id,\n        t.description,\n        t.amount_original,\n        t.currency_original,\n        t.transaction_date\n)\n\nselect\n    exists(select 1 from user_ctx) as user_found,\n    exists(select 1 from deleted_tx) as deleted,\n    (select id from deleted_tx limit 1) as id,\n    (select description from deleted_tx limit 1) as description,\n    (select amount_original from deleted_tx limit 1) as amount_original,\n    (select currency_original from deleted_tx limit 1) as currency_original,\n    (select transaction_date from deleted_tx limit 1) as transaction_date;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [480, 0],
+      "id": "117601e9-b0c7-468d-b9ce-6e16ebbc09ee",
+      "name": "Delete Transaction",
+      "credentials": {
+        "postgres": {
+          "id": "tM27zg5m7tREo2ep",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first().json || {};\nif (!row.user_found) throw new Error(\"USER_NOT_FOUND\");\nif (!row.deleted) throw new Error(\"TRANSACTION_NOT_FOUND\");\n\nreturn [{\n  json: {\n    data: {\n      deleted: true,\n      transaction: {\n        id: row.id,\n        description: row.description,\n        amount_original: Number(row.amount_original || 0),\n        currency_original: row.currency_original,\n        transaction_date: row.transaction_date\n      }\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 0],
+      "id": "d0350a78-8315-4e93-971b-fcd9c5ddf91a",
+      "name": "Format Delete Response"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [960, 0],
+      "id": "fe803f86-4288-4135-8ae9-13963e9fb349",
+      "name": "Respond Delete"
+    }
+  ],
+  "connections": {
+    "transaction delete": {
+      "main": [[{"node": "Normalize Delete Request", "type": "main", "index": 0}]]
+    },
+    "Normalize Delete Request": {
+      "main": [[{"node": "Verify Telegram InitData delete", "type": "main", "index": 0}]]
+    },
+    "Verify Telegram InitData delete": {
+      "main": [[{"node": "Delete Transaction", "type": "main", "index": 0}]]
+    },
+    "Delete Transaction": {
+      "main": [[{"node": "Format Delete Response", "type": "main", "index": 0}]]
+    },
+    "Format Delete Response": {
+      "main": [[{"node": "Respond Delete", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {}
+}
