@@ -148,23 +148,26 @@ export function RecentOperations({ groups, transactions, privacy, baseCurrency, 
   const [busyId, setBusyId] = useState(null)
   const [referenceData, setReferenceData] = useState({ currencies: [], categories: [], accounts: [] })
   const [referenceLoaded, setReferenceLoaded] = useState(false)
-  const [referenceLoading, setReferenceLoading] = useState(false)
   const [referenceError, setReferenceError] = useState('')
+  const referenceLoading = Boolean(editor && !referenceLoaded && !referenceError)
 
   useEffect(() => {
     if (!editor || referenceLoaded) return undefined
     const controller = new AbortController()
-    setReferenceLoading(true)
-    setReferenceError('')
     Promise.all([getTransactionReference(controller.signal), getAccounts(controller.signal)])
       .then(([reference, accountData]) => {
         setReferenceData({ currencies: reference?.currencies || [], categories: reference?.categories || [], accounts: flattenAccounts(accountData?.accounts || accountData?.items || []) })
         setReferenceLoaded(true)
       })
       .catch((error) => { if (error?.name !== 'AbortError') setReferenceError(error?.message || 'Не удалось загрузить справочники') })
-      .finally(() => setReferenceLoading(false))
     return () => controller.abort()
   }, [editor, referenceLoaded])
+
+  const openEditor = (tx, mode) => {
+    setActionsId(null)
+    if (!referenceLoaded) setReferenceError('')
+    setEditor({ operation: tx, mode })
+  }
 
   const confirmDelete = (tx) => {
     const description = tx.description || tx.account_name || 'Операция'
@@ -184,7 +187,7 @@ export function RecentOperations({ groups, transactions, privacy, baseCurrency, 
 
   return <>
     <section className="section transactionsSection"><div className="sectionHeader"><h2>Последние операции</h2></div><div className="transactionPanel">
-      {groups.map(([date, items]) => <div className="transactionGroup" key={date}><div className="dateLabel">{dayLabel(date)}</div>{items.map((tx) => <TransactionRow key={tx.id} tx={tx} privacy={privacy} baseCurrency={baseCurrency} money={money} expanded={String(expandedId) === String(tx.id)} actionsOpen={String(actionsId) === String(tx.id)} onExpand={() => { setActionsId(null); setExpandedId((current) => String(current) === String(tx.id) ? null : tx.id) }} onActions={(open) => { setExpandedId(null); setActionsId(open ? tx.id : null) }} onRepeat={() => { setActionsId(null); setEditor({ operation: tx, mode: 'repeat' }) }} onEdit={() => { setActionsId(null); setEditor({ operation: tx, mode: 'edit' }) }} onDelete={() => remove(tx)} />)}</div>)}
+      {groups.map(([date, items]) => <div className="transactionGroup" key={date}><div className="dateLabel">{dayLabel(date)}</div>{items.map((tx) => <TransactionRow key={tx.id} tx={tx} privacy={privacy} baseCurrency={baseCurrency} money={money} expanded={String(expandedId) === String(tx.id)} actionsOpen={String(actionsId) === String(tx.id)} onExpand={() => { setActionsId(null); setExpandedId((current) => String(current) === String(tx.id) ? null : tx.id) }} onActions={(open) => { setExpandedId(null); setActionsId(open ? tx.id : null) }} onRepeat={() => openEditor(tx, 'repeat')} onEdit={() => openEditor(tx, 'edit')} onDelete={() => remove(tx)} />)}</div>)}
       {!transactions.length && <div className="emptyCard">Здесь появятся последние операции</div>}
     </div></section>
     {editor && <Editor operation={editor.operation} mode={editor.mode} onClose={() => setEditor(null)} referenceData={referenceData} referenceLoading={referenceLoading} referenceError={referenceError} />}
