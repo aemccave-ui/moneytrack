@@ -158,7 +158,7 @@ function Editor({ operation, mode, onClose, referenceData, referenceLoading, ref
   const typeOptions = [{ value: 'expense', label: 'Расход' }, { value: 'income', label: 'Доход' }, { value: 'adjustment', label: 'Корректировка' }]
   const currencyOptions = referenceData.currencies.map((item) => ({ value: item.code, label: item.code, meta: Number(item.usage_count || 0) > 0 ? 'использовалась' : '' }))
   const accountOptions = flattenHierarchy(referenceData.accounts).map((item) => ({ value: idOf(item), label: item.name || item.account_name || 'Счёт', meta: item.currency_code || '', depth: item.depth, selectable: !item.hasChildren }))
-  const categoryOptions = flattenHierarchy(referenceData.categories).map((item) => ({ value: item.id, label: item.name || item.code, meta: item.code && item.name !== item.code ? item.code : '', depth: item.depth, selectable: !item.hasChildren }))
+  const categoryOptions = flattenHierarchy(referenceData.categories).map((item) => ({ value: item.id, label: item.name || item.code, meta: item.code && item.name !== item.code ? item.code : '', depth: item.depth }))
   const timeInvalid = form.time.length === 5 && !validTime(form.time)
   const dateInvalid = dateText.length === 10 && !dateInputToIso(dateText)
 
