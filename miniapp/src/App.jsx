@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { LabBottomNavigation } from '../packages/lab-design-system/navigation.jsx'
 import { getAccounts, getDashboard } from './api.js'
+import { RecentOperations } from './RecentOperations.jsx'
 
 const money = (value, currency = 'EUR') => new Intl.NumberFormat('ru-RU', {
   style: 'currency', currency, maximumFractionDigits: 0,
@@ -298,7 +299,15 @@ function App() {
         </div> : <div className="emptyCard">Нет счетов с остатком от 1</div>}
       </section>
 
-      <section className="section transactionsSection"><div className="sectionHeader"><h2>Последние операции</h2></div><div className="transactionPanel">{transactionGroups.map(([date, items]) => <div className="transactionGroup" key={date}><div className="dateLabel">{dayLabel(date)}</div>{items.map((tx) => { const income = tx.transaction_type === 'income'; return <article className="transaction" key={tx.id}><div className={`transactionIcon ${income ? 'income' : 'expense'}`}>{income ? '↑' : '↓'}</div><div className="transactionBody"><strong>{tx.description || tx.account_name || 'Операция'}</strong><span>{tx.account_name || 'Счёт'}</span></div><div className={`transactionAmount sensitive ${income ? 'incomeText' : ''}`}>{privacy ? '••••' : `${income ? '+' : '−'}${money(Math.abs(tx.amount_original), tx.currency_original || baseCurrency)}`}</div></article>})}</div>)}{!transactions.length && <div className="emptyCard">Здесь появятся последние операции</div>}</div></section>
+      <RecentOperations
+        groups={transactionGroups}
+        transactions={transactions}
+        privacy={privacy}
+        baseCurrency={baseCurrency}
+        money={money}
+        dayLabel={dayLabel}
+        onDeleted={async () => setDashboard(await getDashboard())}
+      />
 
       <div className={`fabMenu ${actionsOpen ? 'open' : ''}`}><div className="fabActions" aria-hidden={!actionsOpen}><button type="button" className="fabAction"><span>Фото</span><Glyph>▣</Glyph></button><button type="button" className="fabAction"><span>Голос</span><Glyph>●</Glyph></button><button type="button" className="fabAction"><span>Текст</span><Glyph>✎</Glyph></button></div><button type="button" className="fab" onClick={() => setActionsOpen((value) => !value)} aria-label={actionsOpen ? 'Закрыть быстрое добавление' : 'Открыть быстрое добавление'} aria-expanded={actionsOpen}><span aria-hidden="true">{actionsOpen ? '×' : '+'}</span></button></div>
       <LabBottomNavigation items={navigationItems} activeId="home" />
