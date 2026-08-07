@@ -1,0 +1,13 @@
+{
+  "name": "@lab/design-system",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    "./navigation": "./navigation.jsx",
+    "./navigation.css": "./navigation.css"
+  },
+  "peerDependencies": {
+    "react": ">=19"
+  }
+}
