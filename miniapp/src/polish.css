@@ -85,9 +85,37 @@ body {
 .accountTreeIdentity span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:rgba(22,63,67,.48); font-size:10px; }
 .accountTreeAmount,
 .currencyGroupHeader > strong { color:var(--mt-teal-900); font-size:15px; white-space:nowrap; }
-.accountTreeChildren { border-top:1px solid rgba(22,63,67,.075); background:rgba(246,250,250,.72); }
+.accountTreeChildren {
+  position:relative;
+  margin:0 10px 10px 22px;
+  padding:6px 0 0 14px;
+  border-top:1px solid rgba(22,63,67,.075);
+  border-left:2px solid rgba(79,159,163,.28);
+  border-radius:0 0 0 12px;
+  background:rgba(246,250,250,.72);
+}
 .accountTreeChildren .accountTreeNode { border:0; border-radius:0; box-shadow:none; background:transparent; }
 .accountTreeChildren .accountTreeNode + .accountTreeNode { border-top:1px solid rgba(22,63,67,.06); }
+.accountTreeChildren > .accountTreeNode::before {
+  content:"";
+  position:absolute;
+  left:-14px;
+  top:31px;
+  width:12px;
+  border-top:2px solid rgba(79,159,163,.28);
+}
+.accountTreeChildren > .accountTreeNode { position:relative; }
+.accountTreeNode[data-depth]:not([data-depth="0"]) .accountTreeRow {
+  min-height:56px;
+  padding-left:8px;
+  background:rgba(255,255,255,.5);
+}
+.accountTreeNode[data-depth]:not([data-depth="0"]) .hierarchyChevron {
+  width:18px;
+  height:18px;
+  border-radius:999px;
+  font-size:16px;
+}
 .hierarchyCount { color:rgba(22,63,67,.58); font-size:var(--mt-meta-size); line-height:var(--mt-meta-line); font-weight:500; }
 .currencyGroupChildren { padding:0 15px 5px 47px; border-top:1px solid rgba(22,63,67,.075); }
 .currencyAccountRow { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:48px; padding:9px 0; border-top:1px solid rgba(22,63,67,.06); }

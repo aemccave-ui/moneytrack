@@ -24,7 +24,12 @@ const navigationItems = [
   { id: 'settings', icon: 'settings', label: 'Настройки' },
 ]
 
-const parentAccountId = (account) => account.parent_account_id ?? account.parent_id ?? account.account_parent_id ?? null
+const parentAccountId = (account) => account.parent_account_id
+  ?? account.parent_id
+  ?? account.account_parent_id
+  ?? account.parentAccountId
+  ?? account.parentId
+  ?? null
 const segmentColors = ['#1d5559', '#4f9fa3', '#79b7b9', '#a4cccd', '#c6dddd', '#799397']
 
 function Glyph({ children }) {
@@ -90,10 +95,19 @@ function App() {
   const transactions = useMemo(() => dashboard?.latest_operations || [], [dashboard?.latest_operations])
   const hidden = (value, valueCurrency = baseCurrency) => privacy ? '••••••' : money(value, valueCurrency)
 
-  const accountItems = useMemo(
-    () => accounts.filter((account) => Math.abs(Number(account.balance_original ?? account.balance_base ?? 0)) >= 1),
-    [accounts],
-  )
+  const accountItems = useMemo(() => {
+    const flattened = []
+    const visit = (account, inheritedParentId = null) => {
+      const normalized = inheritedParentId == null || parentAccountId(account) != null
+        ? account
+        : { ...account, parent_id: inheritedParentId }
+      flattened.push(normalized)
+      const id = account.id ?? account.account_id
+      ;(account.children || account.accounts || []).forEach((child) => visit(child, id))
+    }
+    accounts.forEach((account) => visit(account))
+    return flattened
+  }, [accounts])
 
   const currencyGroups = (() => {
     const groups = new Map()
@@ -113,7 +127,7 @@ function App() {
   })()
 
   const accountHierarchy = useMemo(() => {
-    const byId = new Map(accountItems.map((account) => [String(account.id), { account, children: [] }]))
+    const byId = new Map(accountItems.map((account) => [String(account.id ?? account.account_id), { account, children: [] }]))
     const roots = []
     byId.forEach((node) => {
       const parentId = parentAccountId(node.account)
@@ -127,9 +141,12 @@ function App() {
       const ownBase = Number(node.account.balance_base
         ?? ((node.account.currency_code || baseCurrency) === baseCurrency ? node.account.balance_original : 0)
         ?? 0)
-      return { account: node.account, children, totalBase: ownBase + children.reduce((sum, child) => sum + child.totalBase, 0) }
+      const totalBase = ownBase + children.reduce((sum, child) => sum + child.totalBase, 0)
+      return { account: node.account, children, totalBase }
     }
-    return roots.map(normalize).sort((a, b) => Math.abs(b.totalBase) - Math.abs(a.totalBase))
+    return roots.map(normalize)
+      .filter((node) => Math.abs(node.totalBase) >= 1 || node.children.length > 0)
+      .sort((a, b) => Math.abs(b.totalBase) - Math.abs(a.totalBase))
   }, [accountItems, baseCurrency])
 
   const primaryAccount = (() => {
@@ -237,7 +254,7 @@ function App() {
       ? hidden(node.totalBase, baseCurrency)
       : hidden(node.account.balance_original ?? node.account.balance_base, accountCurrency)
     return (
-      <div className="accountTreeNode" key={id} style={{ '--account-depth': depth }}>
+      <div className="accountTreeNode" key={id} style={{ '--account-depth': depth }} data-depth={depth}>
         <button type="button" className={`hierarchyToggle accountTreeRow ${hasChildren ? 'hasChildren' : ''}`}
           onClick={() => hasChildren && toggleSetItem(setExpandedAccounts, id)} aria-expanded={hasChildren ? expanded : undefined}>
           <span className={`hierarchyChevron ${expanded ? 'expanded' : ''}`} aria-hidden="true">{hasChildren ? '›' : '•'}</span>
