@@ -45,6 +45,11 @@ export async function getAccounts(signal) {
   return payload ?? { accounts: [] }
 }
 
+export async function getTransactionReference(signal) {
+  const payload = await request('api/v1/transaction-reference', signal, { allowEmpty: true })
+  return payload ?? { currencies: [], categories: [] }
+}
+
 export async function deleteTransaction(id) {
   const response = await fetch(`${API_BASE}/api/v1/transaction?id=${encodeURIComponent(id)}`, {
     method: 'DELETE',
