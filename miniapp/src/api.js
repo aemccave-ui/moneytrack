@@ -65,7 +65,9 @@ export async function deleteTransaction(id) {
     if (payload?.error) throw new Error(payload.error)
     return payload?.data ?? payload
   } catch (error) {
-    if (error instanceof SyntaxError) throw new Error('Некорректный ответ API при удалении')
+    if (error instanceof SyntaxError) {
+      throw new Error('Некорректный ответ API при удалении', { cause: error })
+    }
     throw error
   }
 }
