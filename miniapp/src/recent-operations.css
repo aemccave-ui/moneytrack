@@ -99,9 +99,12 @@
 .transactionEditorHeader span { color: rgba(22,63,67,.5); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
 .transactionEditorHeader strong { color: var(--mt-teal-900); font-size: 22px; }
 .transactionEditorClose { width: 42px; height: 42px; border: 0; border-radius: 14px; background: var(--mt-teal-100); color: var(--mt-teal-800); font-size: 25px; line-height: 1; }
-.transactionEditorForm { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; align-items: start; }
-.transactionEditorField { min-width: 0; display: grid; gap: 5px; position: relative; }
+.transactionEditorForm { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px 14px; align-items: start; }
+.transactionEditorField { min-width: 0; display: grid; gap: 5px; position: relative; box-sizing: border-box; }
 .transactionEditorField > span { padding-left: 3px; color: rgba(22,63,67,.55); font-size: 10px; font-weight: 650; }
+.transactionEditorField input,
+.transactionChoiceButton,
+.transactionNativePicker { box-sizing: border-box; min-width: 0; max-width: 100%; }
 .transactionEditorField input {
   width: 100%;
   min-height: 44px;
@@ -168,39 +171,57 @@
 }
 .transactionChoiceMenu > button:hover,
 .transactionChoiceMenu > button.selected { background: rgba(79,159,163,.09); }
+.transactionChoiceMenu > button.branchOnly {
+  color: rgba(22,63,67,.62);
+  background: rgba(79,159,163,.045);
+  cursor: default;
+}
+.transactionChoiceMenu > button.branchOnly:disabled { opacity: 1; }
 .transactionChoiceLabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 650; display: flex; align-items: center; gap: 5px; }
 .transactionChoiceBranch { flex: 0 0 auto; font-style: normal; color: rgba(22,63,67,.35); font-size: 11px; }
 .transactionChoiceMenu > button > small { grid-column: 1; color: rgba(22,63,67,.46); font-size: 9px; padding-left: calc(var(--choice-depth, 0) * 3px); }
 .transactionChoiceMenu > button > b { grid-column: 2; grid-row: 1 / span 2; color: var(--mt-teal-700); font-size: 13px; }
 .transactionChoiceEmpty { padding: 12px 10px; color: rgba(22,63,67,.48); font-size: 11px; }
 
-.transactionNativePicker { position: relative; }
+.transactionNativePicker { position: relative; width: 100%; }
 .transactionNativePicker input { padding-right: 42px; }
-.transactionPickerIcon {
+.transactionPickerIcon,
+.transactionPickerButton {
   position: absolute;
   right: 12px;
   top: 50%;
   width: 20px;
   height: 20px;
   transform: translateY(-50%);
-  pointer-events: none;
   color: var(--mt-teal-700);
 }
-.transactionPickerIcon svg { display: block; width: 100%; height: 100%; }
-.transactionDateField input[type="date"] { appearance: none; -webkit-appearance: none; }
-.transactionDateField input[type="date"]::-webkit-calendar-picker-indicator {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
+.transactionPickerIcon { pointer-events: none; }
+.transactionPickerButton {
+  padding: 0;
+  border: 0;
+  background: transparent;
   cursor: pointer;
 }
-.transactionTime24 input {
+.transactionPickerIcon svg,
+.transactionPickerButton svg { display: block; width: 100%; height: 100%; }
+.transactionHiddenDatePicker {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  opacity: 0;
+  pointer-events: none;
+}
+.transactionTime24 input,
+.transactionDateText input {
   font-variant-numeric: tabular-nums;
   letter-spacing: .02em;
 }
-.transactionDescriptionField { grid-column: 1 / -1; }
+.transactionDateField { grid-column: 2; grid-row: 3; }
+.transactionTimeField { grid-column: 2; grid-row: 4; }
+.transactionDescriptionField { grid-column: 1 / -1; grid-row: 5; }
 .transactionEditorReferenceError { margin: 11px 2px 0; color: #a05c61; font-size: 10px; line-height: 1.4; }
 .transactionEditorNote { margin: 14px 2px 0; color: rgba(22,63,67,.58); font-size: 11px; line-height: 1.45; }
 .transactionEditorSave { width: 100%; min-height: 48px; margin-top: 12px; border: 0; border-radius: 16px; background: var(--mt-teal-100); color: rgba(22,63,67,.5); font-weight: 800; }
@@ -213,7 +234,9 @@
   .transaction.actionsOpen > .transactionAmount { transform: translateX(160px); }
   .transactionSwipeActions { width: 150px; }
   .transactionEditorForm { grid-template-columns: 1fr; }
-  .transactionDescriptionField { grid-column: auto; }
+  .transactionDateField,
+  .transactionTimeField,
+  .transactionDescriptionField { grid-column: auto; grid-row: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {
