@@ -50,7 +50,10 @@ as $function$
 declare
     v_from_currency text;
     v_to_currency text;
-    v_rate numeric;
+    v_effective_from_amount moneytrack.transfers.from_amount%type;
+    v_derived_to_amount numeric;
+    v_effective_to_amount moneytrack.transfers.to_amount%type;
+    v_rate moneytrack.transfers.exchange_rate%type;
     v_existing moneytrack.transfers%rowtype;
     v_inserted moneytrack.transfers%rowtype;
 begin
@@ -80,11 +83,13 @@ begin
         raise exception 'SAME_ACCOUNT_TRANSFER_FORBIDDEN' using errcode = '22023';
     end if;
 
-    if p_from_amount is null or p_from_amount <= 0
-       or p_to_amount is null or p_to_amount <= 0
-    then
+    -- p_to_amount remains in the v1 signature for caller compatibility, but it
+    -- is deliberately non-authoritative. The backend owns the effective result.
+    if p_from_amount is null or p_from_amount <= 0 then
         raise exception 'INVALID_TRANSFER_AMOUNT' using errcode = '22023';
     end if;
+
+    v_effective_from_amount := p_from_amount;
 
     select upper(a.currency_code)
       into v_from_currency
@@ -108,26 +113,39 @@ begin
         raise exception 'TO_ACCOUNT_NOT_FOUND_OR_NOT_OWNED' using errcode = 'P0002';
     end if;
 
-    -- Same-currency transfer is economically neutral in the current model.
     if p_transfer_type = 'transfer' then
+        -- Same-currency transfer is economically neutral. Caller p_to_amount
+        -- cannot alter the canonical 1:1 financial result.
         if v_from_currency <> v_to_currency then
             raise exception 'TRANSFER_CURRENCY_MISMATCH: % -> %',
                 v_from_currency, v_to_currency using errcode = '22023';
         end if;
 
-        if p_from_amount <> p_to_amount then
-            raise exception 'TRANSFER_AMOUNT_MISMATCH: % -> %',
-                p_from_amount, p_to_amount using errcode = '22023';
-        end if;
+        v_effective_to_amount := v_effective_from_amount;
+        v_rate := 1;
     else
         -- Exchange and transferexchange represent cross-currency intent.
         if v_from_currency = v_to_currency then
             raise exception 'EXCHANGE_REQUIRES_DIFFERENT_CURRENCIES: %',
                 v_from_currency using errcode = '22023';
         end if;
-    end if;
 
-    v_rate := p_to_amount / p_from_amount;
+        v_derived_to_amount := moneytrack.finance_fx_convert_usd_bridge_v1(
+            p_from_amount,
+            v_from_currency,
+            v_to_currency,
+            p_transfer_date::date
+        );
+
+        if v_derived_to_amount is null or v_derived_to_amount <= 0 then
+            raise exception 'FX_CONVERSION_UNAVAILABLE: % -> % on %',
+                v_from_currency, v_to_currency, p_transfer_date::date
+                using errcode = 'P0001';
+        end if;
+
+        v_effective_to_amount := v_derived_to_amount;
+        v_rate := v_derived_to_amount / p_from_amount;
+    end if;
 
     if p_source_type is not null then
         select *
@@ -141,8 +159,11 @@ begin
         if found then
             if v_existing.from_account_id is distinct from p_from_account_id
                or v_existing.to_account_id is distinct from p_to_account_id
-               or v_existing.from_amount is distinct from p_from_amount
-               or v_existing.to_amount is distinct from p_to_amount
+               or v_existing.from_amount is distinct from v_effective_from_amount
+               or v_existing.from_currency is distinct from v_from_currency
+               or v_existing.to_amount is distinct from v_effective_to_amount
+               or v_existing.to_currency is distinct from v_to_currency
+               or v_existing.exchange_rate is distinct from v_rate
                or v_existing.transfer_type is distinct from p_transfer_type
                or v_existing.transfer_date is distinct from p_transfer_date
             then
@@ -180,9 +201,9 @@ begin
             p_user_id,
             p_from_account_id,
             p_to_account_id,
-            p_from_amount,
+            v_effective_from_amount,
             v_from_currency,
-            p_to_amount,
+            v_effective_to_amount,
             v_to_currency,
             v_rate,
             p_transfer_date,
@@ -210,8 +231,11 @@ begin
 
         if v_existing.from_account_id is distinct from p_from_account_id
            or v_existing.to_account_id is distinct from p_to_account_id
-           or v_existing.from_amount is distinct from p_from_amount
-           or v_existing.to_amount is distinct from p_to_amount
+           or v_existing.from_amount is distinct from v_effective_from_amount
+           or v_existing.from_currency is distinct from v_from_currency
+           or v_existing.to_amount is distinct from v_effective_to_amount
+           or v_existing.to_currency is distinct from v_to_currency
+           or v_existing.exchange_rate is distinct from v_rate
            or v_existing.transfer_type is distinct from p_transfer_type
            or v_existing.transfer_date is distinct from p_transfer_date
         then
@@ -242,6 +266,6 @@ end;
 $function$;
 
 comment on function moneytrack.finance_create_transfer_v1(bigint,bigint,bigint,numeric,numeric,timestamptz,text,text,bigint)
-is 'BE-DOM-001 canonical transfer writer. Derives account currencies, enforces ownership/state/type/amount/currency invariants, computes exchange rate, and supports backend source idempotency.';
+is 'BE-DOM-001 canonical transfer writer. Backend derives currencies, effective to_amount and exchange_rate, enforces financial invariants, and compares canonical semantics for source idempotency.';
 
 commit;
