@@ -6,12 +6,13 @@ SQL_DIR="$ROOT_DIR/db/domain/BE-DOM-001"
 
 INSTALL_SQL="$SQL_DIR/001_finance_read_models.sql"
 VERIFY_SQL="$SQL_DIR/002_verify_finance_read_models.sql"
+ASSERT_SQL="$SQL_DIR/003_assert_finance_read_models.sql"
 ROLLBACK_SQL="$SQL_DIR/900_rollback_finance_read_models.sql"
 
 usage() {
   cat <<'EOF'
 Usage:
-  DATABASE_URL='postgresql://...' scripts/be-dom-001-runtime.sh install
+  DATABASE_URL='postgresql://...' ALLOW_DB_MUTATION=1 scripts/be-dom-001-runtime.sh install
   DATABASE_URL='postgresql://...' USER_ID=123 AS_OF=2026-08-08 scripts/be-dom-001-runtime.sh verify
   DATABASE_URL='postgresql://...' ALLOW_DB_MUTATION=1 scripts/be-dom-001-runtime.sh rollback
 
@@ -19,6 +20,7 @@ Safety:
   - DATABASE_URL is required and is never printed.
   - install/rollback require ALLOW_DB_MUTATION=1.
   - verify is read-only and requires USER_ID and AS_OF.
+  - verify first prints diagnostics, then runs hard assertions.
   - psql ON_ERROR_STOP is enabled for every action.
 EOF
 }
@@ -83,12 +85,19 @@ verify_domain() {
     exit 2
   }
 
-  echo "Running BE-DOM-001 parity verification for user_id=$USER_ID as_of=$AS_OF..."
+  echo "Running BE-DOM-001 parity diagnostics for user_id=$USER_ID as_of=$AS_OF..."
   psql_base \
     --set=user_id="$USER_ID" \
     --set=as_of="$AS_OF" \
     --file="$VERIFY_SQL"
-  echo "Verification script completed without SQL errors. Inspect all parity result rows before cutover."
+
+  echo "Running BE-DOM-001 hard parity assertions..."
+  psql_base \
+    --set=user_id="$USER_ID" \
+    --set=as_of="$AS_OF" \
+    --file="$ASSERT_SQL"
+
+  echo "BE-DOM-001 parity gate PASS."
 }
 
 rollback_domain() {
@@ -103,6 +112,7 @@ main() {
   require_database_url
   require_file "$INSTALL_SQL"
   require_file "$VERIFY_SQL"
+  require_file "$ASSERT_SQL"
   require_file "$ROLLBACK_SQL"
 
   case "${1:-}" in
