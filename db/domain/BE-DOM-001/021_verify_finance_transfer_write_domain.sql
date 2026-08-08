@@ -78,6 +78,10 @@ begin
      order by a.id
      limit 1;
 
+    if v_foreign_account is null then
+        raise exception 'VERIFY_REQUIRES_FOREIGN_ACCOUNT_FOR_OWNERSHIP_TEST';
+    end if;
+
     -- Same-currency transfer: caller to_amount is non-authoritative and the
     -- persisted result must be canonical 1:1.
     select *
@@ -293,16 +297,14 @@ begin
     end;
 
     -- Account ownership remains enforced.
-    if v_foreign_account is not null then
-        begin
-            perform * from moneytrack.finance_create_transfer_v1(
-                v_user_id, v_same_from, v_foreign_account, 10, 10, now(), 'transfer', null, null
-            );
-            raise exception 'VERIFY_FOREIGN_ACCOUNT_WAS_ACCEPTED';
-        exception when sqlstate 'P0002' then
-            null;
-        end;
-    end if;
+    begin
+        perform * from moneytrack.finance_create_transfer_v1(
+            v_user_id, v_same_from, v_foreign_account, 10, 10, now(), 'transfer', null, null
+        );
+        raise exception 'VERIFY_FOREIGN_ACCOUNT_WAS_ACCEPTED';
+    exception when sqlstate 'P0002' then
+        null;
+    end;
 
     -- Same idempotency key with a genuinely different semantic payload must
     -- remain a conflict.
