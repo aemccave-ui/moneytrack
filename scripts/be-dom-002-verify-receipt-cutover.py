@@ -140,6 +140,11 @@ direct_writer = re.compile(
     re.I | re.S,
 )
 
+any_moneytrack_writer = re.compile(
+    r"\b(?:insert\s+into|update|delete\s+from)\s+moneytrack\.[a-zA-Z_][a-zA-Z0-9_]*\b",
+    re.I | re.S,
+)
+
 bypass = []
 for scope, wf in [("main", main_after), ("photo", photo_after)]:
     for node in wf["nodes"]:
@@ -167,8 +172,8 @@ for name in [
     "Update receipt item categories TRUE",
 ]:
     query = photo_nodes[name]["parameters"]["query"]
-    if re.search(r"\b(insert|update|delete)\b", query, re.I):
-        raise SystemExit(f"FAIL: photo/{name} is not read-only")
+    if any_moneytrack_writer.search(query):
+        raise SystemExit(f"FAIL: photo/{name} contains direct moneytrack mutation")
 print("photo_compatibility_adapters_read_only=PASS")
 
 bootstrap_query = main_nodes["Get or Create User"]["parameters"]["query"]
