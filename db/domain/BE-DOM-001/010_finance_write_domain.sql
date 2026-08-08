@@ -12,7 +12,6 @@ create unique index if not exists ux_transactions_source_idempotency
     where source_type is not null and source_id is not null;
 
 -- Legacy opening-balance behavior permits at most one opening balance per account.
--- Existing forensic data contains no duplicate opening balances per account.
 create unique index if not exists ux_transactions_one_opening_balance_per_account
     on moneytrack.transactions(user_id, account_id)
     where transaction_type = 'openingbalance';
@@ -109,8 +108,6 @@ begin
             v_account_currency, upper(p_currency_original) using errcode = '22023';
     end if;
 
-    -- Category ids are user-scoped. A plain FK proves only existence, not ownership.
-    -- The writer therefore rejects categories owned by another user as well as unknown ids.
     if p_category_id is not null and not exists (
         select 1
           from moneytrack.category_catalog c
@@ -120,8 +117,31 @@ begin
         raise exception 'CATEGORY_NOT_FOUND_OR_NOT_OWNED' using errcode = 'P0002';
     end if;
 
-    -- Idempotent replay is valid only when the repeated request represents the
-    -- same financial posting. Reuse of a key for a different posting is rejected.
+    -- Opening balance uniqueness is a domain invariant, not an adapter concern.
+    -- A repeated request for an account that already has an opening balance returns
+    -- the existing posting as a replay, preserving the legacy "already_exists" UX.
+    if p_transaction_type = 'openingbalance' then
+        select *
+          into v_existing
+          from moneytrack.transactions t
+         where t.user_id = p_user_id
+           and t.account_id = p_account_id
+           and t.transaction_type = 'openingbalance'
+         limit 1;
+
+        if found then
+            return query
+            select v_existing.id, v_existing.user_id, v_existing.account_id,
+                   v_existing.transaction_type, v_existing.amount_original,
+                   v_existing.currency_original, v_existing.amount_base,
+                   v_existing.currency_base, v_existing.exchange_rate,
+                   v_existing.category_id, v_existing.description,
+                   v_existing.transaction_date, v_existing.source_type,
+                   v_existing.source_id, true;
+            return;
+        end if;
+    end if;
+
     if p_source_type is not null then
         select *
           into v_existing
@@ -190,6 +210,30 @@ begin
         )
         returning * into v_inserted;
     exception when unique_violation then
+        -- Race-safe opening-balance replay: concurrent requests may both pass the
+        -- pre-check, but only one may insert because of the partial unique index.
+        if p_transaction_type = 'openingbalance' then
+            select *
+              into v_existing
+              from moneytrack.transactions t
+             where t.user_id = p_user_id
+               and t.account_id = p_account_id
+               and t.transaction_type = 'openingbalance'
+             limit 1;
+
+            if found then
+                return query
+                select v_existing.id, v_existing.user_id, v_existing.account_id,
+                       v_existing.transaction_type, v_existing.amount_original,
+                       v_existing.currency_original, v_existing.amount_base,
+                       v_existing.currency_base, v_existing.exchange_rate,
+                       v_existing.category_id, v_existing.description,
+                       v_existing.transaction_date, v_existing.source_type,
+                       v_existing.source_id, true;
+                return;
+            end if;
+        end if;
+
         if p_source_type is null then
             raise;
         end if;
@@ -239,6 +283,6 @@ end;
 $function$;
 
 comment on function moneytrack.finance_create_transaction_v1(bigint,bigint,text,numeric,text,text,timestamptz,text,bigint,bigint)
-is 'BE-DOM-001 canonical transaction writer. Enforces account/category ownership, transaction/amount/currency invariants, backend base valuation, opening-balance uniqueness and source idempotency.';
+is 'BE-DOM-001 canonical transaction writer. Enforces account/category ownership, transaction/amount/currency invariants, backend base valuation, opening-balance uniqueness/replay and source idempotency.';
 
 commit;
