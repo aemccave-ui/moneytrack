@@ -2,7 +2,11 @@
 
 ## Status
 
-IN PROGRESS
+**IN PROGRESS — READ SLICE PASS / WRITE EXTRACTION PENDING**
+
+The first production read-only vertical slice (accounts + dashboard) has passed repository, PostgreSQL parity, n8n cutover, and production HTTP runtime gates.
+
+BE-DOM-001 as a whole is not yet closed because write-side finance invariants, idempotency, and transaction boundaries remain to be extracted from n8n/transport concerns.
 
 ## Goal
 
@@ -182,19 +186,82 @@ BE-DOM-001 must not require:
 - changing public API routes merely for architectural purity;
 - changing persisted financial meaning without a dedicated migration decision.
 
+## Read-slice implementation
+
+The first extracted vertical slice now uses versioned PostgreSQL entry points:
+
+```text
+moneytrack.finance_fx_convert_usd_bridge_v1(...)
+moneytrack.finance_accounts_read_model_v1(...)
+moneytrack.finance_dashboard_read_model_v1(...)
+```
+
+The production n8n nodes now resolve Telegram identity and delegate the financial read calculation to these entry points instead of embedding the formulas in workflow SQL.
+
+### Runtime evidence — 2026-08-08
+
+Representative production user:
+
+```text
+moneytrack.app_users.id = 1
+accounts = 19
+transactions = 113
+```
+
+Runtime gates passed:
+
+- target `moneytrack` PostgreSQL schema and required tables confirmed;
+- all three BE-DOM-001 PostgreSQL functions installed successfully;
+- hard parity gate passed against real data for `user_id=1`, `as_of=2026-08-08`;
+- candidate workflow differed only in `Get Dashboard` and `Get Accounts` SQL;
+- n8n Public API update returned HTTP 200;
+- active workflow version became `ea77110f-320e-40ab-ad03-dea749fc6596`;
+- n8n restarted cleanly and registered all four MiniApp webhooks;
+- authenticated production `/webhook/api/v1/dashboard` returned HTTP 200 with expected payload;
+- authenticated production `/webhook/api/v1/accounts` returned HTTP 200 with expected payload;
+- post-cutover n8n log scan found no finance/PostgreSQL runtime errors.
+
+### Read-slice gate
+
+```text
+Repository forensic              PASS
+PostgreSQL implementation        PASS
+Real-data hard parity            PASS
+Candidate isolation              PASS
+n8n cutover                      PASS
+Workflow activation              PASS
+/dashboard production smoke      PASS
+/accounts production smoke       PASS
+Post-cutover error scan           PASS
+
+READ SLICE                       PASS
+```
+
 ## Acceptance criteria
 
 BE-DOM-001 is complete only when:
 
-- [ ] existing finance-related n8n workflows have been inventoried;
-- [ ] each piece of financial business logic has an identified canonical owner;
-- [ ] selected finance logic has been extracted out of n8n into versioned domain/persistence code;
-- [ ] n8n calls extracted entry points instead of reimplementing their formulas;
-- [ ] API behavior required by the current MiniApp remains compatible;
+- [x] existing finance-related n8n workflows have been inventoried for the selected read slice;
+- [x] selected read-side financial logic has an identified canonical owner;
+- [x] selected finance read logic has been extracted out of n8n into versioned domain/persistence code;
+- [x] n8n calls extracted read entry points instead of reimplementing their formulas;
+- [x] API behavior required by the current MiniApp remains compatible for `/dashboard` and `/accounts`;
 - [ ] idempotency and transaction boundaries are explicit for financial writes;
-- [ ] regression verification covers balances and period aggregates;
-- [ ] the extracted logic can be called without n8n;
-- [ ] no new financial business logic is added to n8n as part of this work.
+- [x] regression verification covers balances and period aggregates;
+- [x] the extracted read logic can be called without n8n;
+- [x] no new financial business logic was added to n8n as part of the read extraction;
+- [ ] transaction create/update/delete posting semantics have a canonical owner outside n8n;
+- [ ] transfer write semantics have a canonical owner outside n8n;
+- [ ] write-side regression/idempotency verification has passed against representative runtime data.
+
+## Known compatibility debt (not a read-slice blocker)
+
+The existing API exposes two different portfolio-value semantics:
+
+- `/accounts.total_base` aggregates persisted `transactions.amount_base`;
+- dashboard `net_worth` revalues currency balances through `exchange_rates_usd` at the dashboard valuation date.
+
+The read extraction intentionally preserved this difference rather than changing financial meaning during an architectural migration. Any unification requires a separate finance-semantic decision and migration.
 
 ## Non-goals
 
@@ -226,12 +293,18 @@ observe existing behavior
 
 ## Next implementation step
 
-Inventory the repository/runtime-owned n8n workflow definitions and SQL migrations, classify every finance calculation into:
+Proceed to the write-side forensic/extraction slice.
 
-- Domain invariant
-- Application use case
-- Read model
-- Persistence-only concern
-- Transport-only concern
+Inventory the actual transaction mutation workflows and classify, at minimum:
 
-Then extract one vertical slice first, preferably account balance + dashboard period summary, because it provides a read-only compatibility baseline before transaction-write mutations are moved.
+- create transaction;
+- update transaction;
+- delete transaction;
+- transfer/posting semantics;
+- `amount_original` / `amount_base` derivation;
+- account/currency validation;
+- income/expense sign semantics;
+- duplicate/idempotency protection;
+- transaction boundaries and failure atomicity.
+
+Then extract one write vertical slice behind a versioned PostgreSQL application/domain entry point, prove legacy parity and idempotency, and only then switch its n8n caller.
