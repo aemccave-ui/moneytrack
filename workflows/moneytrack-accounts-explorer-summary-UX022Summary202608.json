@@ -1,0 +1,132 @@
+{
+  "id": "UX022Summary202608",
+  "name": "MoneyTrack Accounts Explorer Summary API",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "path": "api/v1/accounts-explorer-summary",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-400, 0],
+      "id": "7a18e409-6f47-44df-a7d1-6672467f6508",
+      "name": "accounts explorer summary",
+      "webhookId": "5a80dd8f-8e14-4e82-89ef-e4cdbd50ac91"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require(\"crypto\");\n\nconst headers = $json.headers || {};\nconst query = $json.query || {};\nconst fail = (httpStatus, error) => [{ json: { ok: false, http_status: httpStatus, error } }];\n\nconst rawExcluded = String(query.excluded_account_ids || \"\").trim();\nif (rawExcluded && !/^\\d+(,\\d+)*$/.test(rawExcluded)) return fail(400, \"EXCLUDED_ACCOUNT_IDS_INVALID\");\nconst excludedIds = rawExcluded ? [...new Set(rawExcluded.split(\",\").map((value) => Number(value)))] : [];\n\nconst initData = headers[\"x-telegram-init-data\"] || headers[\"X-Telegram-Init-Data\"] || query.initData || query.init_data || null;\nif (!initData) return fail(401, \"INIT_DATA_MISSING\");\nconst botToken = $env.MONEYTRACK_BOT_TOKEN;\nif (!botToken) return fail(500, \"BOT_TOKEN_MISSING\");\n\nconst params = {};\ntry {\n  for (const part of initData.split(\"&\")) {\n    const eq = part.indexOf(\"=\");\n    if (eq === -1) continue;\n    params[decodeURIComponent(part.slice(0, eq))] = decodeURIComponent(part.slice(eq + 1));\n  }\n} catch { return fail(401, \"INVALID_INIT_DATA\"); }\n\nconst receivedHash = params.hash;\nif (!receivedHash) return fail(401, \"HASH_MISSING\");\ndelete params.hash;\nconst dataCheckString = Object.keys(params).sort().map((key) => `${key}=${params[key]}`).join(\"\\n\");\nconst secretKey = crypto.createHmac(\"sha256\", \"WebAppData\").update(botToken).digest();\nconst calculatedHash = crypto.createHmac(\"sha256\", secretKey).update(dataCheckString).digest(\"hex\");\nif (calculatedHash !== receivedHash) return fail(401, \"INVALID_INIT_DATA_HASH\");\nif (!params.user) return fail(401, \"USER_MISSING\");\nlet user;\ntry { user = JSON.parse(params.user); } catch { return fail(401, \"INVALID_USER_DATA\"); }\nif (!user?.id) return fail(401, \"INVALID_USER_DATA\");\n\nreturn [{ json: { ok: true, telegram_user_id: user.id, excluded_account_ids: excludedIds, excluded_sql: excludedIds.join(\",\") } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-160, 0],
+      "id": "e91e9d26-b651-4aba-a4a0-55fd15b30cf5",
+      "name": "Validate Explorer Summary Request"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2},
+          "conditions": [{
+            "id": "98a6d767-8e26-40a4-a912-e6ec79673396",
+            "leftValue": "={{ $json.ok }}",
+            "rightValue": "",
+            "operator": {"type": "boolean", "operation": "true", "singleValue": true}
+          }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [80, 0],
+      "id": "a8de6ba2-e20c-4392-8e6e-512614ad0590",
+      "name": "Summary Request Valid?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with user_ctx as (\n    select u.id as user_id, coalesce(s.base_currency, u.default_currency, 'EUR') as base_currency\n    from moneytrack.app_users u\n    left join moneytrack.user_settings s on s.user_id = u.id\n    where u.telegram_user_id = {{ $json.telegram_user_id }}::bigint\n    limit 1\n),\nexcluded as (\n    select unnest(ARRAY[{{ $json.excluded_sql }}]::bigint[]) as id\n),\ntransaction_movements as (\n    select t.account_id,\n        case\n            when t.transaction_type in ('openingbalance', 'income') then t.amount_original\n            when t.transaction_type = 'expense' then -t.amount_original\n            when t.transaction_type = 'adjustment' then t.amount_original\n            else 0\n        end as amount\n    from moneytrack.transactions t\n    join user_ctx uc on uc.user_id = t.user_id\n),\ntransfer_movements as (\n    select tr.from_account_id as account_id, -tr.from_amount as amount\n    from moneytrack.transfers tr join user_ctx uc on uc.user_id = tr.user_id\n    union all\n    select tr.to_account_id as account_id, tr.to_amount as amount\n    from moneytrack.transfers tr join user_ctx uc on uc.user_id = tr.user_id\n),\nmovements as (\n    select * from transaction_movements\n    union all\n    select * from transfer_movements\n),\nraw_balances as (\n    select a.id, a.currency_code, coalesce(sum(m.amount), 0) as balance_original\n    from moneytrack.accounts a\n    join user_ctx uc on uc.user_id = a.user_id\n    left join movements m on m.account_id = a.id\n    where a.is_active = true\n      and not exists (select 1 from excluded e where e.id = a.id)\n    group by a.id, a.currency_code\n),\nconverted as (\n    select rb.id,\n        case\n            when rb.currency_code = uc.base_currency then rb.balance_original\n            when rf.usd_rate is not null and rbase.usd_rate is not null and rf.usd_rate <> 0\n            then rb.balance_original * rbase.usd_rate / rf.usd_rate\n            else null\n        end as balance_base\n    from raw_balances rb\n    cross join user_ctx uc\n    left join lateral (\n        select r.usd_rate from moneytrack.exchange_rates_usd r\n        where r.currency_code = rb.currency_code and r.rate_date <= current_date\n        order by r.rate_date desc limit 1\n    ) rf on true\n    left join lateral (\n        select r.usd_rate from moneytrack.exchange_rates_usd r\n        where r.currency_code = uc.base_currency and r.rate_date <= current_date\n        order by r.rate_date desc limit 1\n    ) rbase on true\n)\nselect\n    uc.user_id,\n    uc.base_currency,\n    coalesce(sum(c.balance_base), 0) as total_base,\n    count(c.id)::bigint as included_account_count\nfrom user_ctx uc\nleft join converted c on true\ngroup by uc.user_id, uc.base_currency;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [336, -96],
+      "id": "490c1582-0837-427f-914c-29df48bddb6c",
+      "name": "Get Explorer Summary",
+      "alwaysOutputData": true,
+      "credentials": {"postgres": {"id": "tM27zg5m7tREo2ep", "name": "Postgres account"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first().json || {};\nif (!row.user_id) return [{ json: { ok: false, http_status: 404, error: \"USER_NOT_FOUND\" } }];\nreturn [{ json: { ok: true, data: { base_currency: row.base_currency, total_base: Number(row.total_base || 0), included_account_count: Number(row.included_account_count || 0), excluded_account_ids: $('Validate Explorer Summary Request').first().json.excluded_account_ids || [] } } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [592, -96],
+      "id": "d1a4f22b-c912-43f8-b032-71ce1d919342",
+      "name": "Format Explorer Summary"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2},
+          "conditions": [{
+            "id": "ade5f02c-6764-4544-9455-05b5b7cd9070",
+            "leftValue": "={{ $json.ok }}",
+            "rightValue": "",
+            "operator": {"type": "boolean", "operation": "true", "singleValue": true}
+          }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [832, -96],
+      "id": "13fcf0cc-952e-406f-b6ea-c79ff6eeefcc",
+      "name": "Summary Result Valid?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ data: $json.data }) }}",
+        "options": {"responseCode": 200}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1088, -160],
+      "id": "82f43bd5-efcf-44f1-a2fd-f4168b08db4c",
+      "name": "Respond Explorer Summary"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: $json.error }) }}",
+        "options": {"responseCode": "={{ $json.http_status }}"}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1088, 96],
+      "id": "f247d5df-740b-42ef-8657-d5345fb4d5f4",
+      "name": "Respond Explorer Summary Error"
+    }
+  ],
+  "connections": {
+    "accounts explorer summary": {"main": [[{"node": "Validate Explorer Summary Request", "type": "main", "index": 0}]]},
+    "Validate Explorer Summary Request": {"main": [[{"node": "Summary Request Valid?", "type": "main", "index": 0}]]},
+    "Summary Request Valid?": {"main": [[{"node": "Get Explorer Summary", "type": "main", "index": 0}], [{"node": "Respond Explorer Summary Error", "type": "main", "index": 0}]]},
+    "Get Explorer Summary": {"main": [[{"node": "Format Explorer Summary", "type": "main", "index": 0}]]},
+    "Format Explorer Summary": {"main": [[{"node": "Summary Result Valid?", "type": "main", "index": 0}]]},
+    "Summary Result Valid?": {"main": [[{"node": "Respond Explorer Summary", "type": "main", "index": 0}], [{"node": "Respond Explorer Summary Error", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1", "binaryMode": "separate"},
+  "staticData": null,
+  "pinData": {},
+  "meta": {"templateCredsSetupCompleted": true},
+  "triggerCount": 1
+}
