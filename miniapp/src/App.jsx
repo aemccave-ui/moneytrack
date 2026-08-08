@@ -154,31 +154,17 @@ function App() {
   }, [accountItems, baseCurrency])
 
   const primaryAccount = (() => {
-    const configured = configuredDefaultAccount != null
-      && typeof configuredDefaultAccount === 'object'
+    const configured = configuredDefaultAccount != null && typeof configuredDefaultAccount === 'object'
       ? configuredDefaultAccount.account ?? configuredDefaultAccount
       : configuredDefaultAccount
-
-    const configuredId = configured != null
-      && typeof configured === 'object'
-      ? configured.id
-        ?? configured.account_id
-        ?? configured.accountId
-        ?? configured.value
-        ?? configured.uuid
+    const configuredId = configured != null && typeof configured === 'object'
+      ? configured.id ?? configured.account_id ?? configured.accountId ?? configured.value ?? configured.uuid
       : configured
-
-    const configuredName = configured != null
-      && typeof configured === 'object'
-      ? configured.name
-        ?? configured.account_name
-        ?? configured.accountName
-        ?? configured.label
+    const configuredName = configured != null && typeof configured === 'object'
+      ? configured.name ?? configured.account_name ?? configured.accountName ?? configured.label
       : configured
-
     const normalizedId = String(configuredId ?? '').trim().toLowerCase()
     const normalizedName = String(configuredName ?? '').trim().toLowerCase()
-
     const account = accountItems.find((item) => (
       (normalizedId && (
         String(item.id ?? '').trim().toLowerCase() === normalizedId
@@ -186,25 +172,14 @@ function App() {
         || String(item.accountId ?? '').trim().toLowerCase() === normalizedId
         || String(item.uuid ?? '').trim().toLowerCase() === normalizedId
       ))
-      || (normalizedName
-        && String(item.name ?? '').trim().toLowerCase() === normalizedName)
-    )) ?? accountItems.find((item) => (
-      item.setdefaultaccount === true
-      || item.is_default === true
-      || item.is_default_account === true
-    ))
-
+      || (normalizedName && String(item.name ?? '').trim().toLowerCase() === normalizedName)
+    )) ?? accountItems.find((item) => item.setdefaultaccount === true || item.is_default === true || item.is_default_account === true)
     if (!account) return null
-
     const accountCurrency = String(account.currency_code || baseCurrency).toUpperCase()
     const originalAmount = Number(account.balance_original ?? account.balance ?? 0)
-
     return {
       account,
-      amountBase: Number(
-        account.balance_base
-        ?? (accountCurrency === baseCurrency ? originalAmount : 0),
-      ),
+      amountBase: Number(account.balance_base ?? (accountCurrency === baseCurrency ? originalAmount : 0)),
     }
   })()
 
@@ -217,11 +192,7 @@ function App() {
     const meta = accountCaptionMetaRef.current
     const label = accountCaptionRef.current
     if (!meta || !label) return undefined
-
-    const updateOverflow = () => {
-      setAccountCaptionOverflow(label.scrollWidth > meta.clientWidth)
-    }
-
+    const updateOverflow = () => setAccountCaptionOverflow(label.scrollWidth > meta.clientWidth)
     const frame = requestAnimationFrame(updateOverflow)
     const observer = new ResizeObserver(updateOverflow)
     observer.observe(meta)
@@ -269,14 +240,24 @@ function App() {
     const displayedAmount = hasChildren
       ? hidden(node.totalBase, baseCurrency)
       : hidden(node.account.balance_original ?? node.account.balance_base, accountCurrency)
+
     return (
       <div className="accountTreeNode" key={id} style={{ '--account-depth': depth }} data-depth={depth}>
-        <button type="button" className={`hierarchyToggle accountTreeRow ${hasChildren ? 'hasChildren' : ''}`}
-          onClick={() => hasChildren && toggleSetItem(setExpandedAccounts, id)} aria-expanded={hasChildren ? expanded : undefined}>
-          <span className={`hierarchyChevron ${expanded ? 'expanded' : ''}`} aria-hidden="true">{hasChildren ? '›' : '•'}</span>
-          <span className="accountTreeIdentity"><strong>{node.account.name}</strong><span>{node.account.account_type || 'Счёт'}{hasChildren ? ` · ${node.children.length}` : ` · ${accountCurrency}`}</span></span>
-          <strong className="accountTreeAmount sensitive">{displayedAmount}</strong>
-        </button>
+        <div className={`hierarchyToggle accountTreeRow ${hasChildren ? 'hasChildren' : ''}`}>
+          <button
+            type="button"
+            className={`hierarchyChevron ${expanded ? 'expanded' : ''}`}
+            onClick={() => hasChildren ? toggleSetItem(setExpandedAccounts, id) : openExplorer(node.account.id)}
+            aria-label={hasChildren ? (expanded ? 'Свернуть счёт' : 'Раскрыть счёт') : 'Открыть счёт'}
+            aria-expanded={hasChildren ? expanded : undefined}
+          >
+            {hasChildren ? '›' : '•'}
+          </button>
+          <button type="button" className="homeAccountOpenTarget" onClick={() => openExplorer(node.account.id)}>
+            <span className="accountTreeIdentity"><strong>{node.account.name}</strong><span>{node.account.account_type || 'Счёт'}{hasChildren ? ` · ${node.children.length}` : ` · ${accountCurrency}`}</span></span>
+            <strong className="accountTreeAmount sensitive">{displayedAmount}</strong>
+          </button>
+        </div>
         {hasChildren && expanded && <div className="accountTreeChildren">{node.children.map((child) => renderAccountNode(child, depth + 1))}</div>}
       </div>
     )
@@ -291,8 +272,8 @@ function App() {
           accounts={accounts}
           baseCurrency={baseCurrency}
           privacy={privacy}
+          onPrivacyToggle={() => setPrivacy((value) => !value)}
           initialAccountId={explorerAccountId}
-          onBack={() => setActiveScreen('home')}
         />
         <LabBottomNavigation items={navigationItemsWithHandlers} activeId="accounts" />
       </main>
