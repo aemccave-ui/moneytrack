@@ -215,16 +215,31 @@ function LeafOperations({ node, dateFrom, dateTo, baseCurrency, privacy }) {
 
   return (
     <div className="explorerLeafOperations">
-      <BalanceHero
-        className="accountOperationsHero"
-        label=""
-        result={summary.result}
-        income={summary.income}
-        expense={summary.expense}
-        privacy={privacy}
-        baseCurrency={currency}
-        money={money}
-      />
+      <div
+        className="accountPeriodSummary"
+        aria-label="Обороты счета за выбранный период"
+      >
+        <div className="accountPeriodMetric resultMetric">
+          <span>Сальдо</span>
+          <strong className="sensitive">
+            {privacy ? '••••••' : money(summary.result, currency)}
+          </strong>
+        </div>
+
+        <div className="accountPeriodMetric incomeMetric">
+          <span>Доход</span>
+          <strong className="sensitive">
+            {privacy ? '••••••' : money(summary.income, currency)}
+          </strong>
+        </div>
+
+        <div className="accountPeriodMetric expenseMetric">
+          <span>Расход</span>
+          <strong className="sensitive">
+            {privacy ? '••••••' : money(summary.expense, currency)}
+          </strong>
+        </div>
+      </div>
 
       <RecentOperations
         groups={groups}

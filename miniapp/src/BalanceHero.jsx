@@ -12,6 +12,17 @@ export function BalanceHero({
     ? '••••••'
     : money(value, baseCurrency)
 
+  const resultText = hidden(result)
+  const incomeText = hidden(income)
+  const expenseText = hidden(expense)
+
+  const sizeClass = (value) => {
+    const length = String(value || '').length
+    if (length >= 15) return 'isVeryLong'
+    if (length >= 11) return 'isLong'
+    return ''
+  }
+
   return (
     <section
       className={`hero compactHero ${className}`.trim()}
@@ -25,28 +36,28 @@ export function BalanceHero({
       <div className="heroMetricRow">
         <div className="heroMetric resultMetric">
           <span>Сальдо</span>
-          <strong className="sensitive">
-            {hidden(result)}
+          <strong
+            className={`sensitive ${sizeClass(resultText)}`.trim()}
+          >
+            {resultText}
           </strong>
         </div>
 
         <div className="heroMetric incomeMetric">
-          <span>
-            <span className="glyph" aria-hidden="true">↑</span>
-            Доход
-          </span>
-          <strong className="sensitive">
-            {hidden(income)}
+          <span>Доход</span>
+          <strong
+            className={`sensitive ${sizeClass(incomeText)}`.trim()}
+          >
+            {incomeText}
           </strong>
         </div>
 
         <div className="heroMetric expenseMetric">
-          <span>
-            <span className="glyph" aria-hidden="true">↓</span>
-            Расход
-          </span>
-          <strong className="sensitive">
-            {hidden(expense)}
+          <span>Расход</span>
+          <strong
+            className={`sensitive ${sizeClass(expenseText)}`.trim()}
+          >
+            {expenseText}
           </strong>
         </div>
       </div>
