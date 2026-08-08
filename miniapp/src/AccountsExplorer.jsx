@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getAccountsExplorerSummary, getTransactions } from './api.js'
 import { RecentOperations } from './RecentOperations.jsx'
+import { AccountTree } from './AccountTree.jsx'
 
 const parentAccountId = (account) => account.parent_account_id
   ?? account.parent_id
@@ -254,45 +255,6 @@ export default function AccountsExplorer({
     })
   }
 
-  const renderNode = (node, depth = 0) => {
-    const rawId = node.account.id ?? node.account.account_id
-    const id = String(rawId)
-    const hasChildren = node.children.length > 0
-    const isExpanded = expanded.has(id)
-    const isExcluded = !hasChildren && excluded.has(id)
-    const operationsOpen = !hasChildren && openLeaves.has(id) && !isExcluded
-    const accountCurrency = String(node.account.currency_code || baseCurrency).toUpperCase()
-    const displayedAmount = hasChildren
-      ? money(node.totalBase, baseCurrency)
-      : money(node.account.balance_original ?? node.account.balance_base, accountCurrency)
-
-    return (
-      <div className={`accountTreeNode explorerTreeNode ${isExcluded ? 'isExcluded' : ''}`} key={id} style={{ '--account-depth': depth }} data-depth={depth}>
-        <div className="hierarchyToggle accountTreeRow explorerHomeTreeRow">
-          {hasChildren ? (
-            <button type="button" className={`hierarchyChevron explorerNodeControl ${isExpanded ? 'expanded' : ''}`} onClick={() => toggleParent(id)} aria-label={isExpanded ? 'Свернуть счёт' : 'Раскрыть счёт'} aria-expanded={isExpanded}>›</button>
-          ) : (
-            <button type="button" className={`hierarchyChevron currencyAccountMarker explorerNodeControl explorerCheck ${isExcluded ? 'isOff' : 'isOn'}`} onClick={() => toggleIncluded(id)} aria-label={isExcluded ? 'Включить счёт в баланс' : 'Исключить счёт из баланса'} aria-pressed={!isExcluded}>•</button>
-          )}
-          <button type="button" className="explorerNodeBody" onClick={() => hasChildren ? toggleParent(id) : toggleLeafOperations(id)}>
-            <span className="accountTreeIdentity"><strong>{node.account.name}</strong><span>{node.account.account_type || 'Счёт'}{hasChildren ? ` · ${node.children.length}` : ` · ${accountCurrency}`}</span></span>
-            <strong className="accountTreeAmount sensitive">{privacy ? '••••••' : displayedAmount}</strong>
-          </button>
-        </div>
-        {hasChildren && isExpanded && <div className="accountTreeChildren">{node.children.map((child) => renderNode(child, depth + 1))}</div>}
-        {operationsOpen && (
-          <LeafOperations
-            node={node}
-            dateFrom={resolvedPeriod.dateFrom}
-            dateTo={resolvedPeriod.dateTo}
-            baseCurrency={baseCurrency}
-            privacy={privacy}
-          />
-        )}
-      </div>
-    )
-  }
-
   const displayedTotal = aggregate?.total_base
   const displayCurrency = aggregate?.base_currency || baseCurrency
 
@@ -328,9 +290,35 @@ export default function AccountsExplorer({
 
       <section className="section accountsSection compactSectionStart explorerAccountsSection">
         <div className="sectionHeader accountsSectionHeader"><h2>Баланс по счетам</h2></div>
-        {hierarchy.length
-          ? <div className="accountTree explorerAccountTree">{hierarchy.map((node) => renderNode(node))}</div>
-          : <div className="emptyCard">Счета пока не созданы</div>}
+        {hierarchy.length ? (
+          <AccountTree
+            hierarchy={hierarchy}
+            expanded={expanded}
+            baseCurrency={baseCurrency}
+            privacy={privacy}
+            money={money}
+            excluded={excluded}
+            onToggleParent={(id) => toggleParent(id)}
+            onToggleLeafIncluded={(id) => toggleIncluded(id)}
+            onNodeBody={(node, hasChildren) => {
+              const id = String(node.account.id ?? node.account.account_id)
+              if (hasChildren) toggleParent(id)
+              else toggleLeafOperations(id)
+            }}
+            className="explorerAccountTree"
+            renderAfterNode={(node, { id, hasChildren, isExcluded }) => (
+              !hasChildren && openLeaves.has(id) && !isExcluded ? (
+                <LeafOperations
+                  node={node}
+                  dateFrom={resolvedPeriod.dateFrom}
+                  dateTo={resolvedPeriod.dateTo}
+                  baseCurrency={baseCurrency}
+                  privacy={privacy}
+                />
+              ) : null
+            )}
+          />
+        ) : <div className="emptyCard">Счета пока не созданы</div>}
       </section>
 
       <div className="historyPlaceholder" aria-hidden="true">Место для истории баланса</div>
