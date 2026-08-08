@@ -241,7 +241,6 @@ function App() {
       <main className={`app ${privacy ? 'privacy' : ''}`}>
         <AccountsExplorer
           accounts={accounts}
-          dashboard={dashboard}
           baseCurrency={baseCurrency}
           privacy={privacy}
           onPrivacyToggle={() => setPrivacy((value) => !value)}

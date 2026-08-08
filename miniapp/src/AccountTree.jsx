@@ -100,9 +100,16 @@ export function AccountTree({
       </span>
     )
 
+    const afterNode = renderAfterNode?.(node, {
+      id,
+      hasChildren,
+      isExcluded,
+      isExpanded,
+    })
+
     return (
       <div
-        className={`accountTreeNode ${isExcluded ? 'explorerTreeNode isExcluded' : ''}`}
+        className={`accountTreeNode ${isExcluded ? 'explorerTreeNode isExcluded' : ''} ${afterNode ? 'hasDetails' : ''}`}
         key={id}
         style={{ '--account-depth': depth }}
         data-depth={depth}
@@ -152,12 +159,7 @@ export function AccountTree({
           </div>
         )}
 
-        {renderAfterNode?.(node, {
-          id,
-          hasChildren,
-          isExcluded,
-          isExpanded,
-        })}
+        {afterNode}
       </div>
     )
   }

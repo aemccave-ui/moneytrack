@@ -583,3 +583,114 @@
   display: none !important;
   order: initial !important;
 }
+
+/* =========================================================
+   UX-022 — canonical Home parity + unified leaf card
+   ========================================================= */
+
+/*
+ * Direct BalanceHero on Accounts uses exactly the same
+ * .hero.compactHero visual system as Home.
+ */
+.accountsExplorer > .hero.compactHero {
+  order: 20 !important;
+}
+
+/*
+ * Explicit screen order:
+ * balance -> hero -> period selector -> range -> accounts.
+ */
+.accountsExplorer > .balanceHeader {
+  order: 10 !important;
+}
+
+.accountsExplorer > .periodTabs {
+  order: 30 !important;
+}
+
+.accountsExplorer > .dateRange {
+  order: 40 !important;
+}
+
+.accountsExplorer > .explorerInlineError {
+  order: 45 !important;
+}
+
+.accountsExplorer > .explorerAccountsSection {
+  order: 50 !important;
+}
+
+
+/* =========================================================
+   Expanded leaf = ONE account card.
+   ========================================================= */
+
+.explorerAccountTree .accountTreeNode.hasDetails {
+  overflow: hidden;
+  border-radius: 18px;
+  background: rgba(255,255,255,.88);
+}
+
+.explorerAccountTree
+  .accountTreeNode.hasDetails
+  > .accountTreeRow {
+  margin: 0;
+  border-radius: 18px 18px 0 0;
+  background: transparent;
+}
+
+.explorerAccountTree
+  .accountTreeNode.hasDetails
+  > .explorerLeafOperations {
+  margin: 0;
+  padding-top: 4px;
+  padding-bottom: 12px;
+  background: transparent;
+}
+
+/*
+ * Mini hero is an internal section of the same account card,
+ * not a second floating card.
+ */
+.explorerAccountTree
+  .accountTreeNode.hasDetails
+  .accountOperationsHero {
+  margin: 4px 10px 8px 0;
+  box-shadow: none;
+}
+
+/*
+ * Operations continue inside the same card.
+ */
+.explorerAccountTree
+  .accountTreeNode.hasDetails
+  .transactionsSection {
+  margin: 0;
+}
+
+.explorerAccountTree
+  .accountTreeNode.hasDetails
+  .transactionPanel {
+  border: 0;
+  border-radius: 0 0 14px 14px;
+  background: transparent;
+  box-shadow: none;
+}
+
+/*
+ * Do not add another white rounded shell for the empty state.
+ */
+.explorerAccountTree
+  .accountTreeNode.hasDetails
+  .transactionPanel
+  .emptyCard {
+  margin: 0;
+  border: 0;
+  box-shadow: none;
+}
+
+
+/*
+ * Retired light Accounts hero selectors are left harmless:
+ * no component carries accountsOverviewHero anymore.
+ */

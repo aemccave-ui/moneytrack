@@ -218,7 +218,7 @@ function LeafOperations({ node, dateFrom, dateTo, baseCurrency, privacy }) {
       <BalanceHero
         className="accountOperationsHero"
         label=""
-        result={Number(summary.income || 0) - Number(summary.expense || 0)}
+        result={summary.result}
         income={summary.income}
         expense={summary.expense}
         privacy={privacy}
@@ -243,7 +243,6 @@ function LeafOperations({ node, dateFrom, dateTo, baseCurrency, privacy }) {
 
 export default function AccountsExplorer({
   accounts,
-  dashboard,
   baseCurrency,
   privacy,
   onPrivacyToggle,
@@ -290,13 +289,25 @@ export default function AccountsExplorer({
   const resolvedPeriod = periodDates(period, dateFrom, dateTo)
   const invalidRange = resolvedPeriod.dateFrom > resolvedPeriod.dateTo
   const excludedIds = useMemo(() => [...excluded].sort((a, b) => Number(a) - Number(b)), [excluded])
-  const aggregateKey = excludedIds.join(',')
+  const aggregateKey = [
+    excludedIds.join(','),
+    resolvedPeriod.dateFrom,
+    resolvedPeriod.dateTo,
+  ].join('|')
+
   const aggregate = aggregateState.key === aggregateKey ? aggregateState.payload : null
   const aggregateError = aggregateState.key === aggregateKey ? aggregateState.error : ''
 
   useEffect(() => {
     const controller = new AbortController()
-    getAccountsExplorerSummary(excludedIds, controller.signal)
+    if (invalidRange) return () => controller.abort()
+
+    getAccountsExplorerSummary(
+      excludedIds,
+      resolvedPeriod.dateFrom,
+      resolvedPeriod.dateTo,
+      controller.signal,
+    )
       .then((result) => setAggregateState({ key: aggregateKey, payload: result, error: '' }))
       .catch((reason) => {
         if (reason?.name !== 'AbortError') {
@@ -304,7 +315,13 @@ export default function AccountsExplorer({
         }
       })
     return () => controller.abort()
-  }, [aggregateKey, excludedIds])
+  }, [
+    aggregateKey,
+    excludedIds,
+    invalidRange,
+    resolvedPeriod.dateFrom,
+    resolvedPeriod.dateTo,
+  ])
 
   const toggleParent = (id) => setExpanded((current) => {
     const next = new Set(current)
@@ -341,7 +358,6 @@ export default function AccountsExplorer({
 
   const displayedTotal = aggregate?.total_base
   const displayCurrency = aggregate?.base_currency || baseCurrency
-  const dashboardSummary = dashboard?.summary || {}
 
   return (
     <section className="accountsExplorer">
@@ -359,17 +375,16 @@ export default function AccountsExplorer({
       {aggregateError && <div className="explorerInlineError" role="alert">{aggregateError}</div>}
 
       <BalanceHero
-        className="accountsOverviewHero"
         label={selectedPeriodLabel(
           period,
           resolvedPeriod.dateFrom,
           resolvedPeriod.dateTo,
         )}
-        result={dashboardSummary.result_month}
-        income={dashboardSummary.income_month}
-        expense={dashboardSummary.expenses_month}
+        result={aggregate?.period_summary?.result}
+        income={aggregate?.period_summary?.income}
+        expense={aggregate?.period_summary?.expense}
         privacy={privacy}
-        baseCurrency={baseCurrency}
+        baseCurrency={displayCurrency}
         money={money}
       />
 

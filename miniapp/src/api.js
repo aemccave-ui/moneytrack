@@ -91,9 +91,20 @@ export function getTransactions(
   return request(`api/v1/transactions?${params.toString()}`, signal)
 }
 
-export function getAccountsExplorerSummary(excludedAccountIds = [], signal) {
-  const params = new URLSearchParams()
-  if (excludedAccountIds.length) params.set('excluded_account_ids', excludedAccountIds.join(','))
-  const query = params.toString()
-  return request(`api/v1/accounts-explorer-summary${query ? `?${query}` : ''}`, signal)
+export function getAccountsExplorerSummary(
+  excludedAccountIds = [],
+  dateFrom,
+  dateTo,
+  signal,
+) {
+  const params = new URLSearchParams({
+    date_from: dateFrom,
+    date_to: dateTo,
+  })
+
+  if (excludedAccountIds.length) {
+    params.set('excluded_account_ids', excludedAccountIds.join(','))
+  }
+
+  return request(`api/v1/accounts-explorer-summary?${params.toString()}`, signal)
 }
