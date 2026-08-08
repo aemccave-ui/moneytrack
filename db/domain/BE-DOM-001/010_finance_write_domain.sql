@@ -109,6 +109,17 @@ begin
             v_account_currency, upper(p_currency_original) using errcode = '22023';
     end if;
 
+    -- Category ids are user-scoped. A plain FK proves only existence, not ownership.
+    -- The writer therefore rejects categories owned by another user as well as unknown ids.
+    if p_category_id is not null and not exists (
+        select 1
+          from moneytrack.category_catalog c
+         where c.id = p_category_id
+           and c.user_id = p_user_id
+    ) then
+        raise exception 'CATEGORY_NOT_FOUND_OR_NOT_OWNED' using errcode = 'P0002';
+    end if;
+
     -- Idempotent replay is valid only when the repeated request represents the
     -- same financial posting. Reuse of a key for a different posting is rejected.
     if p_source_type is not null then
@@ -228,6 +239,6 @@ end;
 $function$;
 
 comment on function moneytrack.finance_create_transaction_v1(bigint,bigint,text,numeric,text,text,timestamptz,text,bigint,bigint)
-is 'BE-DOM-001 canonical transaction writer. Enforces account ownership, transaction/amount/currency invariants, backend base valuation, opening-balance uniqueness and source idempotency.';
+is 'BE-DOM-001 canonical transaction writer. Enforces account/category ownership, transaction/amount/currency invariants, backend base valuation, opening-balance uniqueness and source idempotency.';
 
 commit;
