@@ -270,7 +270,7 @@ function App() {
 
       <section className="section accountsSection compactSectionStart">
         <div className="sectionHeader accountsSectionHeader"><h2>Баланс по счетам</h2></div>
-        {primaryAccount && <button type="button" className="primaryAccountCard" onClick={() => openExplorer(primaryAccount.account.id)}><div><span>Основной счёт · {baseCurrency}</span><strong>{primaryAccount.account.name}</strong></div><strong className="sensitive">{hidden(primaryAccount.amountBase, baseCurrency)}</strong></button>}
+        {primaryAccount && <article className="primaryAccountCard"><div><span>Основной счёт · {baseCurrency}</span><strong>{primaryAccount.account.name}</strong></div><strong className="sensitive">{hidden(primaryAccount.amountBase, baseCurrency)}</strong></article>}
         {accountHierarchy.length ? <div className="accountDistribution">
           <button type="button" className="accountStackButton compactStackButton" onClick={() => setAccountBreakdownOpen((value) => !value)} aria-expanded={accountBreakdownOpen} aria-controls="account-breakdown">
             <span className={`hierarchyChevron ${accountBreakdownOpen ? 'expanded' : ''}`} aria-hidden="true">›</span>
@@ -284,7 +284,12 @@ function App() {
               privacy={privacy}
               money={money}
               onToggleParent={(id) => toggleSetItem(setExpandedAccounts, id)}
-              onNodeBody={(node) => openExplorer(node.account.id ?? node.account.account_id)}
+              isNodeBodyInteractive={(_node, { hasChildren }) => hasChildren}
+              onNodeBody={(node, hasChildren) => {
+                if (!hasChildren) return
+                const id = String(node.account.id ?? node.account.account_id)
+                toggleSetItem(setExpandedAccounts, id)
+              }}
             />
           )}
         </div> : <div className="emptyCard">Нет счетов с остатком от 1</div>}

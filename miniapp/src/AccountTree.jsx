@@ -1,3 +1,9 @@
+function subtreeFullyExcluded(node, excluded) {
+  const id = String(node.account.id ?? node.account.account_id)
+  if (!node.children.length) return excluded.has(id)
+  return node.children.every((child) => subtreeFullyExcluded(child, excluded))
+}
+
 export function AccountTree({
   hierarchy,
   expanded,
@@ -6,6 +12,7 @@ export function AccountTree({
   money,
   onToggleParent,
   onNodeBody,
+  isNodeBodyInteractive,
   excluded = new Set(),
   onToggleLeafIncluded,
   renderAfterNode,
@@ -17,34 +24,80 @@ export function AccountTree({
     const id = String(rawId)
     const hasChildren = node.children.length > 0
     const isExpanded = expanded.has(id)
-    const isExcluded = !hasChildren && excluded.has(id)
-    const accountCurrency = String(node.account.currency_code || baseCurrency).toUpperCase()
+
+    const isExcluded = hasChildren
+      ? subtreeFullyExcluded(node, excluded)
+      : excluded.has(id)
+
+    const accountCurrency = String(
+      node.account.currency_code || baseCurrency
+    ).toUpperCase()
+
     const defaultAmount = hasChildren
       ? money(node.totalBase, baseCurrency)
-      : money(node.account.balance_original ?? node.account.balance_base, accountCurrency)
+      : money(
+          node.account.balance_original ?? node.account.balance_base,
+          accountCurrency,
+        )
+
     const displayedAmount = resolveNodeAmount
-      ? resolveNodeAmount(node, { id, hasChildren, isExcluded, accountCurrency, defaultAmount })
+      ? resolveNodeAmount(node, {
+          id,
+          hasChildren,
+          isExcluded,
+          accountCurrency,
+          defaultAmount,
+        })
       : defaultAmount
+
+    const bodyInteractive = isNodeBodyInteractive
+      ? Boolean(isNodeBodyInteractive(node, {
+          id,
+          hasChildren,
+          isExcluded,
+          isExpanded,
+        }))
+      : Boolean(onNodeBody)
+
+    const identity = (
+      <>
+        <span className="accountTreeIdentity">
+          <strong>{node.account.name}</strong>
+          <span>
+            {node.account.account_type || 'Счёт'}
+            {hasChildren
+              ? ` · ${node.children.length}`
+              : ` · ${accountCurrency}`}
+          </span>
+        </span>
+
+        <strong className="accountTreeAmount sensitive">
+          {privacy ? '••••••' : displayedAmount}
+        </strong>
+      </>
+    )
 
     const leafControl = onToggleLeafIncluded ? (
       <button
         type="button"
         className={`accountSelectionControl ${isExcluded ? 'isOff' : 'isOn'}`}
         onClick={() => onToggleLeafIncluded(id, node)}
-        aria-label={isExcluded ? 'Включить счёт в баланс' : 'Исключить счёт из баланса'}
+        aria-label={
+          isExcluded
+            ? 'Включить счёт в баланс'
+            : 'Исключить счёт из баланса'
+        }
         aria-pressed={!isExcluded}
       >
         <span aria-hidden="true" />
       </button>
     ) : (
-      <button
-        type="button"
+      <span
         className="hierarchyChevron accountLeafMarker"
-        onClick={() => onNodeBody(node, false)}
-        aria-label="Открыть счёт"
+        aria-hidden="true"
       >
         •
-      </button>
+      </span>
     )
 
     return (
@@ -54,7 +107,9 @@ export function AccountTree({
         style={{ '--account-depth': depth }}
         data-depth={depth}
       >
-        <div className={`hierarchyToggle accountTreeRow ${hasChildren ? 'hasChildren' : ''}`}>
+        <div
+          className={`hierarchyToggle accountTreeRow ${hasChildren ? 'hasChildren' : ''}`}
+        >
           {hasChildren ? (
             <button
               type="button"
@@ -66,27 +121,41 @@ export function AccountTree({
               ›
             </button>
           ) : leafControl}
-          <button
-            type="button"
-            className="homeAccountOpenTarget"
-            onClick={() => onNodeBody(node, hasChildren)}
-          >
-            <span className="accountTreeIdentity">
-              <strong>{node.account.name}</strong>
-              <span>{node.account.account_type || 'Счёт'}{hasChildren ? ` · ${node.children.length}` : ` · ${accountCurrency}`}</span>
-            </span>
-            <strong className="accountTreeAmount sensitive">{privacy ? '••••••' : displayedAmount}</strong>
-          </button>
+
+          {bodyInteractive ? (
+            <button
+              type="button"
+              className="homeAccountOpenTarget"
+              onClick={() => onNodeBody?.(node, hasChildren)}
+            >
+              {identity}
+            </button>
+          ) : (
+            <div className="homeAccountOpenTarget">
+              {identity}
+            </div>
+          )}
         </div>
+
         {hasChildren && isExpanded && (
           <div className="accountTreeChildren">
             {node.children.map((child) => renderNode(child, depth + 1))}
           </div>
         )}
-        {renderAfterNode?.(node, { id, hasChildren, isExcluded, isExpanded })}
+
+        {renderAfterNode?.(node, {
+          id,
+          hasChildren,
+          isExcluded,
+          isExpanded,
+        })}
       </div>
     )
   }
 
-  return <div className={`accountTree ${className}`.trim()}>{hierarchy.map((node) => renderNode(node))}</div>
+  return (
+    <div className={`accountTree ${className}`.trim()}>
+      {hierarchy.map((node) => renderNode(node))}
+    </div>
+  )
 }

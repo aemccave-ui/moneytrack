@@ -73,11 +73,18 @@ function buildHierarchy(accounts, baseCurrency) {
     .sort((a, b) => Math.abs(b.totalBase) - Math.abs(a.totalBase))
 }
 
+function subtreeFullyExcluded(node, excluded) {
+  const id = String(node.account.id ?? node.account.account_id)
+  if (!node.children.length) return excluded.has(id)
+  return node.children.every((child) => subtreeFullyExcluded(child, excluded))
+}
+
 function includedSubtreeTotal(node, excluded, baseCurrency) {
   const id = String(node.account.id ?? node.account.account_id)
   const hasChildren = node.children.length > 0
 
   if (!hasChildren && excluded.has(id)) return 0
+  if (hasChildren && subtreeFullyExcluded(node, excluded)) return 0
 
   const currency = String(node.account.currency_code || baseCurrency).toUpperCase()
   const ownBase = Number(
@@ -324,6 +331,7 @@ export default function AccountsExplorer({
             excluded={excluded}
             onToggleParent={(id) => toggleParent(id)}
             onToggleLeafIncluded={(id) => toggleIncluded(id)}
+            isNodeBodyInteractive={() => true}
             onNodeBody={(node, hasChildren) => {
               const id = String(node.account.id ?? node.account.account_id)
               if (hasChildren) toggleParent(id)
