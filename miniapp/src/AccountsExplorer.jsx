@@ -73,6 +73,25 @@ function buildHierarchy(accounts, baseCurrency) {
     .sort((a, b) => Math.abs(b.totalBase) - Math.abs(a.totalBase))
 }
 
+function includedSubtreeTotal(node, excluded, baseCurrency) {
+  const id = String(node.account.id ?? node.account.account_id)
+  const hasChildren = node.children.length > 0
+
+  if (!hasChildren && excluded.has(id)) return 0
+
+  const currency = String(node.account.currency_code || baseCurrency).toUpperCase()
+  const ownBase = Number(
+    node.account.balance_base
+    ?? (currency === baseCurrency ? node.account.balance_original : 0)
+    ?? 0,
+  )
+
+  return ownBase + node.children.reduce(
+    (sum, child) => sum + includedSubtreeTotal(child, excluded, baseCurrency),
+    0,
+  )
+}
+
 function periodDates(period, dateFrom, dateTo) {
   const today = new Date()
   if (period === 'range') return { dateFrom, dateTo }
@@ -190,10 +209,11 @@ export default function AccountsExplorer({
   const [openLeaves, setOpenLeaves] = useState(() => new Set(initialNode && !initialNode.children.length ? [String(initialNode.account.id ?? initialNode.account.account_id)] : []))
   const [excluded, setExcluded] = useState(() => {
     try {
-      return new Set(JSON.parse(localStorage.getItem('moneytrack.accountsExplorer.excluded') || '[]').map(String))
+      localStorage.removeItem('moneytrack.accountsExplorer.excluded')
     } catch {
-      return new Set()
+      // Storage may be unavailable in restricted WebView contexts.
     }
+    return new Set()
   })
   const [period, setPeriod] = useState('month')
   const today = new Date()
@@ -244,7 +264,6 @@ export default function AccountsExplorer({
       const next = new Set(current)
       if (next.has(id)) next.delete(id)
       else next.add(id)
-      localStorage.setItem('moneytrack.accountsExplorer.excluded', JSON.stringify([...next]))
       return next
     })
     setOpenLeaves((current) => {
@@ -297,6 +316,11 @@ export default function AccountsExplorer({
             baseCurrency={baseCurrency}
             privacy={privacy}
             money={money}
+            resolveNodeAmount={(node, { hasChildren, defaultAmount }) => (
+              hasChildren
+                ? money(includedSubtreeTotal(node, excluded, baseCurrency), baseCurrency)
+                : defaultAmount
+            )}
             excluded={excluded}
             onToggleParent={(id) => toggleParent(id)}
             onToggleLeafIncluded={(id) => toggleIncluded(id)}
