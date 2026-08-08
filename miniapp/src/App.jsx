@@ -3,6 +3,7 @@ import { LabBottomNavigation } from '../packages/lab-design-system/navigation.js
 import { getAccounts, getDashboard } from './api.js'
 import { RecentOperations } from './RecentOperations.jsx'
 import AccountsExplorer from './AccountsExplorer.jsx'
+import { AccountTree } from './AccountTree.jsx'
 
 const money = (value, currency = 'EUR') => new Intl.NumberFormat('ru-RU', {
   style: 'currency', currency, maximumFractionDigits: 0,
@@ -232,37 +233,6 @@ function App() {
     return item
   })
 
-  const renderAccountNode = (node, depth = 0) => {
-    const id = String(node.account.id)
-    const hasChildren = node.children.length > 0
-    const expanded = expandedAccounts.has(id)
-    const accountCurrency = node.account.currency_code || baseCurrency
-    const displayedAmount = hasChildren
-      ? hidden(node.totalBase, baseCurrency)
-      : hidden(node.account.balance_original ?? node.account.balance_base, accountCurrency)
-
-    return (
-      <div className="accountTreeNode" key={id} style={{ '--account-depth': depth }} data-depth={depth}>
-        <div className={`hierarchyToggle accountTreeRow ${hasChildren ? 'hasChildren' : ''}`}>
-          <button
-            type="button"
-            className={`hierarchyChevron ${expanded ? 'expanded' : ''}`}
-            onClick={() => hasChildren ? toggleSetItem(setExpandedAccounts, id) : openExplorer(node.account.id)}
-            aria-label={hasChildren ? (expanded ? 'Свернуть счёт' : 'Раскрыть счёт') : 'Открыть счёт'}
-            aria-expanded={hasChildren ? expanded : undefined}
-          >
-            {hasChildren ? '›' : '•'}
-          </button>
-          <button type="button" className="homeAccountOpenTarget" onClick={() => openExplorer(node.account.id)}>
-            <span className="accountTreeIdentity"><strong>{node.account.name}</strong><span>{node.account.account_type || 'Счёт'}{hasChildren ? ` · ${node.children.length}` : ` · ${accountCurrency}`}</span></span>
-            <strong className="accountTreeAmount sensitive">{displayedAmount}</strong>
-          </button>
-        </div>
-        {hasChildren && expanded && <div className="accountTreeChildren">{node.children.map((child) => renderAccountNode(child, depth + 1))}</div>}
-      </div>
-    )
-  }
-
   if (!dashboard && !error) return <main className="app loadingState" aria-busy="true"><div className="skeleton topSkeleton"/><div className="skeleton heroSkeleton"/><div className="skeleton cardSkeleton"/></main>
 
   if (activeScreen === 'accounts') {
@@ -306,7 +276,17 @@ function App() {
             <span className={`hierarchyChevron ${accountBreakdownOpen ? 'expanded' : ''}`} aria-hidden="true">›</span>
             <span className="accountStackContent"><span className="accountStackBar" aria-label="Распределение баланса по счетам">{accountHierarchy.map((node, index) => { const width = accountDistributionTotal > 0 ? Math.abs(node.totalBase) / accountDistributionTotal * 100 : 100 / accountHierarchy.length; return <i key={node.account.id} className="accountStackSegment" style={{ width: `${width}%`, background: segmentColors[index % segmentColors.length] }} /> })}</span><span ref={accountCaptionMetaRef} className="accountStackMeta" title={accountCaption}><span ref={accountCaptionRef} className="accountStackNames">{accountCaption}</span>{accountCaptionOverflow && <span className="stackCount">({accountHierarchy.length})</span>}</span></span>
           </button>
-          {accountBreakdownOpen && <div className="accountTree" id="account-breakdown">{accountHierarchy.map((node) => renderAccountNode(node))}</div>}
+          {accountBreakdownOpen && (
+            <AccountTree
+              hierarchy={accountHierarchy}
+              expanded={expandedAccounts}
+              baseCurrency={baseCurrency}
+              privacy={privacy}
+              money={money}
+              onToggleParent={(id) => toggleSetItem(setExpandedAccounts, id)}
+              onNodeBody={(node) => openExplorer(node.account.id ?? node.account.account_id)}
+            />
+          )}
         </div> : <div className="emptyCard">Нет счетов с остатком от 1</div>}
       </section>
 
