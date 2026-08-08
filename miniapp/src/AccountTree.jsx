@@ -113,12 +113,21 @@ export function AccountTree({
           {hasChildren ? (
             <button
               type="button"
-              className={`hierarchyChevron ${isExpanded ? 'expanded' : ''}`}
+              className={`accountDisclosureControl ${isExpanded ? 'expanded' : ''}`}
               onClick={() => onToggleParent(id, node)}
               aria-label={isExpanded ? 'Свернуть счёт' : 'Раскрыть счёт'}
               aria-expanded={isExpanded}
             >
-              ›
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M9 6l6 6-6 6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </button>
           ) : leafControl}
 

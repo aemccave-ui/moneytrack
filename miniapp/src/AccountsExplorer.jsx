@@ -299,19 +299,40 @@ export default function AccountsExplorer({
 
       {aggregateError && <div className="explorerInlineError" role="alert">{aggregateError}</div>}
 
-      <div className="periodTabs" role="group" aria-label="Период операций">
-        <button type="button" className={period === 'week' ? 'isActive' : ''} onClick={() => setPeriod('week')}>Неделя</button>
-        <button type="button" className={period === 'month' ? 'isActive' : ''} onClick={() => setPeriod('month')}>Месяц</button>
-        <button type="button" className={period === 'range' ? 'isActive' : ''} onClick={() => setPeriod('range')}>Диапазон</button>
-      </div>
+      <section className="hero compactHero explorerPeriodHero" aria-label="Период операций">
+        <div className="heroOrb heroOrbOne" />
+        <div className="heroOrb heroOrbTwo" />
 
-      {period === 'range' && (
-        <div className="dateRange">
-          <input aria-label="Дата начала" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
-          <span>—</span>
-          <input aria-label="Дата окончания" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+        <div className="explorerHeroHeading">
+          <span className="heroMonth">Операции</span>
+          <strong>
+            {period === 'week'
+              ? 'Неделя'
+              : period === 'month'
+                ? 'Текущий месяц'
+                : 'Выбранный диапазон'}
+          </strong>
         </div>
-      )}
+
+        <div className="periodTabs" role="group" aria-label="Период операций">
+          <button type="button" className={period === 'week' ? 'isActive' : ''} onClick={() => setPeriod('week')}>Неделя</button>
+          <button type="button" className={period === 'month' ? 'isActive' : ''} onClick={() => setPeriod('month')}>Месяц</button>
+          <button type="button" className={period === 'range' ? 'isActive' : ''} onClick={() => setPeriod('range')}>Диапазон</button>
+        </div>
+
+        {period === 'range' && (
+          <div className="dateRange">
+            <input aria-label="Дата начала" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+            <span>—</span>
+            <input aria-label="Дата окончания" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+          </div>
+        )}
+
+        <div className="historyPlaceholder" aria-hidden="true">
+          Место для истории баланса
+        </div>
+      </section>
+
       {invalidRange && <div className="explorerInlineError" role="alert">Дата начала должна быть раньше даты окончания.</div>}
 
       <section className="section accountsSection compactSectionStart explorerAccountsSection">
@@ -353,7 +374,6 @@ export default function AccountsExplorer({
         ) : <div className="emptyCard">Счета пока не созданы</div>}
       </section>
 
-      <div className="historyPlaceholder" aria-hidden="true">Место для истории баланса</div>
     </section>
   )
 }

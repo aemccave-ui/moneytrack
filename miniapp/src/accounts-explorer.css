@@ -50,3 +50,277 @@
   .explorerLeafOperations .accountSummary article:nth-child(3) { border-left:0; border-top:1px solid rgba(22,63,67,.08); padding-top:7px; margin-top:4px; }
   .explorerLeafOperations .accountSummary article:nth-child(4) { border-top:1px solid rgba(22,63,67,.08); padding-top:7px; margin-top:4px; }
 }
+
+
+/* =========================================================
+   UX-022 visual composition
+   ========================================================= */
+
+/*
+ * The balance/date block is always the first content block.
+ * Explicit ordering avoids accidental displacement by future
+ * Explorer widgets.
+ */
+.accountsExplorer {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.accountsExplorer > .balanceHeader {
+  order: 1;
+  margin: 0;
+}
+
+.accountsExplorer > .explorerInlineError {
+  order: 2;
+}
+
+.accountsExplorer > .explorerPeriodHero {
+  order: 3;
+}
+
+.accountsExplorer > .explorerAccountsSection {
+  order: 4;
+}
+
+
+/* =========================================================
+   Period hero — same visual family as Home hero
+   ========================================================= */
+
+.explorerPeriodHero {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  gap: 12px;
+  min-height: 0;
+  padding: 16px;
+  border-radius: 24px;
+}
+
+.explorerPeriodHero .heroOrb {
+  pointer-events: none;
+}
+
+.explorerHeroHeading {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.explorerHeroHeading > strong {
+  color: rgba(255,255,255,.96);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.explorerPeriodHero .heroMonth {
+  color: rgba(255,255,255,.74);
+}
+
+.explorerPeriodHero .periodTabs {
+  position: relative;
+  z-index: 1;
+  padding: 4px;
+  background: rgba(255,255,255,.15);
+  box-shadow: none;
+  backdrop-filter: blur(8px);
+}
+
+.explorerPeriodHero .periodTabs button {
+  color: rgba(255,255,255,.72);
+}
+
+.explorerPeriodHero .periodTabs button.isActive {
+  background: rgba(255,255,255,.91);
+  color: var(--mt-teal-800);
+}
+
+.explorerPeriodHero .dateRange {
+  position: relative;
+  z-index: 1;
+}
+
+.explorerPeriodHero .dateRange input {
+  border-color: rgba(255,255,255,.22);
+  background: rgba(255,255,255,.91);
+}
+
+.explorerPeriodHero .dateRange span {
+  color: rgba(255,255,255,.65);
+}
+
+.explorerPeriodHero .historyPlaceholder {
+  position: relative;
+  z-index: 1;
+  min-height: 44px;
+  margin: 0;
+  border-color: rgba(255,255,255,.20);
+  background: rgba(255,255,255,.07);
+  color: rgba(255,255,255,.55);
+}
+
+
+/* =========================================================
+   Account disclosure
+   ========================================================= */
+
+.accountDisclosureControl {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(79,159,163,.11);
+  color: var(--mt-teal-700);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background var(--mt-transition),
+    color var(--mt-transition),
+    transform var(--mt-transition);
+}
+
+.accountDisclosureControl svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+  transform: rotate(0deg);
+  transition: transform var(--mt-transition);
+}
+
+.accountDisclosureControl.expanded svg {
+  transform: rotate(90deg);
+}
+
+.accountDisclosureControl:active {
+  transform: scale(.92);
+}
+
+.accountDisclosureControl:focus-visible {
+  outline: 2px solid rgba(79,159,163,.35);
+  outline-offset: 2px;
+}
+
+
+/* =========================================================
+   Operations summary mini-hero
+   ========================================================= */
+
+.explorerLeafOperations {
+  padding-top: 8px;
+}
+
+.explorerLeafOperations .accountSummary {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  gap: 0;
+  padding: 12px 8px;
+  border: 0;
+  border-radius: 18px;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(29,85,89,.98),
+      rgba(50,132,136,.92)
+    );
+  box-shadow: 0 8px 22px rgba(18,73,77,.12);
+}
+
+.explorerLeafOperations .accountSummary article {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  padding: 3px 9px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.explorerLeafOperations .accountSummary article + article {
+  border-left: 1px solid rgba(255,255,255,.16);
+}
+
+.explorerLeafOperations .accountSummary span {
+  color: rgba(255,255,255,.62);
+  font-size: 9px;
+}
+
+.explorerLeafOperations .accountSummary strong {
+  margin-top: 4px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.explorerLeafOperations .accountSummary article:nth-child(1) strong {
+  color: #75dda9;
+}
+
+.explorerLeafOperations .accountSummary article:nth-child(2) strong {
+  color: #ff8e91;
+}
+
+.explorerLeafOperations .transactionsSection {
+  margin-top: 8px;
+}
+
+.explorerLeafOperations .transactionsSection > .sectionHeader {
+  padding: 2px 8px 7px;
+  border: 0;
+  background: transparent;
+}
+
+.explorerLeafOperations .transactionsSection > .sectionHeader h2 {
+  font-size: 18px;
+}
+
+.explorerLeafOperations .transactionPanel {
+  border-radius: 18px;
+  background: rgba(246,250,250,.82);
+}
+
+
+/* =========================================================
+   Small screens
+   ========================================================= */
+
+@media (max-width:390px) {
+  .explorerPeriodHero {
+    padding: 14px;
+    border-radius: 22px;
+  }
+
+  .explorerLeafOperations .accountSummary {
+    grid-template-columns: repeat(4,minmax(0,1fr));
+    padding: 10px 5px;
+  }
+
+  .explorerLeafOperations .accountSummary article {
+    padding: 3px 5px;
+  }
+
+  .explorerLeafOperations .accountSummary article:nth-child(3),
+  .explorerLeafOperations .accountSummary article:nth-child(4) {
+    margin-top: 0;
+    padding-top: 3px;
+    border-top: 0;
+  }
+
+  .explorerLeafOperations .accountSummary article:nth-child(3) {
+    border-left: 1px solid rgba(255,255,255,.16);
+  }
+
+  .explorerLeafOperations .accountSummary strong {
+    font-size: 12px;
+  }
+}
