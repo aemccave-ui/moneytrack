@@ -1,7 +1,7 @@
 -- MoneyTrack — BE-DOM-001 — hard parity assertions
 --
 -- This file is intentionally read-only. Unlike 002_verify_finance_read_models.sql,
--- which prints diagnostics, this file raises an error on any parity mismatch.
+-- which prints diagnostics, this file raises a psql error on any parity mismatch.
 -- It is the machine gate used before n8n cutover.
 
 begin transaction read only;
@@ -81,13 +81,16 @@ comparison as (
         limit 1
     ) rt on true
 )
-select case
-    when not exists (
-        select 1 from comparison
-        where legacy_amount is distinct from extracted_amount
-    ) then 1
-    else 1 / 0
-end as assert_fx_parity;
+select not exists (
+    select 1 from comparison
+    where legacy_amount is distinct from extracted_amount
+) as fx_parity
+\gset
+
+\if :fx_parity
+\else
+  \error 'BE-DOM-001 assertion failed: FX parity mismatch'
+\endif
 
 -- ---------------------------------------------------------------------------
 -- Accounts read-model parity
@@ -187,10 +190,13 @@ comparison as (
     from legacy
     cross join extracted
 )
-select case
-    when coalesce((select parity from comparison), false) then 1
-    else 1 / 0
-end as assert_accounts_parity;
+select coalesce((select parity from comparison), false) as accounts_parity
+\gset
+
+\if :accounts_parity
+\else
+  \error 'BE-DOM-001 assertion failed: accounts read-model parity mismatch'
+\endif
 
 -- ---------------------------------------------------------------------------
 -- Dashboard summary + latest operations parity
@@ -370,9 +376,12 @@ comparison as (
     from legacy
     cross join extracted
 )
-select case
-    when coalesce((select parity from comparison), false) then 1
-    else 1 / 0
-end as assert_dashboard_parity;
+select coalesce((select parity from comparison), false) as dashboard_parity
+\gset
+
+\if :dashboard_parity
+\else
+  \error 'BE-DOM-001 assertion failed: dashboard read-model parity mismatch'
+\endif
 
 rollback;
