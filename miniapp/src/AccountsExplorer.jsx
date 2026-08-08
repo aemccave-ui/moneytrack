@@ -102,26 +102,29 @@ function labelDate(key) {
 }
 
 function LeafOperations({ node, dateFrom, dateTo, baseCurrency, privacy }) {
-  const [payload, setPayload] = useState(null)
-  const [error, setError] = useState('')
+  const accountId = String(node.account.id ?? node.account.account_id)
+  const [requestState, setRequestState] = useState({ key: '', payload: null, error: '' })
   const [reloadNonce, setReloadNonce] = useState(0)
+  const requestKey = `${accountId}:${dateFrom}:${dateTo}:${reloadNonce}`
+  const payload = requestState.key === requestKey ? requestState.payload : null
+  const error = requestState.key === requestKey ? requestState.error : ''
 
   useEffect(() => {
     const controller = new AbortController()
-    setPayload(null)
-    setError('')
     getTransactions({
-      accountId: node.account.id ?? node.account.account_id,
+      accountId,
       dateFrom,
       dateTo,
       includeDescendants: false,
     }, controller.signal)
-      .then(setPayload)
+      .then((result) => setRequestState({ key: requestKey, payload: result, error: '' }))
       .catch((reason) => {
-        if (reason?.name !== 'AbortError') setError(reason?.message || 'Не удалось загрузить операции')
+        if (reason?.name !== 'AbortError') {
+          setRequestState({ key: requestKey, payload: null, error: reason?.message || 'Не удалось загрузить операции' })
+        }
       })
     return () => controller.abort()
-  }, [node, dateFrom, dateTo, reloadNonce])
+  }, [accountId, dateFrom, dateTo, reloadNonce, requestKey])
 
   if (error) return <div className="explorerInlineError" role="alert">{error}</div>
   if (!payload) return <div className="explorerTransactionsLoading">Загрузка операций…</div>
@@ -174,11 +177,14 @@ export default function AccountsExplorer({
 
   const initialNode = allNodes.find((node) => String(node.account.id ?? node.account.account_id) === String(initialAccountId)) || null
   const [expanded, setExpanded] = useState(() => {
+    let stored
     try {
-      return new Set(JSON.parse(localStorage.getItem('moneytrack.accountsExplorer.expanded') || '[]').map(String))
+      stored = new Set(JSON.parse(localStorage.getItem('moneytrack.accountsExplorer.expanded') || '[]').map(String))
     } catch {
-      return new Set()
+      stored = new Set()
     }
+    if (initialNode?.children.length) stored.add(String(initialNode.account.id ?? initialNode.account.account_id))
+    return stored
   })
   const [openLeaves, setOpenLeaves] = useState(() => new Set(initialNode && !initialNode.children.length ? [String(initialNode.account.id ?? initialNode.account.account_id)] : []))
   const [excluded, setExcluded] = useState(() => {
@@ -193,34 +199,26 @@ export default function AccountsExplorer({
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
   const [dateFrom, setDateFrom] = useState(localDateKey(monthStart))
   const [dateTo, setDateTo] = useState(localDateKey(today))
-  const [aggregate, setAggregate] = useState(null)
-  const [aggregateError, setAggregateError] = useState('')
+  const [aggregateState, setAggregateState] = useState({ key: '', payload: null, error: '' })
 
   const resolvedPeriod = periodDates(period, dateFrom, dateTo)
   const invalidRange = resolvedPeriod.dateFrom > resolvedPeriod.dateTo
-
-  useEffect(() => {
-    if (!initialNode) return
-    const id = String(initialNode.account.id ?? initialNode.account.account_id)
-    if (initialNode.children.length) {
-      setExpanded((current) => new Set([...current, id]))
-    }
-  }, [initialNode])
+  const excludedIds = useMemo(() => [...excluded].sort((a, b) => Number(a) - Number(b)), [excluded])
+  const aggregateKey = excludedIds.join(',')
+  const aggregate = aggregateState.key === aggregateKey ? aggregateState.payload : null
+  const aggregateError = aggregateState.key === aggregateKey ? aggregateState.error : ''
 
   useEffect(() => {
     const controller = new AbortController()
-    const excludedIds = [...excluded].sort((a, b) => Number(a) - Number(b))
-    setAggregateError('')
     getAccountsExplorerSummary(excludedIds, controller.signal)
-      .then(setAggregate)
+      .then((result) => setAggregateState({ key: aggregateKey, payload: result, error: '' }))
       .catch((reason) => {
         if (reason?.name !== 'AbortError') {
-          setAggregate(null)
-          setAggregateError(reason?.message || 'Не удалось пересчитать общий баланс')
+          setAggregateState({ key: aggregateKey, payload: null, error: reason?.message || 'Не удалось пересчитать общий баланс' })
         }
       })
     return () => controller.abort()
-  }, [excluded])
+  }, [aggregateKey, excludedIds])
 
   const toggleParent = (id) => setExpanded((current) => {
     const next = new Set(current)
