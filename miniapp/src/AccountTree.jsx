@@ -9,6 +9,7 @@ export function AccountTree({
   excluded = new Set(),
   onToggleLeafIncluded,
   renderAfterNode,
+  resolveNodeAmount,
   className = '',
 }) {
   const renderNode = (node, depth = 0) => {
@@ -18,24 +19,27 @@ export function AccountTree({
     const isExpanded = expanded.has(id)
     const isExcluded = !hasChildren && excluded.has(id)
     const accountCurrency = String(node.account.currency_code || baseCurrency).toUpperCase()
-    const displayedAmount = hasChildren
+    const defaultAmount = hasChildren
       ? money(node.totalBase, baseCurrency)
       : money(node.account.balance_original ?? node.account.balance_base, accountCurrency)
+    const displayedAmount = resolveNodeAmount
+      ? resolveNodeAmount(node, { id, hasChildren, isExcluded, accountCurrency, defaultAmount })
+      : defaultAmount
 
     const leafControl = onToggleLeafIncluded ? (
       <button
         type="button"
-        className={`hierarchyChevron currencyAccountMarker explorerNodeControl explorerCheck ${isExcluded ? 'isOff' : 'isOn'}`}
+        className={`accountSelectionControl ${isExcluded ? 'isOff' : 'isOn'}`}
         onClick={() => onToggleLeafIncluded(id, node)}
         aria-label={isExcluded ? 'Включить счёт в баланс' : 'Исключить счёт из баланса'}
         aria-pressed={!isExcluded}
       >
-        •
+        <span aria-hidden="true" />
       </button>
     ) : (
       <button
         type="button"
-        className="hierarchyChevron"
+        className="hierarchyChevron accountLeafMarker"
         onClick={() => onNodeBody(node, false)}
         aria-label="Открыть счёт"
       >
