@@ -101,6 +101,14 @@ begin
 
     begin
         perform * from moneytrack.finance_create_transaction_v1(
+            v_user_id,v_account_id,'expense',1,v_account_currency,null,now(),null,null,-9223372036854770000
+        );
+        raise exception 'unknown/not-owned category was accepted';
+    exception when sqlstate 'P0002' then null;
+    end;
+
+    begin
+        perform * from moneytrack.finance_create_transaction_v1(
             v_user_id,v_account_id,'expense',1,v_account_currency,null,now(),'incomplete_source',null,null
         );
         raise exception 'incomplete source identity was accepted';
