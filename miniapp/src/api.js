@@ -90,3 +90,10 @@ export function getTransactions(
 
   return request(`api/v1/transactions?${params.toString()}`, signal)
 }
+
+export function getAccountsExplorerSummary(excludedAccountIds = [], signal) {
+  const params = new URLSearchParams()
+  if (excludedAccountIds.length) params.set('excluded_account_ids', excludedAccountIds.join(','))
+  const query = params.toString()
+  return request(`api/v1/accounts-explorer-summary${query ? `?${query}` : ''}`, signal)
+}
