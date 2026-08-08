@@ -20,7 +20,7 @@ export function BalanceHero({
       <div className="heroOrb heroOrbOne" />
       <div className="heroOrb heroOrbTwo" />
 
-      <span className="heroMonth">{label}</span>
+      {label && <span className="heroMonth">{label}</span>}
 
       <div className="heroMetricRow">
         <div className="heroMetric resultMetric">

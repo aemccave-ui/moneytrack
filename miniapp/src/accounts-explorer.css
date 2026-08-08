@@ -455,3 +455,131 @@
     font-size: 12px;
   }
 }
+
+
+/* =========================================================
+   UX-022 — final Accounts composition
+   Balance -> hero -> filters -> dates -> accounts
+   ========================================================= */
+
+.accountsExplorer {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* 1. Current balance */
+.accountsExplorer > .balanceHeader {
+  order: 10 !important;
+  margin: 0;
+}
+
+/* 2. Period summary hero */
+.accountsExplorer > .accountsOverviewHero {
+  order: 20 !important;
+}
+
+/* 3. Period selector */
+.accountsExplorer > .periodTabs {
+  order: 30 !important;
+  margin: 0;
+}
+
+/* 4. Custom date range */
+.accountsExplorer > .dateRange {
+  order: 40 !important;
+}
+
+/* Validation/API messages follow the controls. */
+.accountsExplorer > .explorerInlineError {
+  order: 45 !important;
+}
+
+/* 5. Accounts tree */
+.accountsExplorer > .explorerAccountsSection {
+  order: 50 !important;
+}
+
+
+/* =========================================================
+   Accounts overview hero:
+   shape remains Hero, background follows account cards.
+   ========================================================= */
+
+.accountsExplorer > .accountsOverviewHero {
+  min-height: 0;
+  padding: 14px 16px 15px;
+  border: 1px solid rgba(255,255,255,.92);
+  border-radius: 22px;
+  background: rgba(255,255,255,.78) !important;
+  box-shadow: var(--mt-shadow-card);
+  color: var(--mt-teal-900);
+}
+
+/* Remove dark decorative circles from the light Accounts hero. */
+.accountsExplorer > .accountsOverviewHero .heroOrb {
+  display: none;
+}
+
+.accountsExplorer > .accountsOverviewHero .heroMonth {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 9px;
+  color: rgba(22,63,67,.62) !important;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.accountsExplorer > .accountsOverviewHero .heroMetricRow {
+  position: relative;
+  z-index: 1;
+}
+
+.accountsExplorer > .accountsOverviewHero .heroMetric > span {
+  color: rgba(22,63,67,.52);
+}
+
+.accountsExplorer > .accountsOverviewHero .resultMetric strong {
+  color: var(--mt-teal-900);
+}
+
+.accountsExplorer > .accountsOverviewHero .incomeMetric strong {
+  color: var(--mt-green-600, #36a876);
+}
+
+.accountsExplorer > .accountsOverviewHero .expenseMetric strong {
+  color: var(--mt-red-500, #ef6f73);
+}
+
+.accountsExplorer > .accountsOverviewHero .heroMetric + .heroMetric {
+  border-left-color: rgba(22,63,67,.10);
+}
+
+
+/* =========================================================
+   Leaf mini hero:
+   NO separate period/title row.
+   Only Saldo / Income / Expense.
+   ========================================================= */
+
+.explorerLeafOperations .accountOperationsHero {
+  padding-top: 11px;
+}
+
+.explorerLeafOperations .accountOperationsHero > .heroMonth {
+  display: none !important;
+}
+
+.explorerLeafOperations .accountOperationsHero .heroMetricRow {
+  margin-top: 0;
+}
+
+
+/* =========================================================
+   Prevent retired rules from changing ordering.
+   ========================================================= */
+
+.accountsExplorer > .explorerPeriodHero {
+  display: none !important;
+  order: initial !important;
+}

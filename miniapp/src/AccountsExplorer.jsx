@@ -180,7 +180,7 @@ function labelDate(key) {
     .format(new Date(`${key}T12:00:00`))
 }
 
-function LeafOperations({ node, period, dateFrom, dateTo, baseCurrency, privacy }) {
+function LeafOperations({ node, dateFrom, dateTo, baseCurrency, privacy }) {
   const accountId = String(node.account.id ?? node.account.account_id)
   const [requestState, setRequestState] = useState({ key: '', payload: null, error: '' })
   const [reloadNonce, setReloadNonce] = useState(0)
@@ -217,7 +217,7 @@ function LeafOperations({ node, period, dateFrom, dateTo, baseCurrency, privacy 
     <div className="explorerLeafOperations">
       <BalanceHero
         className="accountOperationsHero"
-        label={selectedPeriodLabel(period, dateFrom, dateTo)}
+        label=""
         result={Number(summary.income || 0) - Number(summary.expense || 0)}
         income={summary.income}
         expense={summary.expense}
@@ -359,7 +359,12 @@ export default function AccountsExplorer({
       {aggregateError && <div className="explorerInlineError" role="alert">{aggregateError}</div>}
 
       <BalanceHero
-        label={formatMonthLabel(dashboard?.period?.date_from)}
+        className="accountsOverviewHero"
+        label={selectedPeriodLabel(
+          period,
+          resolvedPeriod.dateFrom,
+          resolvedPeriod.dateTo,
+        )}
         result={dashboardSummary.result_month}
         income={dashboardSummary.income_month}
         expense={dashboardSummary.expenses_month}
@@ -442,7 +447,6 @@ export default function AccountsExplorer({
               !hasChildren && openLeaves.has(id) && !isExcluded ? (
                 <LeafOperations
                   node={node}
-                  period={period}
                   dateFrom={resolvedPeriod.dateFrom}
                   dateTo={resolvedPeriod.dateTo}
                   baseCurrency={baseCurrency}
