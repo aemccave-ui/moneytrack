@@ -210,7 +210,7 @@ function LeafOperations({ node, dateFrom, dateTo, baseCurrency, privacy }) {
 
   const transactions = payload.transactions || payload.items || []
   const summary = payload.summary || { income: 0, expense: 0, transfers: 0, count: transactions.length }
-  const currency = payload.base_currency || baseCurrency
+  const currency = payload.summary_currency || payload.base_currency || baseCurrency
   const groups = groupTransactions(transactions)
 
   return (
