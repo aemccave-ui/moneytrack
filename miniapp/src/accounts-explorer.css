@@ -324,3 +324,134 @@
     font-size: 12px;
   }
 }
+
+
+/* =========================================================
+   UX-022 — Home/Accounts hero parity
+   ========================================================= */
+
+/*
+ * Do not use text-transform:capitalize here:
+ * it changes Russian "г." into "Г.".
+ */
+.heroMonth {
+  text-transform: none !important;
+}
+
+
+/* Filter is again a standalone light control. */
+.accountsExplorer > .periodTabs {
+  margin-top: 0;
+}
+
+
+/* The previous Explorer period hero is retired. */
+.explorerPeriodHero {
+  display: none !important;
+}
+
+
+/* =========================================================
+   Leaf operation mini-hero
+   Same visual language as the Home hero.
+   ========================================================= */
+
+.explorerLeafOperations .accountOperationsHero {
+  min-height: 0;
+  margin: 8px 0 10px;
+  padding: 10px 12px 11px;
+  border-radius: 18px;
+}
+
+.explorerLeafOperations .accountOperationsHero .heroMonth {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 7px;
+  font-size: 10px;
+  line-height: 1.15;
+  color: rgba(255,255,255,.76);
+}
+
+.explorerLeafOperations .accountOperationsHero .heroMetricRow {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  gap: 0;
+}
+
+.explorerLeafOperations .accountOperationsHero .heroMetric {
+  min-width: 0;
+  padding: 0 8px;
+}
+
+.explorerLeafOperations .accountOperationsHero .heroMetric:first-child {
+  padding-left: 0;
+}
+
+.explorerLeafOperations .accountOperationsHero .heroMetric:last-child {
+  padding-right: 0;
+}
+
+.explorerLeafOperations .accountOperationsHero .heroMetric + .heroMetric {
+  border-left: 1px solid rgba(255,255,255,.18);
+}
+
+.explorerLeafOperations .accountOperationsHero .heroMetric > span {
+  font-size: 8px;
+  white-space: nowrap;
+}
+
+.explorerLeafOperations .accountOperationsHero .heroMetric strong {
+  margin-top: 3px;
+  font-size: 13px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+
+/*
+ * Old four-cell summary is no longer rendered.
+ * Keep this defensive rule so stale CSS cannot affect layout.
+ */
+.explorerLeafOperations .accountSummary {
+  display: none !important;
+}
+
+
+/* Operations list stays visually attached but outside mini-hero. */
+.explorerLeafOperations .transactionsSection {
+  margin-top: 0;
+}
+
+.explorerLeafOperations .transactionsSection > .sectionHeader {
+  padding-top: 0;
+}
+
+
+/*
+ * Never collapse the mini-hero metrics to 2×2 on narrow screens.
+ */
+@media (max-width:390px) {
+  .explorerLeafOperations .accountOperationsHero {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .explorerLeafOperations .accountOperationsHero .heroMetricRow {
+    grid-template-columns: repeat(3,minmax(0,1fr));
+  }
+
+  .explorerLeafOperations .accountOperationsHero .heroMetric {
+    padding-left: 5px;
+    padding-right: 5px;
+  }
+
+  .explorerLeafOperations .accountOperationsHero .heroMetric > span {
+    font-size: 7px;
+  }
+
+  .explorerLeafOperations .accountOperationsHero .heroMetric strong {
+    font-size: 12px;
+  }
+}

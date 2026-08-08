@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { LabBottomNavigation } from '../packages/lab-design-system/navigation.jsx'
 import { getAccounts, getDashboard } from './api.js'
 import { RecentOperations } from './RecentOperations.jsx'
+import { BalanceHero } from './BalanceHero.jsx'
+import { formatMonthLabel } from './date-format.js'
 import AccountsExplorer from './AccountsExplorer.jsx'
 import { AccountTree } from './AccountTree.jsx'
 
@@ -9,8 +11,7 @@ const money = (value, currency = 'EUR') => new Intl.NumberFormat('ru-RU', {
   style: 'currency', currency, maximumFractionDigits: 0,
 }).format(Number(value || 0))
 
-const monthLabel = (date) => new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric' })
-  .format(date ? new Date(date) : new Date())
+const monthLabel = formatMonthLabel
 
 const todayLabel = () => new Intl.DateTimeFormat('ru-RU', {
   day: 'numeric', month: 'long', weekday: 'long',
@@ -240,6 +241,7 @@ function App() {
       <main className={`app ${privacy ? 'privacy' : ''}`}>
         <AccountsExplorer
           accounts={accounts}
+          dashboard={dashboard}
           baseCurrency={baseCurrency}
           privacy={privacy}
           onPrivacyToggle={() => setPrivacy((value) => !value)}
@@ -255,7 +257,15 @@ function App() {
       <section className="balanceHeader" aria-labelledby="balance-title"><div><div className="todayLabel">{todayLabel()}</div><div className="balanceLabel" id="balance-title">Общий баланс</div><strong className="balanceValue sensitive">{hidden(summary.net_worth)}</strong></div><button className={`iconButton privacyButton ${privacy ? 'selected' : ''}`} onClick={() => setPrivacy((value) => !value)} aria-label={privacy ? 'Показать суммы' : 'Скрыть суммы'} aria-pressed={privacy}>◎</button></section>
       {error && <div className="notice" role="alert">{error}</div>}
 
-      <section className="hero compactHero" aria-labelledby="month-result-title"><div className="heroOrb heroOrbOne"/><div className="heroOrb heroOrbTwo"/><span className="heroMonth">{monthLabel(dashboard?.period?.date_from)}</span><div className="heroMetricRow"><div className="heroMetric resultMetric"><span id="month-result-title">Сальдо</span><strong className="sensitive">{hidden(summary.result_month)}</strong></div><div className="heroMetric incomeMetric"><span><Glyph>↑</Glyph>Доход</span><strong className="sensitive">{hidden(summary.income_month)}</strong></div><div className="heroMetric expenseMetric"><span><Glyph>↓</Glyph>Расход</span><strong className="sensitive">{hidden(summary.expenses_month)}</strong></div></div></section>
+      <BalanceHero
+        label={monthLabel(dashboard?.period?.date_from)}
+        result={summary.result_month}
+        income={summary.income_month}
+        expense={summary.expenses_month}
+        privacy={privacy}
+        baseCurrency={baseCurrency}
+        money={money}
+      />
 
       <section className="section balanceBreakdownSection noSectionTitle">
         <div className="sectionHeader currencyBalancesHeader"><h2>Баланс по валютам</h2></div>

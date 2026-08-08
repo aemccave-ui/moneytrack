@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { getAccountsExplorerSummary, getTransactions } from './api.js'
 import { RecentOperations } from './RecentOperations.jsx'
 import { AccountTree } from './AccountTree.jsx'
+import { BalanceHero } from './BalanceHero.jsx'
+import { formatMonthLabel } from './date-format.js'
 
 const parentAccountId = (account) => account.parent_account_id
   ?? account.parent_id
@@ -108,6 +110,56 @@ function periodDates(period, dateFrom, dateTo) {
   return { dateFrom: localDateKey(from), dateTo: localDateKey(today) }
 }
 
+function selectedPeriodLabel(period, dateFrom, dateTo) {
+  if (period === 'month') {
+    return formatMonthLabel(`${dateFrom}T12:00:00`)
+  }
+
+  const from = new Date(`${dateFrom}T12:00:00`)
+  const to = new Date(`${dateTo}T12:00:00`)
+
+  if (period === 'week') {
+    const sameMonth = (
+      from.getFullYear() === to.getFullYear()
+      && from.getMonth() === to.getMonth()
+    )
+
+    if (sameMonth) {
+      const monthYear = new Intl.DateTimeFormat('ru-RU', {
+        month: 'long',
+        year: 'numeric',
+      }).format(to)
+        .replace(/\sГ\.$/u, ' г.')
+        .replace(/\sг\.$/u, ' г.')
+
+      return `${from.getDate()}–${to.getDate()} ${monthYear}`
+    }
+
+    const left = new Intl.DateTimeFormat('ru-RU', {
+      day: 'numeric',
+      month: 'short',
+    }).format(from)
+
+    const right = new Intl.DateTimeFormat('ru-RU', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    }).format(to)
+      .replace(/\sГ\.$/u, ' г.')
+      .replace(/\sг\.$/u, ' г.')
+
+    return `${left} — ${right}`
+  }
+
+  const format = (value) => new Intl.DateTimeFormat('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(new Date(`${value}T12:00:00`))
+
+  return `${format(dateFrom)} — ${format(dateTo)}`
+}
+
 function groupTransactions(transactions) {
   const groups = new Map()
   transactions.forEach((transaction) => {
@@ -128,7 +180,7 @@ function labelDate(key) {
     .format(new Date(`${key}T12:00:00`))
 }
 
-function LeafOperations({ node, dateFrom, dateTo, baseCurrency, privacy }) {
+function LeafOperations({ node, period, dateFrom, dateTo, baseCurrency, privacy }) {
   const accountId = String(node.account.id ?? node.account.account_id)
   const [requestState, setRequestState] = useState({ key: '', payload: null, error: '' })
   const [reloadNonce, setReloadNonce] = useState(0)
@@ -163,12 +215,17 @@ function LeafOperations({ node, dateFrom, dateTo, baseCurrency, privacy }) {
 
   return (
     <div className="explorerLeafOperations">
-      <div className="accountSummary">
-        <article><span>Приход</span><strong className="sensitive">{privacy ? '••••' : money(summary.income, currency)}</strong></article>
-        <article><span>Расход</span><strong className="sensitive">{privacy ? '••••' : money(summary.expense, currency)}</strong></article>
-        <article><span>Переводы</span><strong className="sensitive">{privacy ? '••••' : money(summary.transfers, currency)}</strong></article>
-        <article><span>Операций</span><strong>{summary.count}</strong></article>
-      </div>
+      <BalanceHero
+        className="accountOperationsHero"
+        label={selectedPeriodLabel(period, dateFrom, dateTo)}
+        result={Number(summary.income || 0) - Number(summary.expense || 0)}
+        income={summary.income}
+        expense={summary.expense}
+        privacy={privacy}
+        baseCurrency={currency}
+        money={money}
+      />
+
       <RecentOperations
         groups={groups}
         transactions={transactions}
@@ -186,6 +243,7 @@ function LeafOperations({ node, dateFrom, dateTo, baseCurrency, privacy }) {
 
 export default function AccountsExplorer({
   accounts,
+  dashboard,
   baseCurrency,
   privacy,
   onPrivacyToggle,
@@ -283,6 +341,7 @@ export default function AccountsExplorer({
 
   const displayedTotal = aggregate?.total_base
   const displayCurrency = aggregate?.base_currency || baseCurrency
+  const dashboardSummary = dashboard?.summary || {}
 
   return (
     <section className="accountsExplorer">
@@ -299,39 +358,59 @@ export default function AccountsExplorer({
 
       {aggregateError && <div className="explorerInlineError" role="alert">{aggregateError}</div>}
 
-      <section className="hero compactHero explorerPeriodHero" aria-label="Период операций">
-        <div className="heroOrb heroOrbOne" />
-        <div className="heroOrb heroOrbTwo" />
+      <BalanceHero
+        label={formatMonthLabel(dashboard?.period?.date_from)}
+        result={dashboardSummary.result_month}
+        income={dashboardSummary.income_month}
+        expense={dashboardSummary.expenses_month}
+        privacy={privacy}
+        baseCurrency={baseCurrency}
+        money={money}
+      />
 
-        <div className="explorerHeroHeading">
-          <span className="heroMonth">Операции</span>
-          <strong>
-            {period === 'week'
-              ? 'Неделя'
-              : period === 'month'
-                ? 'Текущий месяц'
-                : 'Выбранный диапазон'}
-          </strong>
+      <div className="periodTabs" role="group" aria-label="Период операций">
+        <button
+          type="button"
+          className={period === 'week' ? 'isActive' : ''}
+          onClick={() => setPeriod('week')}
+        >
+          Неделя
+        </button>
+
+        <button
+          type="button"
+          className={period === 'month' ? 'isActive' : ''}
+          onClick={() => setPeriod('month')}
+        >
+          Месяц
+        </button>
+
+        <button
+          type="button"
+          className={period === 'range' ? 'isActive' : ''}
+          onClick={() => setPeriod('range')}
+        >
+          Диапазон
+        </button>
+      </div>
+
+      {period === 'range' && (
+        <div className="dateRange">
+          <input
+            aria-label="Дата начала"
+            type="date"
+            value={dateFrom}
+            onChange={(event) => setDateFrom(event.target.value)}
+          />
+          <span>—</span>
+          <input
+            aria-label="Дата окончания"
+            type="date"
+            value={dateTo}
+            onChange={(event) => setDateTo(event.target.value)}
+          />
         </div>
-
-        <div className="periodTabs" role="group" aria-label="Период операций">
-          <button type="button" className={period === 'week' ? 'isActive' : ''} onClick={() => setPeriod('week')}>Неделя</button>
-          <button type="button" className={period === 'month' ? 'isActive' : ''} onClick={() => setPeriod('month')}>Месяц</button>
-          <button type="button" className={period === 'range' ? 'isActive' : ''} onClick={() => setPeriod('range')}>Диапазон</button>
-        </div>
-
-        {period === 'range' && (
-          <div className="dateRange">
-            <input aria-label="Дата начала" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
-            <span>—</span>
-            <input aria-label="Дата окончания" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
-          </div>
-        )}
-
-        <div className="historyPlaceholder" aria-hidden="true">
-          Место для истории баланса
-        </div>
-      </section>
+      )}
 
       {invalidRange && <div className="explorerInlineError" role="alert">Дата начала должна быть раньше даты окончания.</div>}
 
@@ -363,6 +442,7 @@ export default function AccountsExplorer({
               !hasChildren && openLeaves.has(id) && !isExcluded ? (
                 <LeafOperations
                   node={node}
+                  period={period}
                   dateFrom={resolvedPeriod.dateFrom}
                   dateTo={resolvedPeriod.dateTo}
                   baseCurrency={baseCurrency}
