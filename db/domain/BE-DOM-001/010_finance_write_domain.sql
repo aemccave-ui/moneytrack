@@ -5,11 +5,17 @@
 
 begin;
 
--- Idempotency is enforced only when a stable source_id is supplied.
+-- Stable source identity is the backend idempotency boundary.
 -- Existing legacy rows all have source_id NULL, so this does not rewrite or reject them.
 create unique index if not exists ux_transactions_source_idempotency
     on moneytrack.transactions(user_id, source_type, source_id)
     where source_type is not null and source_id is not null;
+
+-- Legacy opening-balance behavior permits at most one opening balance per account.
+-- Existing forensic data contains no duplicate opening balances per account.
+create unique index if not exists ux_transactions_one_opening_balance_per_account
+    on moneytrack.transactions(user_id, account_id)
+    where transaction_type = 'openingbalance';
 
 create or replace function moneytrack.finance_create_transaction_v1(
     p_user_id bigint,
@@ -55,7 +61,11 @@ begin
         raise exception 'USER_REQUIRED' using errcode = '22023';
     end if;
 
-    select coalesce(s.base_currency, u.default_currency, 'EUR')
+    if (p_source_type is null) <> (p_source_id is null) then
+        raise exception 'SOURCE_IDENTITY_INCOMPLETE' using errcode = '22023';
+    end if;
+
+    select upper(coalesce(s.base_currency, u.default_currency, 'EUR'))
       into v_base_currency
       from moneytrack.app_users u
       left join moneytrack.user_settings s on s.user_id = u.id
@@ -83,7 +93,7 @@ begin
         raise exception 'CURRENCY_REQUIRED' using errcode = '22023';
     end if;
 
-    select a.currency_code
+    select upper(a.currency_code)
       into v_account_currency
       from moneytrack.accounts a
      where a.id = p_account_id
@@ -94,13 +104,14 @@ begin
         raise exception 'ACCOUNT_NOT_FOUND_OR_NOT_OWNED' using errcode = 'P0002';
     end if;
 
-    if upper(v_account_currency) <> upper(p_currency_original) then
+    if v_account_currency <> upper(p_currency_original) then
         raise exception 'ACCOUNT_CURRENCY_MISMATCH: account %, transaction %',
-            v_account_currency, p_currency_original using errcode = '22023';
+            v_account_currency, upper(p_currency_original) using errcode = '22023';
     end if;
 
-    -- Idempotent replay returns the original posting without creating a second effect.
-    if p_source_type is not null and p_source_id is not null then
+    -- Idempotent replay is valid only when the repeated request represents the
+    -- same financial posting. Reuse of a key for a different posting is rejected.
+    if p_source_type is not null then
         select *
           into v_existing
           from moneytrack.transactions t
@@ -110,6 +121,16 @@ begin
          limit 1;
 
         if found then
+            if v_existing.account_id is distinct from p_account_id
+               or v_existing.transaction_type is distinct from p_transaction_type
+               or v_existing.amount_original is distinct from p_amount_original
+               or upper(v_existing.currency_original) is distinct from upper(p_currency_original)
+               or v_existing.category_id is distinct from p_category_id
+            then
+                raise exception 'IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD'
+                    using errcode = '23505';
+            end if;
+
             return query
             select v_existing.id, v_existing.user_id, v_existing.account_id,
                    v_existing.transaction_type, v_existing.amount_original,
@@ -122,20 +143,20 @@ begin
         end if;
     end if;
 
-    if upper(p_currency_original) = upper(v_base_currency) then
+    if upper(p_currency_original) = v_base_currency then
         v_rate := 1;
         v_amount_base := p_amount_original;
     else
         v_amount_base := moneytrack.finance_fx_convert_usd_bridge_v1(
             p_amount_original,
             upper(p_currency_original),
-            upper(v_base_currency),
+            v_base_currency,
             p_transaction_date::date
         );
 
         if v_amount_base is null then
             raise exception 'FX_RATE_NOT_FOUND: % -> % at %',
-                upper(p_currency_original), upper(v_base_currency), p_transaction_date::date
+                upper(p_currency_original), v_base_currency, p_transaction_date::date
                 using errcode = 'P0001';
         end if;
 
@@ -152,13 +173,13 @@ begin
         ) values (
             p_user_id, p_account_id, p_transaction_type,
             p_amount_original, upper(p_currency_original),
-            v_amount_base, upper(v_base_currency), v_rate,
+            v_amount_base, v_base_currency, v_rate,
             p_category_id, p_description, p_transaction_date,
             p_source_type, p_source_id
         )
         returning * into v_inserted;
     exception when unique_violation then
-        if p_source_type is null or p_source_id is null then
+        if p_source_type is null then
             raise;
         end if;
 
@@ -172,6 +193,16 @@ begin
 
         if not found then
             raise;
+        end if;
+
+        if v_existing.account_id is distinct from p_account_id
+           or v_existing.transaction_type is distinct from p_transaction_type
+           or v_existing.amount_original is distinct from p_amount_original
+           or upper(v_existing.currency_original) is distinct from upper(p_currency_original)
+           or v_existing.category_id is distinct from p_category_id
+        then
+            raise exception 'IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD'
+                using errcode = '23505';
         end if;
 
         return query
@@ -197,6 +228,6 @@ end;
 $function$;
 
 comment on function moneytrack.finance_create_transaction_v1(bigint,bigint,text,numeric,text,text,timestamptz,text,bigint,bigint)
-is 'BE-DOM-001 canonical transaction writer. Enforces ownership/type/amount/currency invariants, derives base valuation, and provides backend idempotency when source identity is supplied.';
+is 'BE-DOM-001 canonical transaction writer. Enforces account ownership, transaction/amount/currency invariants, backend base valuation, opening-balance uniqueness and source idempotency.';
 
 commit;
