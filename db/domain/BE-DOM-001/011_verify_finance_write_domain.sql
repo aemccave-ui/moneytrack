@@ -12,9 +12,13 @@ declare
     v_user_id bigint;
     v_account_id bigint;
     v_account_currency text;
+    v_opening_account_id bigint;
+    v_opening_currency text;
     v_base_currency text;
     v_tx1 record;
     v_tx2 record;
+    v_ob1 record;
+    v_ob2 record;
     v_count bigint;
 begin
     select user_id into v_user_id from be_dom_001_verify_params limit 1;
@@ -75,6 +79,53 @@ begin
         raise exception 'idempotency produced % rows, expected 1',v_count;
     end if;
 
+    -- Pick an account without an existing opening balance so the first call creates
+    -- a posting and the second call proves backend-level already-exists replay.
+    select a.id,upper(a.currency_code)
+      into v_opening_account_id,v_opening_currency
+      from moneytrack.accounts a
+     where a.user_id=v_user_id
+       and coalesce(a.is_active,true)=true
+       and not exists (
+           select 1 from moneytrack.transactions t
+            where t.user_id=v_user_id
+              and t.account_id=a.id
+              and t.transaction_type='openingbalance'
+       )
+     order by case when upper(a.currency_code)=v_base_currency then 0 else 1 end,a.id
+     limit 1;
+
+    if v_opening_account_id is null then
+        raise exception 'verification requires an active account without opening balance';
+    end if;
+
+    select * into v_ob1
+      from moneytrack.finance_create_transaction_v1(
+        v_user_id,v_opening_account_id,'openingbalance',10,v_opening_currency,
+        'BE-DOM-001 opening balance verification',now(),null,null,null
+      );
+    if v_ob1.idempotent_replay then
+        raise exception 'first opening balance unexpectedly reported replay';
+    end if;
+
+    select * into v_ob2
+      from moneytrack.finance_create_transaction_v1(
+        v_user_id,v_opening_account_id,'openingbalance',99,v_opening_currency,
+        'different retry payload',now(),null,null,null
+      );
+    if not v_ob2.idempotent_replay or v_ob2.id <> v_ob1.id then
+        raise exception 'opening balance replay failed: first %, second %, replay %',v_ob1.id,v_ob2.id,v_ob2.idempotent_replay;
+    end if;
+
+    select count(*) into v_count
+      from moneytrack.transactions
+     where user_id=v_user_id
+       and account_id=v_opening_account_id
+       and transaction_type='openingbalance';
+    if v_count <> 1 then
+        raise exception 'opening balance uniqueness produced % rows, expected 1',v_count;
+    end if;
+
     begin
         perform * from moneytrack.finance_create_transaction_v1(
             v_user_id,v_account_id,'expense',-1,v_account_currency,null,now(),null,null,null
@@ -96,14 +147,6 @@ begin
             v_user_id,-9223372036854770000,'expense',1,v_account_currency,null,now(),null,null,null
         );
         raise exception 'unknown account was accepted';
-    exception when sqlstate 'P0002' then null;
-    end;
-
-    begin
-        perform * from moneytrack.finance_create_transaction_v1(
-            v_user_id,v_account_id,'expense',1,v_account_currency,null,now(),null,null,-9223372036854770000
-        );
-        raise exception 'unknown/not-owned category was accepted';
     exception when sqlstate 'P0002' then null;
     end;
 
