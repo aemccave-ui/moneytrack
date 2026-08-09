@@ -1,0 +1,904 @@
+{
+  "id": "UX022Presets202608",
+  "name": "MoneyTrack Filter Presets API",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "path": "api/v1/filter-presets",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -720,
+        -330
+      ],
+      "id": "d69a5f46-8f07-5aa7-89b6-425bc15bd1b9",
+      "name": "filter presets get",
+      "webhookId": "2d414978-4735-51d1-a5a4-05e8b02db876"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require(\"crypto\");\nconst headers = $json.headers || {};\nconst query = $json.query || {};\nconst body = $json.body || {};\nconst fail = (httpStatus, error) => [{ json: { ok: false, http_status: httpStatus, error } }];\n\nconst initData = headers[\"x-telegram-init-data\"] || headers[\"X-Telegram-Init-Data\"] || query.initData || query.init_data || null;\nif (!initData) return fail(401, \"INIT_DATA_MISSING\");\nconst token = $env.MONEYTRACK_BOT_TOKEN;\nif (!token) return fail(500, \"BOT_TOKEN_MISSING\");\n\nconst params = {};\ntry {\n  for (const part of initData.split(\"&\")) {\n    const i = part.indexOf(\"=\");\n    if (i < 0) continue;\n    params[decodeURIComponent(part.slice(0, i))] = decodeURIComponent(part.slice(i + 1));\n  }\n} catch {\n  return fail(401, \"INVALID_INIT_DATA\");\n}\nconst received = params.hash;\nif (!received) return fail(401, \"HASH_MISSING\");\ndelete params.hash;\nconst check = Object.keys(params).sort().map((key) => `${key}=${params[key]}`).join(\"\\n\");\nconst secret = crypto.createHmac(\"sha256\", \"WebAppData\").update(token).digest();\nconst calculated = crypto.createHmac(\"sha256\", secret).update(check).digest(\"hex\");\nif (calculated !== received) return fail(401, \"INVALID_INIT_DATA_HASH\");\n\nlet user;\ntry { user = JSON.parse(params.user || \"{}\"); } catch { return fail(401, \"INVALID_USER_DATA\"); }\nif (!user?.id) return fail(401, \"USER_MISSING\");\nconst out = { ok: true, telegram_user_id: user.id };\n\nconst parseIdArray = (value, errorCode) => {\n  if (!Array.isArray(value)) return { error: errorCode };\n  if (value.some((item) => !/^\\d+$/.test(String(item)))) return { error: errorCode };\n  return { value: [...new Set(value.map(Number))] };\n};\n\nconst mode = \"GET\";\nif (mode === \"POST\") {\n  const name = String(body.name || \"\").trim();\n  if (!name || name.length > 80) return fail(400, \"PRESET_NAME_INVALID\");\n  const accounts = parseIdArray(body.account_ids, \"ACCOUNT_IDS_INVALID\");\n  const income = parseIdArray(body.income_category_ids, \"INCOME_CATEGORY_IDS_INVALID\");\n  const expense = parseIdArray(body.expense_category_ids, \"EXPENSE_CATEGORY_IDS_INVALID\");\n  if (accounts.error) return fail(400, accounts.error);\n  if (income.error) return fail(400, income.error);\n  if (expense.error) return fail(400, expense.error);\n  out.name = name;\n  out.name_sql = name.replaceAll(\"'\", \"''\");\n  out.account_ids = accounts.value;\n  out.income_category_ids = income.value;\n  out.expense_category_ids = expense.value;\n}\nif (mode === \"PATCH\") {\n  const id = String(body.id || \"\").trim();\n  const name = String(body.name || \"\").trim();\n  if (!/^\\d+$/.test(id)) return fail(400, \"PRESET_ID_INVALID\");\n  if (!name || name.length > 80) return fail(400, \"PRESET_NAME_INVALID\");\n  out.preset_id = Number(id);\n  out.name = name;\n  out.name_sql = name.replaceAll(\"'\", \"''\");\n}\nif (mode === \"DELETE\") {\n  const id = String(query.id || \"\").trim();\n  if (!/^\\d+$/.test(id)) return fail(400, \"PRESET_ID_INVALID\");\n  out.preset_id = Number(id);\n}\nreturn [{ json: out }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -500,
+        -330
+      ],
+      "id": "dc767b5b-c0a6-5f56-8674-8a99c497d038",
+      "name": "Verify Presets GET"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "bcf77eb1-669f-51c7-aa45-2ebbaaf3afcf",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -280,
+        -330
+      ],
+      "id": "e4155b31-be4f-5092-802b-4bd92d35ee2d",
+      "name": "Presets GET Auth Valid?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with user_ctx as (\n  select id as user_id from moneytrack.app_users\n  where telegram_user_id = {{ $json.telegram_user_id }}::bigint limit 1\n)\nselect\n  exists(select 1 from user_ctx) as user_found,\n  coalesce(\n    jsonb_agg(\n      jsonb_build_object(\n        'id', p.id,\n        'name', p.name,\n        'account_ids', p.account_ids,\n        'income_category_ids', p.income_category_ids,\n        'expense_category_ids', p.expense_category_ids,\n        'created_at', p.created_at\n      ) order by p.created_at, p.id\n    ) filter (where p.id is not null),\n    '[]'::jsonb\n  ) as presets\nfrom user_ctx u\nleft join moneytrack.filter_presets p on p.user_id = u.user_id;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -40,
+        -330
+      ],
+      "id": "b2128e23-5278-53ab-90ca-6cddd7ebc793",
+      "name": "Get Filter Presets",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "tM27zg5m7tREo2ep",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first().json || {};\nif (!row.user_found) return [{ json: { ok: false, http_status: 404, error: \"USER_NOT_FOUND\" } }];\nreturn [{ json: { ok: true, data: { presets: row.presets || [] } } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        -330
+      ],
+      "id": "cbf01b84-c00f-51be-b947-cf720a137b96",
+      "name": "Format Presets GET"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3af1fd23-d12d-5f87-9c6d-7f6ed674acfe",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        420,
+        -330
+      ],
+      "id": "158cedcc-173c-576c-94e4-3a0fd774035d",
+      "name": "Presets GET Result Valid?"
+    },
+    {
+      "parameters": {
+        "path": "api/v1/filter-presets",
+        "responseMode": "responseNode",
+        "options": {},
+        "httpMethod": "POST"
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -720,
+        -110
+      ],
+      "id": "232908d2-b44b-58d6-803f-38c536380cf9",
+      "name": "filter presets post",
+      "webhookId": "c004476b-2250-56ca-aac5-dac6d8b3833e"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require(\"crypto\");\nconst headers = $json.headers || {};\nconst query = $json.query || {};\nconst body = $json.body || {};\nconst fail = (httpStatus, error) => [{ json: { ok: false, http_status: httpStatus, error } }];\n\nconst initData = headers[\"x-telegram-init-data\"] || headers[\"X-Telegram-Init-Data\"] || query.initData || query.init_data || null;\nif (!initData) return fail(401, \"INIT_DATA_MISSING\");\nconst token = $env.MONEYTRACK_BOT_TOKEN;\nif (!token) return fail(500, \"BOT_TOKEN_MISSING\");\n\nconst params = {};\ntry {\n  for (const part of initData.split(\"&\")) {\n    const i = part.indexOf(\"=\");\n    if (i < 0) continue;\n    params[decodeURIComponent(part.slice(0, i))] = decodeURIComponent(part.slice(i + 1));\n  }\n} catch {\n  return fail(401, \"INVALID_INIT_DATA\");\n}\nconst received = params.hash;\nif (!received) return fail(401, \"HASH_MISSING\");\ndelete params.hash;\nconst check = Object.keys(params).sort().map((key) => `${key}=${params[key]}`).join(\"\\n\");\nconst secret = crypto.createHmac(\"sha256\", \"WebAppData\").update(token).digest();\nconst calculated = crypto.createHmac(\"sha256\", secret).update(check).digest(\"hex\");\nif (calculated !== received) return fail(401, \"INVALID_INIT_DATA_HASH\");\n\nlet user;\ntry { user = JSON.parse(params.user || \"{}\"); } catch { return fail(401, \"INVALID_USER_DATA\"); }\nif (!user?.id) return fail(401, \"USER_MISSING\");\nconst out = { ok: true, telegram_user_id: user.id };\n\nconst parseIdArray = (value, errorCode) => {\n  if (!Array.isArray(value)) return { error: errorCode };\n  if (value.some((item) => !/^\\d+$/.test(String(item)))) return { error: errorCode };\n  return { value: [...new Set(value.map(Number))] };\n};\n\nconst mode = \"POST\";\nif (mode === \"POST\") {\n  const name = String(body.name || \"\").trim();\n  if (!name || name.length > 80) return fail(400, \"PRESET_NAME_INVALID\");\n  const accounts = parseIdArray(body.account_ids, \"ACCOUNT_IDS_INVALID\");\n  const income = parseIdArray(body.income_category_ids, \"INCOME_CATEGORY_IDS_INVALID\");\n  const expense = parseIdArray(body.expense_category_ids, \"EXPENSE_CATEGORY_IDS_INVALID\");\n  if (accounts.error) return fail(400, accounts.error);\n  if (income.error) return fail(400, income.error);\n  if (expense.error) return fail(400, expense.error);\n  out.name = name;\n  out.name_sql = name.replaceAll(\"'\", \"''\");\n  out.account_ids = accounts.value;\n  out.income_category_ids = income.value;\n  out.expense_category_ids = expense.value;\n}\nif (mode === \"PATCH\") {\n  const id = String(body.id || \"\").trim();\n  const name = String(body.name || \"\").trim();\n  if (!/^\\d+$/.test(id)) return fail(400, \"PRESET_ID_INVALID\");\n  if (!name || name.length > 80) return fail(400, \"PRESET_NAME_INVALID\");\n  out.preset_id = Number(id);\n  out.name = name;\n  out.name_sql = name.replaceAll(\"'\", \"''\");\n}\nif (mode === \"DELETE\") {\n  const id = String(query.id || \"\").trim();\n  if (!/^\\d+$/.test(id)) return fail(400, \"PRESET_ID_INVALID\");\n  out.preset_id = Number(id);\n}\nreturn [{ json: out }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -500,
+        -110
+      ],
+      "id": "5f87aee1-7185-52ed-9dfe-b9fab1b36247",
+      "name": "Verify Presets POST"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c5e6e195-fd16-5569-ad3b-b0da45498999",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -280,
+        -110
+      ],
+      "id": "270d4505-01d5-58dd-a45f-06e866e3b70c",
+      "name": "Presets POST Auth Valid?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with user_ctx as (\n  select id as user_id from moneytrack.app_users\n  where telegram_user_id = {{ $json.telegram_user_id }}::bigint limit 1\n), ins as (\n  insert into moneytrack.filter_presets(user_id, name, account_ids, income_category_ids, expense_category_ids)\n  select\n    user_id,\n    '{{ $json.name_sql }}',\n    ARRAY[{{ $json.account_ids.join(',') }}]::bigint[],\n    ARRAY[{{ $json.income_category_ids.join(',') }}]::bigint[],\n    ARRAY[{{ $json.expense_category_ids.join(',') }}]::bigint[]\n  from user_ctx\n  returning *\n)\nselect\n  exists(select 1 from user_ctx) as user_found,\n  (select jsonb_build_object(\n    'id', id,\n    'name', name,\n    'account_ids', account_ids,\n    'income_category_ids', income_category_ids,\n    'expense_category_ids', expense_category_ids,\n    'created_at', created_at\n  ) from ins limit 1) as preset;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -40,
+        -110
+      ],
+      "id": "f9b40b55-8580-56f5-a5d4-3c63d1932d75",
+      "name": "Create Filter Preset",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "tM27zg5m7tREo2ep",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first().json || {};\nif (!row.user_found) return [{ json: { ok: false, http_status: 404, error: \"USER_NOT_FOUND\" } }];\nif (!row.preset) return [{ json: { ok: false, http_status: 500, error: \"PRESET_CREATE_FAILED\" } }];\nreturn [{ json: { ok: true, data: { preset: row.preset } } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        -110
+      ],
+      "id": "a9b3c37d-b4d5-5ed5-818a-405ea055af55",
+      "name": "Format Presets POST"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3adfae81-d601-5a8b-9d59-8d0bfa3ac839",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        420,
+        -110
+      ],
+      "id": "3a836771-5b8d-59fd-a8ac-022a84b199f5",
+      "name": "Presets POST Result Valid?"
+    },
+    {
+      "parameters": {
+        "path": "api/v1/filter-presets",
+        "responseMode": "responseNode",
+        "options": {},
+        "httpMethod": "PATCH"
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -720,
+        110
+      ],
+      "id": "f922e936-000b-5343-bd10-6c695ba7e557",
+      "name": "filter presets patch",
+      "webhookId": "8b316ca7-73b0-5f1f-ad9f-ab888631e1fc"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require(\"crypto\");\nconst headers = $json.headers || {};\nconst query = $json.query || {};\nconst body = $json.body || {};\nconst fail = (httpStatus, error) => [{ json: { ok: false, http_status: httpStatus, error } }];\n\nconst initData = headers[\"x-telegram-init-data\"] || headers[\"X-Telegram-Init-Data\"] || query.initData || query.init_data || null;\nif (!initData) return fail(401, \"INIT_DATA_MISSING\");\nconst token = $env.MONEYTRACK_BOT_TOKEN;\nif (!token) return fail(500, \"BOT_TOKEN_MISSING\");\n\nconst params = {};\ntry {\n  for (const part of initData.split(\"&\")) {\n    const i = part.indexOf(\"=\");\n    if (i < 0) continue;\n    params[decodeURIComponent(part.slice(0, i))] = decodeURIComponent(part.slice(i + 1));\n  }\n} catch {\n  return fail(401, \"INVALID_INIT_DATA\");\n}\nconst received = params.hash;\nif (!received) return fail(401, \"HASH_MISSING\");\ndelete params.hash;\nconst check = Object.keys(params).sort().map((key) => `${key}=${params[key]}`).join(\"\\n\");\nconst secret = crypto.createHmac(\"sha256\", \"WebAppData\").update(token).digest();\nconst calculated = crypto.createHmac(\"sha256\", secret).update(check).digest(\"hex\");\nif (calculated !== received) return fail(401, \"INVALID_INIT_DATA_HASH\");\n\nlet user;\ntry { user = JSON.parse(params.user || \"{}\"); } catch { return fail(401, \"INVALID_USER_DATA\"); }\nif (!user?.id) return fail(401, \"USER_MISSING\");\nconst out = { ok: true, telegram_user_id: user.id };\n\nconst parseIdArray = (value, errorCode) => {\n  if (!Array.isArray(value)) return { error: errorCode };\n  if (value.some((item) => !/^\\d+$/.test(String(item)))) return { error: errorCode };\n  return { value: [...new Set(value.map(Number))] };\n};\n\nconst mode = \"PATCH\";\nif (mode === \"POST\") {\n  const name = String(body.name || \"\").trim();\n  if (!name || name.length > 80) return fail(400, \"PRESET_NAME_INVALID\");\n  const accounts = parseIdArray(body.account_ids, \"ACCOUNT_IDS_INVALID\");\n  const income = parseIdArray(body.income_category_ids, \"INCOME_CATEGORY_IDS_INVALID\");\n  const expense = parseIdArray(body.expense_category_ids, \"EXPENSE_CATEGORY_IDS_INVALID\");\n  if (accounts.error) return fail(400, accounts.error);\n  if (income.error) return fail(400, income.error);\n  if (expense.error) return fail(400, expense.error);\n  out.name = name;\n  out.name_sql = name.replaceAll(\"'\", \"''\");\n  out.account_ids = accounts.value;\n  out.income_category_ids = income.value;\n  out.expense_category_ids = expense.value;\n}\nif (mode === \"PATCH\") {\n  const id = String(body.id || \"\").trim();\n  const name = String(body.name || \"\").trim();\n  if (!/^\\d+$/.test(id)) return fail(400, \"PRESET_ID_INVALID\");\n  if (!name || name.length > 80) return fail(400, \"PRESET_NAME_INVALID\");\n  out.preset_id = Number(id);\n  out.name = name;\n  out.name_sql = name.replaceAll(\"'\", \"''\");\n}\nif (mode === \"DELETE\") {\n  const id = String(query.id || \"\").trim();\n  if (!/^\\d+$/.test(id)) return fail(400, \"PRESET_ID_INVALID\");\n  out.preset_id = Number(id);\n}\nreturn [{ json: out }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -500,
+        110
+      ],
+      "id": "0c2f866e-bf0b-52f2-ad19-694a07559a24",
+      "name": "Verify Presets PATCH"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "05cba805-1c13-5df5-be5a-e37cc251b8d0",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -280,
+        110
+      ],
+      "id": "cc050dce-636f-567e-a290-355641740eb3",
+      "name": "Presets PATCH Auth Valid?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with user_ctx as (\n  select id as user_id from moneytrack.app_users\n  where telegram_user_id = {{ $json.telegram_user_id }}::bigint limit 1\n), upd as (\n  update moneytrack.filter_presets p\n  set name = '{{ $json.name_sql }}'\n  from user_ctx u\n  where p.id = {{ $json.preset_id }}::bigint and p.user_id = u.user_id\n  returning p.*\n)\nselect\n  exists(select 1 from user_ctx) as user_found,\n  (select jsonb_build_object(\n    'id', id,\n    'name', name,\n    'account_ids', account_ids,\n    'income_category_ids', income_category_ids,\n    'expense_category_ids', expense_category_ids,\n    'created_at', created_at\n  ) from upd limit 1) as preset;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -40,
+        110
+      ],
+      "id": "b940c5be-38d3-50eb-8131-13ffb6866576",
+      "name": "Rename Filter Preset",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "tM27zg5m7tREo2ep",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first().json || {};\nif (!row.user_found) return [{ json: { ok: false, http_status: 404, error: \"USER_NOT_FOUND\" } }];\nif (!row.preset) return [{ json: { ok: false, http_status: 404, error: \"PRESET_NOT_FOUND\" } }];\nreturn [{ json: { ok: true, data: { preset: row.preset } } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        110
+      ],
+      "id": "46614a16-0347-563e-9bcb-078d608acb00",
+      "name": "Format Presets PATCH"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "43b83613-ea1e-5ce3-ab0a-a74b7d61a032",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        420,
+        110
+      ],
+      "id": "1b297ee5-678b-58f6-a20f-d6e3b5bf286b",
+      "name": "Presets PATCH Result Valid?"
+    },
+    {
+      "parameters": {
+        "path": "api/v1/filter-presets",
+        "responseMode": "responseNode",
+        "options": {},
+        "httpMethod": "DELETE"
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -720,
+        330
+      ],
+      "id": "17b55240-140c-5576-aad0-759fac22bc29",
+      "name": "filter presets delete",
+      "webhookId": "076a2847-90c8-5f69-87ce-1f9124d721af"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require(\"crypto\");\nconst headers = $json.headers || {};\nconst query = $json.query || {};\nconst body = $json.body || {};\nconst fail = (httpStatus, error) => [{ json: { ok: false, http_status: httpStatus, error } }];\n\nconst initData = headers[\"x-telegram-init-data\"] || headers[\"X-Telegram-Init-Data\"] || query.initData || query.init_data || null;\nif (!initData) return fail(401, \"INIT_DATA_MISSING\");\nconst token = $env.MONEYTRACK_BOT_TOKEN;\nif (!token) return fail(500, \"BOT_TOKEN_MISSING\");\n\nconst params = {};\ntry {\n  for (const part of initData.split(\"&\")) {\n    const i = part.indexOf(\"=\");\n    if (i < 0) continue;\n    params[decodeURIComponent(part.slice(0, i))] = decodeURIComponent(part.slice(i + 1));\n  }\n} catch {\n  return fail(401, \"INVALID_INIT_DATA\");\n}\nconst received = params.hash;\nif (!received) return fail(401, \"HASH_MISSING\");\ndelete params.hash;\nconst check = Object.keys(params).sort().map((key) => `${key}=${params[key]}`).join(\"\\n\");\nconst secret = crypto.createHmac(\"sha256\", \"WebAppData\").update(token).digest();\nconst calculated = crypto.createHmac(\"sha256\", secret).update(check).digest(\"hex\");\nif (calculated !== received) return fail(401, \"INVALID_INIT_DATA_HASH\");\n\nlet user;\ntry { user = JSON.parse(params.user || \"{}\"); } catch { return fail(401, \"INVALID_USER_DATA\"); }\nif (!user?.id) return fail(401, \"USER_MISSING\");\nconst out = { ok: true, telegram_user_id: user.id };\n\nconst parseIdArray = (value, errorCode) => {\n  if (!Array.isArray(value)) return { error: errorCode };\n  if (value.some((item) => !/^\\d+$/.test(String(item)))) return { error: errorCode };\n  return { value: [...new Set(value.map(Number))] };\n};\n\nconst mode = \"DELETE\";\nif (mode === \"POST\") {\n  const name = String(body.name || \"\").trim();\n  if (!name || name.length > 80) return fail(400, \"PRESET_NAME_INVALID\");\n  const accounts = parseIdArray(body.account_ids, \"ACCOUNT_IDS_INVALID\");\n  const income = parseIdArray(body.income_category_ids, \"INCOME_CATEGORY_IDS_INVALID\");\n  const expense = parseIdArray(body.expense_category_ids, \"EXPENSE_CATEGORY_IDS_INVALID\");\n  if (accounts.error) return fail(400, accounts.error);\n  if (income.error) return fail(400, income.error);\n  if (expense.error) return fail(400, expense.error);\n  out.name = name;\n  out.name_sql = name.replaceAll(\"'\", \"''\");\n  out.account_ids = accounts.value;\n  out.income_category_ids = income.value;\n  out.expense_category_ids = expense.value;\n}\nif (mode === \"PATCH\") {\n  const id = String(body.id || \"\").trim();\n  const name = String(body.name || \"\").trim();\n  if (!/^\\d+$/.test(id)) return fail(400, \"PRESET_ID_INVALID\");\n  if (!name || name.length > 80) return fail(400, \"PRESET_NAME_INVALID\");\n  out.preset_id = Number(id);\n  out.name = name;\n  out.name_sql = name.replaceAll(\"'\", \"''\");\n}\nif (mode === \"DELETE\") {\n  const id = String(query.id || \"\").trim();\n  if (!/^\\d+$/.test(id)) return fail(400, \"PRESET_ID_INVALID\");\n  out.preset_id = Number(id);\n}\nreturn [{ json: out }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -500,
+        330
+      ],
+      "id": "c1c338a3-3727-580c-9f2c-7296d2e6e723",
+      "name": "Verify Presets DELETE"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "edfb50d6-cd32-5230-8d2d-01eeac416ca3",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -280,
+        330
+      ],
+      "id": "e07a2da9-4cf0-5ab5-9b3e-963321997682",
+      "name": "Presets DELETE Auth Valid?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with user_ctx as (\n  select id as user_id from moneytrack.app_users\n  where telegram_user_id = {{ $json.telegram_user_id }}::bigint limit 1\n), del as (\n  delete from moneytrack.filter_presets p\n  using user_ctx u\n  where p.id = {{ $json.preset_id }}::bigint and p.user_id = u.user_id\n  returning p.id\n)\nselect\n  exists(select 1 from user_ctx) as user_found,\n  coalesce((select id from del limit 1), 0)::bigint as deleted_id;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -40,
+        330
+      ],
+      "id": "18bd1194-8191-511a-86cc-6719e6594607",
+      "name": "Delete Filter Preset",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "tM27zg5m7tREo2ep",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first().json || {};\nif (!row.user_found) return [{ json: { ok: false, http_status: 404, error: \"USER_NOT_FOUND\" } }];\nif (!Number(row.deleted_id || 0)) return [{ json: { ok: false, http_status: 404, error: \"PRESET_NOT_FOUND\" } }];\nreturn [{ json: { ok: true, data: { deleted: true, id: Number(row.deleted_id) } } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        330
+      ],
+      "id": "b711f501-150e-55de-a6ab-5588fc12a5bc",
+      "name": "Format Presets DELETE"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c8f93517-2bf2-5679-88ee-474814e22d16",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        420,
+        330
+      ],
+      "id": "b01ba1d1-43b5-58ea-9365-7fcb2e657f8e",
+      "name": "Presets DELETE Result Valid?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ data: $json.data }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        680,
+        -110
+      ],
+      "id": "9cbfd55b-a36c-54ff-b2c6-2f9cb7d9ef84",
+      "name": "Respond Presets Success"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: $json.error }) }}",
+        "options": {
+          "responseCode": "={{ $json.http_status || 500 }}"
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        680,
+        110
+      ],
+      "id": "787d109c-e644-552c-b284-6df5fe76486c",
+      "name": "Respond Presets Error"
+    }
+  ],
+  "connections": {
+    "filter presets get": {
+      "main": [
+        [
+          {
+            "node": "Verify Presets GET",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Presets GET": {
+      "main": [
+        [
+          {
+            "node": "Presets GET Auth Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Presets GET Auth Valid?": {
+      "main": [
+        [
+          {
+            "node": "Get Filter Presets",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Presets Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Filter Presets": {
+      "main": [
+        [
+          {
+            "node": "Format Presets GET",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Presets GET": {
+      "main": [
+        [
+          {
+            "node": "Presets GET Result Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Presets GET Result Valid?": {
+      "main": [
+        [
+          {
+            "node": "Respond Presets Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Presets Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "filter presets post": {
+      "main": [
+        [
+          {
+            "node": "Verify Presets POST",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Presets POST": {
+      "main": [
+        [
+          {
+            "node": "Presets POST Auth Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Presets POST Auth Valid?": {
+      "main": [
+        [
+          {
+            "node": "Create Filter Preset",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Presets Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Filter Preset": {
+      "main": [
+        [
+          {
+            "node": "Format Presets POST",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Presets POST": {
+      "main": [
+        [
+          {
+            "node": "Presets POST Result Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Presets POST Result Valid?": {
+      "main": [
+        [
+          {
+            "node": "Respond Presets Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Presets Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "filter presets patch": {
+      "main": [
+        [
+          {
+            "node": "Verify Presets PATCH",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Presets PATCH": {
+      "main": [
+        [
+          {
+            "node": "Presets PATCH Auth Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Presets PATCH Auth Valid?": {
+      "main": [
+        [
+          {
+            "node": "Rename Filter Preset",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Presets Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rename Filter Preset": {
+      "main": [
+        [
+          {
+            "node": "Format Presets PATCH",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Presets PATCH": {
+      "main": [
+        [
+          {
+            "node": "Presets PATCH Result Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Presets PATCH Result Valid?": {
+      "main": [
+        [
+          {
+            "node": "Respond Presets Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Presets Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "filter presets delete": {
+      "main": [
+        [
+          {
+            "node": "Verify Presets DELETE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Presets DELETE": {
+      "main": [
+        [
+          {
+            "node": "Presets DELETE Auth Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Presets DELETE Auth Valid?": {
+      "main": [
+        [
+          {
+            "node": "Delete Filter Preset",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Presets Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Filter Preset": {
+      "main": [
+        [
+          {
+            "node": "Format Presets DELETE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Presets DELETE": {
+      "main": [
+        [
+          {
+            "node": "Presets DELETE Result Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Presets DELETE Result Valid?": {
+      "main": [
+        [
+          {
+            "node": "Respond Presets Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Presets Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {}
+}
