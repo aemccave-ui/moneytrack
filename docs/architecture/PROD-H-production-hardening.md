@@ -6,89 +6,82 @@
 - **PROD-H2 — COMPLETE: Backup & Restore Hardening**
 - **PROD-H3 — COMPLETE: Runtime / Secrets / TLS Hardening**
 - **PROD-H4 — CURRENT: Monitoring / Off-host / Runbook**
-- PROD-H5 — Final Production Hardening Gate
+- **PROD-H5 — PREPARED: Final Production Hardening Gate**
 
 ## Base
 
-The MoneyTrack backend-domain and API programs are closed. PROD-H is separate from MiniApp UX work and must not reopen closed API/domain phases without fresh blocking evidence.
+MoneyTrack backend-domain and API programs are already closed. PROD-H is operational hardening only and must not reopen business/domain/API scope without fresh blocking evidence.
 
 ## Goal
 
-Make the existing production runtime recoverable, observable and reproducible enough to operate as a production service rather than as undocumented server state.
+Make the existing production runtime recoverable, observable and reproducible enough to operate as a production service rather than undocumented server state.
 
 ## PROD-H1 — COMPLETE
 
-Fresh production inventory established the baseline:
+Production baseline established:
 
 - Ubuntu 24.04.4 LTS;
 - `n8n`, n8n PostgreSQL (`postgres`) and MoneyTrack PostgreSQL (`moneytrack-db`) running with restart policy `unless-stopped`;
 - n8n persistent state on Docker volume `n8n_n8n_data`;
 - n8n metadata PostgreSQL on Docker volume `n8n_postgres_data`;
 - MoneyTrack PostgreSQL bind-mounted from `/opt/moneytrack/postgres/data`;
-- MoneyTrack DB and n8n metadata DB readiness PASS;
-- n8n health PASS;
-- public MoneyTrack TLS valid;
-- UFW active; inspected public rules expose only 22/80/443;
-- n8n port 5678 loopback-only;
-- persisted n8n encryption key present in `/home/node/.n8n/config`, mode `600`, value not printed;
-- deployment provenance found at `/root/stack/n8n/docker-compose.yml` and `/opt/moneytrack/postgres/docker-compose.yml`;
-- certbot renewal timer enabled + active.
+- DB readiness and n8n health PASS;
+- public TLS valid; certbot timer enabled + active;
+- UFW active; inspected public rules expose only 22/80/443; n8n port 5678 loopback-only;
+- persisted n8n encryption key present in `/home/node/.n8n/config`, mode `600`, value never printed;
+- deployment provenance found at `/root/stack/n8n/docker-compose.yml` and `/opt/moneytrack/postgres/docker-compose.yml`.
 
-H1 also identified the gaps later addressed by H2/H3: no proved MoneyTrack recovery chain, mutable n8n `latest`, moving PostgreSQL major tag, and unbounded Docker `json-file` logs.
+H1 identified the gaps addressed in later phases: no proved MoneyTrack recovery chain, mutable n8n image, moving PostgreSQL tag and unbounded Docker logs.
 
 ## PROD-H2 — COMPLETE
 
 ### Recovery correctness — PASS
 
-Protected production backup created and verified. Backup set contains:
+Protected recovery set contains:
 
 - MoneyTrack PostgreSQL custom-format dump;
 - n8n metadata PostgreSQL custom-format dump;
-- n8n persistent recovery-critical state including persisted encryption material;
+- n8n persistent recovery-critical state including encryption material;
 - protected runtime recovery configuration;
-- SHA256 manifest and COMPLETE marker.
+- SHA256 manifest and `COMPLETE` marker.
 
-Isolated restore rehearsal restored both databases only into temporary PostgreSQL containers with no published host ports. Evidence included:
+Isolated restore rehearsal restored both databases only into temporary PostgreSQL containers with no published host ports.
+
+Evidence:
 
 - backup hash verification PASS;
 - MoneyTrack restored schema PASS with 30 tables;
 - n8n metadata restored schema PASS with 93 tables;
-- restored n8n encryption-key presence PASS without printing the value;
-- production MoneyTrack DB, n8n metadata DB and n8n health PASS after rehearsal.
+- restored n8n encryption-key presence PASS without printing value;
+- production DB/n8n health PASS after rehearsal.
 
 ### Recurring recovery — PASS
 
-Installed recovery executables are independent of Git checkout state under `/usr/local/lib/moneytrack/`.
+Installed recovery executables are independent of Git checkout under `/usr/local/lib/moneytrack/`.
 
 - `moneytrack-backup.timer` — daily protected backup, enabled + active;
 - local retention — 14 days;
 - `moneytrack-restore-verify.timer` — weekly isolated restore verification, enabled + active;
-- both timers use `Persistent=true`.
+- both recovery timers use `Persistent=true`.
 
-H-01 is closed. Local recovery correctness and recurring local recovery operations are proven.
+H-01 is closed.
 
 ## PROD-H3 — COMPLETE
 
-### Accepted production runtime
-
-H3 hardened the production runtime through non-secret Compose overlays rather than by rewriting secret-bearing base Compose files.
-
-Permanent operational files:
+Permanent production hardening files:
 
 - `/root/stack/n8n/docker-compose.prod-h.yml`;
 - `/opt/moneytrack/postgres/docker-compose.prod-h.yml`;
 - `/root/stack/n8n/compose-interpolation.prod-h.sh` mode `600`;
 - `/opt/moneytrack/postgres/compose-interpolation.prod-h.sh` mode `600`.
 
-The interpolation snapshot contains only Compose variables required to reproduce the currently-running environment and was captured from live runtime without printing values. It is included in protected recovery archives.
+Accepted image/runtime policy:
 
-Accepted image policy:
-
-- n8n: `n8nio/n8n@sha256:a49bc161141d6c4b9c495b5a6e3c7c1932e61d2ed2fe3fdca01262064b4b23ca`, runtime `2.22.5`;
+- n8n: immutable digest `n8nio/n8n@sha256:a49bc161141d6c4b9c495b5a6e3c7c1932e61d2ed2fe3fdca01262064b4b23ca`, runtime `2.22.5`;
 - n8n PostgreSQL: `postgres:16.14`;
 - MoneyTrack PostgreSQL: `postgres:16.14`.
 
-Accepted Docker log policy on `n8n`, `postgres`, `moneytrack-db`:
+Accepted Docker log policy on all three critical containers:
 
 ```yaml
 logging:
@@ -98,107 +91,147 @@ logging:
     max-file: "5"
 ```
 
-### Final H3 cutover evidence — PASS
-
-The accepted wrapped cutover proved, in sequence:
+Final accepted cutover proved:
 
 - Compose interpolation context recovered without exposing values;
-- candidate Compose render PASS;
-- canonical API contract present before mutation;
-- rollback images prepared;
+- preflight and candidate Compose render PASS;
 - target image versions PASS;
-- managed overlays installed and rendered successfully;
 - n8n metadata PostgreSQL recreation PASS;
-- n8n recreation PASS and API registration PASS;
+- n8n recreation + API registration PASS;
 - MoneyTrack PostgreSQL recreation PASS;
-- runtime image/version pins PASS;
+- image/version pins PASS;
 - persistent mounts and restart policies preserved;
 - complete container environment parity PASS without printing values;
-- Docker log rotation PASS on all three containers;
+- log rotation PASS on all three containers;
 - persisted n8n encryption key remained present;
 - API missing-auth contract remained canonical `401 INIT_DATA_MISSING`;
 - production health PASS;
-- installed recurring backup executable refreshed;
-- fresh post-hardening protected backup PASS, including overlays and interpolation snapshots.
+- fresh post-hardening protected backup PASS including overlays/context snapshots.
 
-The accepted post-hardening backup is `/opt/moneytrack/backups/20260809T145418Z`.
+Accepted post-hardening recovery point: `/opt/moneytrack/backups/20260809T145418Z`.
 
-### Preserved failed-attempt evidence
+First-attempt rollback evidence remains preserved in `docs/architecture/PROD-H3-first-cutover-attempt.md` and is not accepted production state.
 
-The first H3 cutover attempt reached the post-recreation API smoke too early, received a temporary 404, and automatically rolled back. Subsequent preflights exposed stale rollback provenance and a missing Compose interpolation variable. These were fixed fail-closed before the accepted cutover. Historical evidence is retained in `docs/architecture/PROD-H3-first-cutover-attempt.md`; it does not represent accepted production state.
-
-### H3 debt closed
+H3 closed:
 
 - H-02 mutable n8n `latest` — CLOSED;
 - M-01 unbounded Docker logs — CLOSED;
-- M-02 moving PostgreSQL `postgres:16` tag — CLOSED;
-- n8n encryption-key persistence — PASS, unchanged;
+- M-02 moving PostgreSQL tag — CLOSED;
 - Compose recreation context — PROTECTED / REPRODUCIBLE.
 
 ## PROD-H4 — CURRENT
 
-H4 is operational hardening only. No new business features, API endpoints or domain changes.
+### Operational gate evidence
 
-### Read-only operational gate — PASS WITH DEBT REVIEW
+After fixing harness-only scoping/TLS defects, the H4 read-only production gate completed with:
 
-The H4 production gate completed with `operational_failures=0` and five warnings.
+```text
+operational_failures=0
+operational_warnings=4
+PROD-H4 operational_gate=PASS_WITH_DEBT_REVIEW
+```
 
-Confirmed healthy/operational:
+Confirmed PASS:
 
-- hardened image pins PASS on n8n and both PostgreSQL containers;
-- restart policies and log rotation PASS on all three critical containers;
-- hardening overlays and protected Compose interpolation snapshots PASS;
-- MoneyTrack DB, n8n metadata DB, n8n health and canonical API `401 INIT_DATA_MISSING` smoke PASS;
-- daily backup and weekly isolated-restore timers enabled + active;
-- latest protected backup hashes and freshness PASS;
-- last backup and restore service results PASS;
-- root and backup filesystem usage ~24%, PASS;
-- certbot timer PASS;
-- `n8n.moneytrackapp.xyz` TLS PASS with 77 days remaining at observation time;
-- `app.moneytrackapp.xyz` TLS PASS with 81 days remaining at observation time.
+- hardened image pins, overlays, restart policies and log rotation;
+- protected Compose context snapshots mode `600`;
+- both PostgreSQL readiness checks, n8n health and canonical API `401` smoke;
+- daily backup and weekly restore-verification timers;
+- latest backup hashes/freshness and last recovery service results;
+- root/backup filesystem usage ~24%;
+- certbot timer;
+- `n8n.moneytrackapp.xyz` TLS with 77 days remaining at observation time;
+- `app.moneytrackapp.xyz` TLS with 81 days remaining at observation time;
+- no MoneyTrack/certbot failed systemd units.
 
-Warnings observed:
+Remaining warnings:
 
-1. `critical_failed_units` reported an unrelated HabitsTrack restore-verify unit. This is a gate-scoping false positive, not MoneyTrack debt. The H4 gate has been corrected to inspect MoneyTrack-owned/certbot unit names rather than matching generic words in service descriptions.
-2. `operator_alerting_hook` — no operator-visible failure hook proved yet.
-3. `off_host_backup_path` — no MoneyTrack off-host copy/replication proved yet; AWS CLI and rsync are installed.
-4. `backup_failure_domain` — local backup is on the same `/dev/sda1` host/root failure domain.
-5. `automation_checkout_drift` — `/home/adm_mt/moneytrack-automation` still has modified `bin/release.sh` and untracked `config/`. This remains MEDIUM operational debt; secret-bearing files must not be committed blindly.
+1. `operator_alerting_hook` — no operator-visible failure hook installed yet;
+2. `off_host_backup_path` — no off-host MoneyTrack destination proved;
+3. `backup_failure_domain` — local backup shares `/dev/sda1` with root;
+4. `automation_checkout_drift` — modified `bin/release.sh` and untracked `config/` in `/home/adm_mt/moneytrack-automation`.
 
-No BLOCKER/HIGH debt was discovered by H4.
+No BLOCKER/HIGH debt exists.
 
-### H4 implementation now
+### External capability resolution
 
-- `scripts/prod-h4-external-capability-resolver.sh` performs a narrow read-only resolution of existing AWS/S3 access and operator-notification inputs without printing credential/token/chat values;
-- `docs/runbooks/PROD-H-operations.md` now documents the proven runtime/recovery paths, health checks, safe recreation commands, backup-now, isolated restore verification, log policy, TLS checks and recovery-critical file locations;
-- if an existing MoneyTrack S3 destination is proved, wire protected backups to it rather than introducing a new storage platform;
-- if an existing external notification target is proved, attach MoneyTrack backup/restore/health/TLS failure signals to it;
-- if no external destination exists, record off-host durability as an explicitly accepted MEDIUM external-dependency risk rather than pretending same-host backup is disaster recovery.
+Narrow resolver established:
 
-### Remaining H4 close criteria
+- AWS CLI present, but usable AWS identity was not proved;
+- no existing remote mount was found;
+- rsync present;
+- `MONEYTRACK_BOT_TOKEN` exists at runtime, value not printed;
+- no existing MoneyTrack `OnFailure` hook exists;
+- schema contains Telegram/user identifiers, but no operator recipient was proved; no recipient value was read or guessed.
 
-H4 closes when:
+Therefore:
 
-- false-positive failed-unit warning is gone on the rerun;
-- operator alerting is implemented or an explicit accepted residual risk is documented;
-- off-host posture is implemented when a usable existing destination is available, otherwise explicitly accepted as MEDIUM external dependency;
-- concise operations runbook exists and matches accepted production state.
+- do not invent an S3 bucket/account;
+- do not guess a Telegram chat/user ID;
+- off-host backup remains a controlled MEDIUM external dependency;
+- external push alerting remains a controlled MEDIUM external dependency.
 
-## PROD-H5 — final gate
+### H4 implementation bundle
 
-Read-only acceptance. PROD-H closes only when:
+Prepared:
+
+- `scripts/prod-h4-operator-alert.sh` — durable local alert sink to journald + `/var/lib/moneytrack/operator-alerts/`;
+- `scripts/prod-h4-health-monitor.sh` — recurring service/API/recovery/disk/TLS monitor;
+- `scripts/prod-h4-install-operator-monitoring.sh` — installs monitor timer and `OnFailure` hooks for backup, restore verification and health monitor;
+- `docs/runbooks/PROD-H-operations.md` — concise operations/recovery runbook;
+- `/etc/moneytrack/prod-h4-debt.env` — non-secret controlled residual-debt decision record created by installer.
+
+The health monitor runs approximately every 15 minutes. A failed health/backup/restore service creates a durable local operator alert. No external recipient is assumed.
+
+Controlled residual MEDIUM debt after successful monitoring installation:
+
+- off-host backup unavailable until an external destination/identity is supplied;
+- external push notification unavailable until a real operator recipient is supplied;
+- automation checkout drift remains documented and is not normalized because `config/` may be secret-bearing.
+
+H4 closes when the installer passes and a rerun of the H4 gate reports `operator_alerting_hook=PASS` with no warnings outside the controlled MEDIUM set.
+
+## PROD-H5 — PREPARED
+
+`scripts/prod-h5-final-gate.sh` is read-only acceptance after H4 monitoring installation.
+
+It requires:
+
+- H4 operational failures = 0;
+- `operator_alerting_hook=PASS`;
+- no unexpected operational warning;
+- only `off_host_backup_path`, `backup_failure_domain`, and `automation_checkout_drift` may remain WARN;
+- installed health monitor PASS;
+- health-monitor timer enabled + active;
+- `OnFailure` hooks on backup, restore-verification and health-monitor services;
+- durable local alert state directory;
+- explicit controlled MEDIUM debt record;
+- operations runbook safety/recovery commands present.
+
+Final successful markers:
+
+```text
+blocker_debt=0
+high_debt=0
+PROD-H5 final_gate=PASS
+PROD-H=COMPLETE
+```
+
+## Exit gate
+
+PROD-H closes only when:
 
 - no unresolved BLOCKER/HIGH debt remains;
-- both PostgreSQL databases have recurring backups and successful isolated restore evidence;
-- n8n recovery-critical persistent state is protected;
-- runtime image pins and log rotation remain active;
-- production recreation path is documented and uses permanent Compose overlays/context files;
-- TLS renewal and expiry/failure visibility are operational or residual alerting risk is explicitly accepted;
-- critical service health and backup failures can surface to an operator or residual notification risk is explicitly accepted;
-- off-host posture is either implemented or explicitly accepted as a remaining MEDIUM external-dependency risk;
-- concise operations runbook exists;
-- final production gate is green.
+- recurring backups and successful isolated restore proof remain valid;
+- n8n recovery-critical persistent state remains protected;
+- runtime pins and log rotation remain active;
+- production recreation path is documented and reproducible;
+- TLS renewal/expiry monitoring is operational;
+- critical service/backup/restore failures create a durable operator-visible alert trail;
+- off-host posture is implemented or explicitly retained as MEDIUM external-dependency debt;
+- operations runbook exists;
+- H5 final gate passes.
 
 ## Next
 
-Run the narrow H4 external-capability resolver. Use existing AWS/S3 or alert delivery inputs if present; otherwise record only the specific residual external dependency. Then rerun the operational gate and proceed directly to PROD-H5.
+Install the prepared H4 local operator monitoring bundle, rerun H4 through H5, and close PROD-H if the final gate is green.
