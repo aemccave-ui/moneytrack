@@ -70,9 +70,10 @@ def main():
                     seen.append((key, wf.get("id"), name))
 
             if ntype == "n8n-nodes-base.respondToWebhook":
+                response_code = (params.get("options") or {}).get("responseCode", 200)
                 print(
                     f"RESPOND name={name!r} "
-                    f"responseCode={compact(params.get('responseCode'))!r} "
+                    f"responseCode={compact(response_code)!r} "
                     f"respondWith={params.get('respondWith')!r} "
                     f"responseBody={compact(params.get('responseBody'))!r}"
                 )
