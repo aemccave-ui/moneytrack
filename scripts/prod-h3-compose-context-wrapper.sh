@@ -52,18 +52,16 @@ compose_probe() {
 missing_vars_from_err() {
   local err="$1"
 
-  # Docker Compose warning text can arrive either as:
-  #   The "VAR" variable is not set...
-  # or with escaped quotes in captured stderr:
-  #   The \"VAR\" variable is not set...
-  # Extract the identifier from either representation without ever printing values.
+  # Docker Compose warning text can contain normal or escaped quotes around the
+  # variable name. Strip backslashes and quote characters separately; values
+  # are never inspected or printed here.
   awk '
     /variable is not set/ {
       line=$0
       sub(/^.*The /, "", line)
       sub(/ variable is not set.*$/, "", line)
       gsub(/\\/, "", line)
-      gsub(/\"/, "", line)
+      gsub(/"/, "", line)
       if (line ~ /^[A-Za-z_][A-Za-z0-9_]*$/) print line
     }
   ' "$err" | sort -u
@@ -131,7 +129,6 @@ capture_project_context() {
     printf '\n'
   fi
 
-  # If Compose warned about missing interpolation but the parser found none, fail closed.
   if grep -Fq 'variable is not set' "$err" && [ "${#vars[@]}" -eq 0 ]; then
     echo "$name interpolation_warning_parse=FAIL"
     sed 's/^/  /' "$err" | head -n 20
@@ -147,8 +144,6 @@ capture_project_context() {
   for var in "${vars[@]}"; do
     recover_runtime_value "$var" "${containers[@]}"
     printf 'export %s=%q\n' "$var" "$RECOVERED_VALUE" >> "$staged"
-
-    # Export immediately in this process as well; do not depend solely on re-sourcing.
     printf -v "$var" '%s' "$RECOVERED_VALUE"
     export "$var"
     [ "${!var+x}" = "x" ] || {
@@ -203,8 +198,6 @@ echo "=== PROD-H3 COMPOSE CONTEXT RECOVERY START ==="
 capture_project_context n8n "$N8N_WORKDIR" "$N8N_PROJECT" "$N8N_BASE" "$N8N_SNAPSHOT"
 capture_project_context moneytrack "$MT_WORKDIR" "$MT_PROJECT" "$MT_BASE" "$MT_SNAPSHOT"
 
-# Re-source both snapshots into the parent wrapper environment so child preflight/cutover
-# inherit exactly the recovered interpolation variables without printing values.
 # shellcheck disable=SC1090
 source "$N8N_SNAPSHOT"
 # shellcheck disable=SC1090
