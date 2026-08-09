@@ -3,6 +3,7 @@ import { getAccountsExplorerSummary, getTransactions } from './api.js'
 import { RecentOperations } from './RecentOperations.jsx'
 import { AccountTree } from './AccountTree.jsx'
 import { BalanceHero } from './BalanceHero.jsx'
+import AccountsFilters from './AccountsFilters.jsx'
 import { formatMonthLabel } from './date-format.js'
 
 const parentAccountId = (account) => account.parent_account_id
@@ -202,11 +203,24 @@ function labelDate(key) {
     .format(new Date(`${key}T12:00:00`))
 }
 
-function LeafOperations({ node, dateFrom, dateTo, baseCurrency, privacy }) {
+function categoryFilterKey(ids) {
+  return ids == null ? '*' : [...ids].map(String).sort((a, b) => Number(a) - Number(b)).join(',')
+}
+
+function LeafOperations({
+  node,
+  dateFrom,
+  dateTo,
+  baseCurrency,
+  privacy,
+  incomeCategoryIds,
+  expenseCategoryIds,
+}) {
   const accountId = String(node.account.id ?? node.account.account_id)
   const [requestState, setRequestState] = useState({ key: '', payload: null, error: '' })
   const [reloadNonce, setReloadNonce] = useState(0)
-  const requestKey = `${accountId}:${dateFrom}:${dateTo}:${reloadNonce}`
+  const filtersKey = `${categoryFilterKey(incomeCategoryIds)}:${categoryFilterKey(expenseCategoryIds)}`
+  const requestKey = `${accountId}:${dateFrom}:${dateTo}:${filtersKey}:${reloadNonce}`
   const payload = requestState.key === requestKey ? requestState.payload : null
   const error = requestState.key === requestKey ? requestState.error : ''
 
@@ -217,6 +231,8 @@ function LeafOperations({ node, dateFrom, dateTo, baseCurrency, privacy }) {
       dateFrom,
       dateTo,
       includeDescendants: false,
+      incomeCategoryIds,
+      expenseCategoryIds,
     }, controller.signal)
       .then((result) => setRequestState({ key: requestKey, payload: result, error: '' }))
       .catch((reason) => {
@@ -225,7 +241,7 @@ function LeafOperations({ node, dateFrom, dateTo, baseCurrency, privacy }) {
         }
       })
     return () => controller.abort()
-  }, [accountId, dateFrom, dateTo, reloadNonce, requestKey])
+  }, [accountId, dateFrom, dateTo, filtersKey, reloadNonce, requestKey])
 
   if (error) return <div className="explorerInlineError" role="alert">{error}</div>
   if (!payload) return <div className="explorerTransactionsLoading">Загрузка операций…</div>
@@ -305,6 +321,8 @@ export default function AccountsExplorer({
     }
     return new Set()
   })
+  const [incomeCategoryIds, setIncomeCategoryIds] = useState(null)
+  const [expenseCategoryIds, setExpenseCategoryIds] = useState(null)
   const [period, setPeriod] = useState('month')
   const today = new Date()
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
@@ -312,11 +330,21 @@ export default function AccountsExplorer({
   const [dateTo, setDateTo] = useState(localDateKey(today))
   const [aggregateState, setAggregateState] = useState({ key: '', payload: null, error: '' })
 
+  const allLeafAccountIds = useMemo(() => allNodes
+    .filter((node) => !node.children.length)
+    .map((node) => String(node.account.id ?? node.account.account_id))
+    .sort((a, b) => Number(a) - Number(b)), [allNodes])
+  const selectedAccountIds = useMemo(() => allLeafAccountIds.filter((id) => !excluded.has(id)), [allLeafAccountIds, excluded])
+
   const resolvedPeriod = periodDates(period, dateFrom, dateTo)
   const invalidRange = resolvedPeriod.dateFrom > resolvedPeriod.dateTo
   const excludedIds = useMemo(() => [...excluded].sort((a, b) => Number(a) - Number(b)), [excluded])
+  const incomeCategoryKey = categoryFilterKey(incomeCategoryIds)
+  const expenseCategoryKey = categoryFilterKey(expenseCategoryIds)
   const aggregateKey = [
     excludedIds.join(','),
+    incomeCategoryKey,
+    expenseCategoryKey,
     resolvedPeriod.dateFrom,
     resolvedPeriod.dateTo,
   ].join('|')
@@ -340,12 +368,13 @@ export default function AccountsExplorer({
     const controller = new AbortController()
     if (invalidRange) return () => controller.abort()
 
-    getAccountsExplorerSummary(
-      excludedIds,
-      resolvedPeriod.dateFrom,
-      resolvedPeriod.dateTo,
-      controller.signal,
-    )
+    getAccountsExplorerSummary({
+      excludedAccountIds: excludedIds,
+      dateFrom: resolvedPeriod.dateFrom,
+      dateTo: resolvedPeriod.dateTo,
+      incomeCategoryIds,
+      expenseCategoryIds,
+    }, controller.signal)
       .then((result) => setAggregateState({ key: aggregateKey, payload: result, error: '' }))
       .catch((reason) => {
         if (reason?.name !== 'AbortError') {
@@ -353,7 +382,7 @@ export default function AccountsExplorer({
         }
       })
     return () => controller.abort()
-  }, [aggregateKey, excludedIds, invalidRange, resolvedPeriod.dateFrom, resolvedPeriod.dateTo])
+  }, [aggregateKey, excludedIds, expenseCategoryKey, incomeCategoryKey, invalidRange, resolvedPeriod.dateFrom, resolvedPeriod.dateTo])
 
   const toggleParent = (id) => setExpanded((current) => {
     const next = new Set(current)
@@ -386,6 +415,23 @@ export default function AccountsExplorer({
       next.delete(id)
       return next
     })
+  }
+
+  const applySelectedAccountIds = (ids) => {
+    const selected = new Set(ids.map(String))
+    setExcluded(new Set(allLeafAccountIds.filter((id) => !selected.has(id))))
+    setOpenLeaves((current) => new Set([...current].filter((id) => selected.has(id))))
+  }
+
+  const applyCategories = ({ incomeCategoryIds: incomeIds, expenseCategoryIds: expenseIds }) => {
+    setIncomeCategoryIds(incomeIds)
+    setExpenseCategoryIds(expenseIds)
+  }
+
+  const resetAllFilters = () => {
+    setExcluded(new Set())
+    setIncomeCategoryIds(null)
+    setExpenseCategoryIds(null)
   }
 
   return (
@@ -428,6 +474,16 @@ export default function AccountsExplorer({
         <button type="button" className={period === 'month' ? 'isActive' : ''} onClick={() => setPeriod('month')}>Месяц</button>
         <button type="button" className={period === 'range' ? 'isActive' : ''} onClick={() => setPeriod('range')}>Диапазон</button>
       </div>
+
+      <AccountsFilters
+        allAccountIds={allLeafAccountIds}
+        selectedAccountIds={selectedAccountIds}
+        incomeCategoryIds={incomeCategoryIds}
+        expenseCategoryIds={expenseCategoryIds}
+        onApplySelectedAccounts={applySelectedAccountIds}
+        onApplyCategories={applyCategories}
+        onResetAll={resetAllFilters}
+      />
 
       {period === 'range' && (
         <div className="dateRange">
@@ -473,6 +529,8 @@ export default function AccountsExplorer({
                   dateTo={resolvedPeriod.dateTo}
                   baseCurrency={baseCurrency}
                   privacy={privacy}
+                  incomeCategoryIds={incomeCategoryIds}
+                  expenseCategoryIds={expenseCategoryIds}
                 />
               ) : null
             )}
