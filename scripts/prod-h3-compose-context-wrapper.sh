@@ -18,7 +18,7 @@ require() {
   }
 }
 
-for c in docker grep sed sort awk install mktemp; do
+for c in docker grep sed sort awk install mktemp stat; do
   require "$c"
 done
 
@@ -33,7 +33,7 @@ umask 077
 
 project_containers() {
   local project="$1"
-  docker ps -a \
+  docker ps \
     --filter "label=com.docker.compose.project=$project" \
     --format '{{.Names}}' \
     | sort -u
@@ -62,9 +62,9 @@ recover_runtime_value() {
 
   for c in "$@"; do
     line="$(docker inspect "$c" --format '{{range .Config.Env}}{{println .}}{{end}}' \
-      | grep -m1 -F "${var}=" || true)"
+      | grep -m1 -E "^${var}=" || true)"
 
-    if [ -n "$line" ] && [ "${line%%=*}" = "$var" ]; then
+    if [ -n "$line" ]; then
       current="${line#*=}"
       if [ "$found" -eq 0 ]; then
         value="$current"
