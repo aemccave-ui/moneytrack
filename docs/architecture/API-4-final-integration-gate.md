@@ -2,7 +2,7 @@
 
 ## Status
 
-CURRENT — final read-only integration gate
+**CLOSED — FINAL INTEGRATION GATE PASS**
 
 ## Base
 
@@ -25,7 +25,7 @@ Perform one final read-only acceptance of the integrated API surface and establi
 
 API-4 is not a refactoring phase. It must not reopen API-1/API-2/API-3 work unless fresh production evidence proves a blocking regression.
 
-## Expected active HTTP surface
+## Stable active HTTP surface
 
 Exactly 8 endpoints:
 
@@ -40,11 +40,11 @@ Exactly 8 endpoints:
 | GET | `/api/v1/transactions` | retained |
 | GET | `/api/v1/accounts-explorer-summary` | retained |
 
-`/moneytrack-test` must remain absent.
+`/moneytrack-test` is absent.
 
-## Boundary expectations
+## Backend boundaries
 
-Blocking backend-boundary paths:
+Verified blocking paths:
 
 - dashboard -> `moneytrack.finance_dashboard_read_model_v1`;
 - accounts -> `moneytrack.finance_accounts_read_model_v1`;
@@ -53,25 +53,86 @@ Blocking backend-boundary paths:
 - transaction-reference -> `moneytrack.api_transaction_reference_read_model_v1`;
 - DELETE transaction -> `moneytrack.finance_delete_transaction_v1`.
 
-`/api/v1/i18n` is an allowed read-only catalog adapter in the current stable baseline. `/api/v1/me` remains explicitly deprecated/read-only and is not a reason to reopen API-2 unless it becomes a blocking production dependency.
+`/api/v1/i18n` remains an allowed read-only catalog adapter. `/api/v1/me` remains explicitly deprecated/read-only legacy surface.
 
-## Final gate
+## Final production evidence
 
-API-4 PASS requires fresh production evidence that:
+Fresh read-only integration gate completed against production.
 
-1. all five API workflows are active and `versionId == activeVersionId`;
-2. active API surface is exactly the expected 8 method/path pairs with unique ownership;
-3. `/moneytrack-test` is absent;
-4. all 8 auth paths contain canonical `api3b-v1` auth and no canonical auth node uses exception-style failures;
-5. missing auth returns canonical `401 INIT_DATA_MISSING` on all 8 endpoints;
-6. a freshly signed synthetic Telegram InitData request is accepted by auth and reaches the backend;
-7. all six blocking backend boundary functions exist and are called by the expected workflow nodes;
-8. retained mutation surface is exactly one DELETE endpoint;
-9. no active n8n node directly mutates MoneyTrack business tables;
-10. n8n health is PASS.
+### Workflow identity
 
-## Stable-baseline decision
+All five API workflows were active and version-consistent (`versionId == activeVersionId`):
 
-If all gates pass, no production mutation is required. Evidence is recorded and merged, then the API program is CLOSED.
+- MiniApp API — version counter 482;
+- Delete Transaction — 6;
+- Transaction Reference — 7;
+- Transactions API — 10;
+- Accounts Explorer Summary API — 9.
 
-Any later API evolution becomes new roadmap work rather than a continuation of API-1..API-4.
+Result: **PASS**.
+
+### HTTP surface
+
+- expected endpoints: 8;
+- missing endpoints: 0;
+- unexpected endpoints: 0;
+- duplicate owners: 0;
+- `/moneytrack-test`: absent.
+
+Result: **PASS**.
+
+### Authentication
+
+- canonical `api3b-v1` auth nodes: 8/8;
+- exception-style canonical auth nodes: 0;
+- missing-auth contract: `401 INIT_DATA_MISSING` on all 8 endpoints;
+- freshly signed synthetic Telegram InitData was accepted by auth and reached the backend, returning expected `404 USER_NOT_FOUND` for the synthetic unknown user;
+- runtime bot token was used without printing its value and temporary signed payload was removed.
+
+Result: **PASS**.
+
+### Backend boundary integration
+
+Each required workflow called exactly one expected backend boundary. All six required backend functions existed in PostgreSQL.
+
+- backend boundary calls: PASS;
+- backend function count: 6;
+- workflow direct business mutations: 0.
+
+Result: **PASS**.
+
+### Mutation surface
+
+Retained API mutation endpoint count: **1**.
+
+- `DELETE /api/v1/transaction` — `MTxDel7Qp2Vn9Kc4`.
+
+API-3C already proved this boundary is ownership-scoped and state-idempotent on retry; no additional idempotency store/key is required.
+
+Result: **PASS**.
+
+### Global invariants
+
+- global active direct business writer nodes: **0**;
+- n8n health: **PASS**.
+
+## Final decision
+
+**API-4 PASS. No production mutation required.**
+
+The integrated MoneyTrack API baseline is accepted as stable.
+
+## API program status
+
+- API-1 — Inventory & Contract: CLOSED
+- API-2A — Live Read Models: CLOSED
+- API-2B — Contract Normalization: CLOSED
+- API-2C — Legacy Surface Decision: CLOSED
+- API-3A — Auth Inventory: CLOSED
+- API-3B — Canonical Auth Hardening: CLOSED
+- API-3C — Ownership / Idempotency: CLOSED
+- API-4 — Final Integration Gate: CLOSED
+
+**API PROGRAM — COMPLETE**
+
+Any later API evolution is new roadmap work rather than continuation of API-1..API-4.
