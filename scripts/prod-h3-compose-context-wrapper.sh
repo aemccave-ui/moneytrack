@@ -51,8 +51,22 @@ compose_probe() {
 
 missing_vars_from_err() {
   local err="$1"
-  sed -n 's/.*The "\([A-Za-z_][A-Za-z0-9_]*\)" variable is not set.*/\1/p' "$err" \
-    | sort -u
+
+  # Docker Compose warning text can arrive either as:
+  #   The "VAR" variable is not set...
+  # or with escaped quotes in captured stderr:
+  #   The \"VAR\" variable is not set...
+  # Extract the identifier from either representation without ever printing values.
+  awk '
+    /variable is not set/ {
+      line=$0
+      sub(/^.*The /, "", line)
+      sub(/ variable is not set.*$/, "", line)
+      gsub(/\\/, "", line)
+      gsub(/\"/, "", line)
+      if (line ~ /^[A-Za-z_][A-Za-z0-9_]*$/) print line
+    }
+  ' "$err" | sort -u
 }
 
 recover_runtime_value() {
@@ -110,6 +124,20 @@ capture_project_context() {
   compose_probe "$workdir" "$project" "$base" "$err" || true
   mapfile -t vars < <(missing_vars_from_err "$err")
 
+  echo "$name missing_interpolation_vars_detected=${#vars[@]}"
+  if [ "${#vars[@]}" -gt 0 ]; then
+    printf '%s missing_interpolation_vars=' "$name"
+    printf '%s ' "${vars[@]}"
+    printf '\n'
+  fi
+
+  # If Compose warned about missing interpolation but the parser found none, fail closed.
+  if grep -Fq 'variable is not set' "$err" && [ "${#vars[@]}" -eq 0 ]; then
+    echo "$name interpolation_warning_parse=FAIL"
+    sed 's/^/  /' "$err" | head -n 20
+    return 1
+  fi
+
   {
     echo "$MARKER"
     echo "# Captured from the live production container environment."
@@ -119,12 +147,28 @@ capture_project_context() {
   for var in "${vars[@]}"; do
     recover_runtime_value "$var" "${containers[@]}"
     printf 'export %s=%q\n' "$var" "$RECOVERED_VALUE" >> "$staged"
+
+    # Export immediately in this process as well; do not depend solely on re-sourcing.
+    printf -v "$var" '%s' "$RECOVERED_VALUE"
+    export "$var"
+    [ "${!var+x}" = "x" ] || {
+      echo "$name compose_interpolation_export=FAIL var=$var"
+      return 1
+    }
   done
 
   install -m 0600 "$staged" "$snapshot"
 
   # shellcheck disable=SC1090
   source "$snapshot"
+
+  for var in "${vars[@]}"; do
+    [ "${!var+x}" = "x" ] || {
+      echo "$name compose_interpolation_snapshot_export=FAIL var=$var"
+      return 1
+    }
+  done
+  echo "$name compose_interpolation_export_gate=PASS count=${#vars[@]} values_not_printed=PASS"
 
   : > "$err"
   if ! compose_probe "$workdir" "$project" "$base" "$err"; then
