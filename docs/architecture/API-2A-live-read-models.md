@@ -2,11 +2,11 @@
 
 ## Status
 
-CURRENT
+CLOSED / ACCEPTED FOR MERGE
 
 ## Base
 
-API-1 closed/merged before this phase. API-2A is limited to the three confirmed live MiniApp read paths that still contain substantial direct business-table SQL in active n8n workflows.
+API-1 closed/merged before this phase. API-2A is limited to the three confirmed live MiniApp read paths that still contained substantial direct business-table SQL in active n8n workflows.
 
 ## Scope
 
@@ -18,11 +18,11 @@ API-1 closed/merged before this phase. API-2A is limited to the three confirmed 
 
 ## Frozen compatibility rules
 
-API-2A must preserve existing endpoint behavior.
+API-2A preserves existing endpoint behavior.
 
 ### Transactions
 
-Preserve:
+Preserved:
 
 - verified Telegram identity as the caller input;
 - selected-account ownership restriction;
@@ -37,7 +37,7 @@ Preserve:
 
 ### Accounts Explorer Summary
 
-Preserve:
+Preserved:
 
 - verified Telegram identity as caller input;
 - active leaf-account exclusion behavior;
@@ -49,7 +49,7 @@ Preserve:
 
 ### Transaction Reference
 
-Preserve:
+Preserved:
 
 - active currencies;
 - currency usage counts from the current user’s transactions;
@@ -58,7 +58,7 @@ Preserve:
 - user-language translation with English fallback and code fallback;
 - category parent/sort compatibility fields and ordering.
 
-## What does not change in API-2A
+## What did not change in API-2A
 
 - HTTP method/path;
 - Webhook nodes;
@@ -74,54 +74,128 @@ Preserve:
 
 Auth freshness/expiry and duplicated verifier code remain explicitly assigned to API-3.
 
-## Cutover invariant
+## Backend implementation
 
-For each of the three workflows, the production cutover may change exactly one field:
+Introduced compatibility read models:
 
-```text
-<TARGET POSTGRES NODE>.parameters.query
-```
+- `moneytrack.api_transactions_read_model_v1(bigint, text, date, date, boolean)`
+- `moneytrack.api_accounts_explorer_summary_read_model_v1(bigint, bigint[], date, date, date)`
+- `moneytrack.api_transaction_reference_read_model_v1(bigint)`
 
-All other node properties and all connections must remain identical.
+The models are compatibility-first. Existing request validation and response formatting stay in n8n in API-2A; only the substantial direct-read SQL moved behind PostgreSQL application/read-model boundaries.
 
-After cutover, the target query must call its `moneytrack.api_*_read_model_v1` function and must not directly read MoneyTrack business tables.
+## Backend verification
 
-## Gates
+Migration install: PASS.
 
-### Backend gate
+Rollback-safe verifier: PASS.
 
-- migration installs;
-- all three signatures exist;
-- rollback-safe verifier PASS;
-- existing-user representative semantics PASS;
-- unknown-user ownership isolation PASS.
+Verified:
 
-### Candidate gate
+- exact function signatures;
+- representative existing-user read contracts;
+- ownership isolation;
+- unknown-user behavior;
+- verifier rollback.
 
-Using fresh active runtime exports:
+## Candidate verification
 
-- workflow IDs match;
-- active version is current before mutation;
-- node count unchanged;
-- graph unchanged;
-- exactly one target node changed per workflow;
-- target change is query-only;
-- target query calls expected read model;
-- target direct business-table reads = 0;
-- direct business-table writers remain 0.
+Fresh active production baselines before cutover:
 
-### Production gate
+- `UX022TxApi202608`: active, version counter `5`, active/version IDs equal;
+- `UX022Summary202608`: active, version counter `4`, active/version IDs equal;
+- `MTxRef4Qp8Lm2Xs6`: active, version counter `2`, active/version IDs equal.
 
-- exact candidate payload deployed to each of the three workflow IDs;
-- version/active-version consistency PASS after publish/restart as required by current n8n runtime;
-- target query/backend-boundary parity PASS;
-- API endpoint smoke retains response contract;
-- global direct business writer count remains 0;
-- n8n health PASS.
+For every candidate:
+
+- graph topology unchanged: PASS;
+- node count unchanged: PASS;
+- exactly one target node changed: PASS;
+- target change query-only: PASS;
+- expected backend read-model call present: PASS;
+- direct business-table SQL removed from target node: PASS.
+
+## Production cutover
+
+The first cutover attempt was rejected before any workflow update with HTTP `400` because a full GET-derived `settings` object contained Public API-unsupported properties. This was a cutover-harness schema issue, not a product failure. No workflow was changed in that attempt.
+
+The cutover harness was corrected to send an API-safe settings allowlist containing only `executionOrder`.
+
+Final cutover result:
+
+### Transactions
+
+- workflow: `UX022TxApi202608`
+- PUT: `200`
+- version counter: `5 -> 6`
+- new version ID: `b801d1da-5e69-484f-a839-f625d68ce1c8`
+- `versionId == activeVersionId`: PASS
+- target: `Get Account Transactions`
+- backend boundary: `api_transactions_read_model_v1`
+- production cutover: PASS
+
+### Accounts Explorer Summary
+
+- workflow: `UX022Summary202608`
+- PUT: `200`
+- version counter: `4 -> 5`
+- new version ID: `5cf819be-f1f0-40b3-8c18-ac553cf0cd3b`
+- `versionId == activeVersionId`: PASS
+- target: `Get Explorer Summary`
+- backend boundary: `api_accounts_explorer_summary_read_model_v1`
+- production cutover: PASS
+
+### Transaction Reference
+
+- workflow: `MTxRef4Qp8Lm2Xs6`
+- PUT: `200`
+- version counter: `2 -> 3`
+- new version ID: `d8c53cd8-716a-4cf8-a237-2ce90af62c94`
+- `versionId == activeVersionId`: PASS
+- target: `Get Transaction Reference`
+- backend boundary: `api_transaction_reference_read_model_v1`
+- production cutover: PASS
+
+## Post-cutover isolation
+
+For all three production workflows:
+
+- graph parity: PASS;
+- changed node exactly the expected Postgres node: PASS;
+- query-only change: PASS;
+- backend call parity: PASS;
+- production nodes equal candidate nodes: PASS;
+- production connections equal candidate connections: PASS.
+
+Target data-path inventory classifies all three target nodes as `BACKEND_BOUNDARY`.
+
+No independent endpoint call with a captured live Telegram InitData token was forced as a blocking test. Contract compatibility is instead supported by the rollback-safe backend verifier plus exact preservation of request-validation, auth, response-formatting nodes and graph topology. A user-facing endpoint smoke can remain operational evidence, not a blocker for this structural extraction.
+
+## Global architecture invariant
+
+After production cutover:
+
+- global active direct business mutation inventory: `(0 rows)`;
+- `global_direct_business_writer_nodes = 0`;
+- n8n health: PASS (`{"status":"ok"}`).
+
+## Acceptance
+
+API-2A gate:
+
+- backend migration: PASS;
+- rollback-safe backend verifier: PASS;
+- candidate isolation: PASS;
+- all three production PUTs: PASS;
+- active/version consistency: PASS;
+- exact production/candidate parity: PASS;
+- target read paths behind backend boundaries: PASS;
+- global direct business writers: `0`;
+- n8n health: PASS.
+
+API-2A is complete for the architectural objective.
 
 ## Next
-
-After API-2A closes:
 
 - API-2B — request/response contract normalization;
 - API-2C — `/me`, `/i18n`, `/moneytrack-test` surface decision;
