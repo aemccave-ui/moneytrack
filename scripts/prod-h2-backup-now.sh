@@ -51,10 +51,14 @@ chmod 600 "$OUT/n8n-data.tar.gz"
 echo "n8n_data_archive=PASS bytes=$(stat -c '%s' "$OUT/n8n-data.tar.gz")"
 
 # Recovery configuration is sensitive and is kept only inside the protected backup set.
+# PROD-H hardening overlays are included when present so clean recreation does not
+# depend on a Git checkout or on reconstructing server-local runtime policy by hand.
 config_inputs=()
 for p in \
   /root/stack/n8n/docker-compose.yml \
+  /root/stack/n8n/docker-compose.prod-h.yml \
   /opt/moneytrack/postgres/docker-compose.yml \
+  /opt/moneytrack/postgres/docker-compose.prod-h.yml \
   /home/adm_mt/moneytrack-automation/config/n8n.env; do
   [ -f "$p" ] && config_inputs+=("$p")
 done
