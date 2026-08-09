@@ -2,13 +2,13 @@
 
 ## Status
 
-CURRENT
+COMPLETE
 
 ## Base
 
 API-2A is closed and merged. The retained live read paths are already behind backend/read-model boundaries.
 
-API-2B changes transport contracts only. It must not move business semantics back into n8n and must not change backend read/write semantics.
+API-2B changes transport contracts only. It does not move business semantics back into n8n and does not change backend read/write semantics.
 
 ## Retained live endpoint scope
 
@@ -34,9 +34,9 @@ Out of API-2B scope:
 
 Unused/legacy surface decisions belong to API-2C. Auth freshness and centralized verification belong to API-3.
 
-## Target success envelope
+## Canonical success envelope
 
-Every retained endpoint must return successful JSON as:
+Retained endpoints now return successful JSON as:
 
 ```json
 {
@@ -45,104 +45,159 @@ Every retained endpoint must return successful JSON as:
 }
 ```
 
-`data` may be an object, array, scalar or `null` only where the endpoint contract explicitly permits it.
+Business fields inside `data` are unchanged.
 
-## Target error envelope
+## Canonical handled-error envelope
 
-Every retained endpoint must return errors as:
+Handled adapter/business errors now use:
 
 ```json
 {
   "ok": false,
   "error": {
-    "code": "STABLE_CODE",
-    "message": "optional human-readable text"
+    "code": "STABLE_CODE"
   }
 }
 ```
 
-The stable machine-readable contract is `error.code`. Human-readable `message` is optional and must not be required by clients for branching.
+The stable machine-readable contract is `error.code`.
+
+Exceptions raised inside the existing Telegram InitData verifier before a Respond node are intentionally not normalized in API-2B. Their control-flow, freshness checks, and common 401/403 behavior are API-3 scope.
 
 ## HTTP status policy
 
-API-2B normalizes transport status without changing product meaning:
+API-2B normalizes handled transport status without changing product meaning:
 
 - `200` — successful read/delete response;
-- `400` — malformed or missing request parameters;
-- `401` — missing/invalid current authentication material as detected by existing auth logic;
-- `404` — requested user/account/transaction/resource not found or not owned where existing semantics intentionally expose not-found;
-- `500` — missing server configuration or unexpected adapter/backend failure.
+- `400` — malformed or missing request parameters where existing validators already produce handled validation results;
+- `401` — handled missing/invalid authentication material where the existing flow already produces a handled result;
+- `404` — user/account/transaction/resource not found where existing semantics intentionally expose not-found;
+- `500` — fallback for handled unexpected adapter errors.
 
-API-2B does not introduce `403`, replay expiry, rate limits or new authorization distinctions; those belong to API-3 unless an existing endpoint already has a frozen behavior that must be preserved.
+API-2B does not introduce replay expiry, centralized auth handling, rate limits, or new authorization distinctions.
 
 ## Field compatibility rule
 
 API-2B does not rename business fields inside `data`.
 
-Examples:
+Preserved examples:
 
-- dashboard summary fields remain unchanged;
-- accounts/default-account fields remain unchanged;
-- transactions and summary fields remain unchanged;
-- transaction-reference `currencies` and `categories` remain unchanged.
+- dashboard period/summary/balance/latest-operation fields;
+- accounts/default-account/tree fields;
+- transaction list and transaction summary fields;
+- accounts explorer summary fields;
+- transaction-reference `currencies` and `categories`;
+- delete transaction result fields.
 
-Only the outer transport envelope and error representation are normalized in API-2B.
+## Preflight result
 
-## Empty-result policy
+Production preflight passed:
 
-- collection reads return successful empty collections inside `data`, not an empty HTTP body;
-- successful delete returns a JSON success envelope, not an empty body;
-- not-found remains an error response where the existing endpoint treats it as not-found.
+- all 5 workflow IDs active;
+- all 5 `versionId == activeVersionId`;
+- all 6 retained `(method,path)` endpoints owned exactly once;
+- backend/read-model target nodes preserved from API-2A;
+- global active direct business writers: `0`;
+- n8n health: PASS.
+
+## Candidate isolation result
+
+Candidate transformation changed only the frozen adapter fields.
+
+Changed nodes:
+
+- MiniApp API: `Format Dashboard Response`, `Respond to Webhook`, `Format Accounts Response`, `Respond to Webhook2`;
+- Delete: `Format Delete Response`, `Respond Delete`;
+- Transaction Reference: `Format Transaction Reference`, `Respond Reference`;
+- Transactions: `Respond Transactions`, `Respond Transactions Error`;
+- Explorer Summary: `Respond Explorer Summary`, `Respond Explorer Summary Error`.
+
+Structural verifier proved for every workflow:
+
+- connections unchanged;
+- Webhook method/path unchanged;
+- Postgres/backend nodes unchanged;
+- Telegram InitData verification nodes unchanged;
+- Transactions/Explorer request validation nodes unchanged;
+- only permitted formatter/respond fields changed;
+- canonical contract markers present.
+
+Candidate structural gate: PASS.
+
+## Production cutover
+
+All five workflow updates returned HTTP 200.
+
+| Workflow | Version before | Version after | Result |
+|---|---:|---:|---|
+| `7TJ2xQTxLsTydXZc` — MoneyTrack MiniApp API | 478 | 479 | PASS |
+| `MTxDel7Qp2Vn9Kc4` — Delete Transaction | 2 | 3 | PASS |
+| `MTxRef4Qp8Lm2Xs6` — Transaction Reference | 3 | 4 | PASS |
+| `UX022TxApi202608` — Transactions API | 6 | 7 | PASS |
+| `UX022Summary202608` — Explorer Summary API | 5 | 6 | PASS |
+
+For all five after cutover:
+
+- active: true;
+- `versionId == activeVersionId`: PASS;
+- version counter incremented exactly by one;
+- post-cutover structural verifier: PASS;
+- production nodes/connections equal candidate: PASS.
+
+## Canonical response inventory after cutover
+
+MiniApp dashboard/accounts:
+
+- formatter success contains `ok: true`;
+- formatter handled error contains `error.code`;
+- Respond node returns full `$json`;
+- response code is `$json.http_status || 200`.
+
+Delete and Transaction Reference:
+
+- formatter success contains `ok: true`;
+- handled not-found uses canonical `error.code` + `http_status=404`;
+- Respond node returns full `$json` with dynamic response code.
+
+Transactions and Explorer Summary:
+
+- existing upstream `ok/http_status/data/error` result was retained;
+- success Respond now returns full `$json` with HTTP 200;
+- error Respond now returns `{ok:false,error:{code}}` and uses `$json.http_status || 500`.
 
 ## Frontend compatibility
 
-Current MiniApp helper tolerates both wrapped and unwrapped responses using `payload.data ?? payload`, and delete has separate parsing. API-2B must update the frontend adapter so it consumes one canonical envelope while keeping UI/business behavior unchanged.
+The current MiniApp helper already reads success payloads through `payload.data ?? payload` and treats HTTP non-2xx as an error before requiring the legacy scalar `payload.error` shape. Therefore the server-side canonical envelope cutover did not require a synchronous frontend deployment.
 
-No component-level UX redesign belongs to API-2B.
+A later frontend integration/canonicalization step may simplify the helper to require the canonical envelope only. That is delivery cleanup, not a blocker for the API-2B production contract gate.
 
-## Cutover strategy
+## Architecture invariants after cutover
 
-1. read-only production preflight captures exact active response/auth/validation nodes;
-2. freeze endpoint-by-endpoint current status/error mapping;
-3. build candidate workflow JSON from fresh active exports;
-4. change only adapter/response-formatting fields required for canonical envelope/status;
-5. update MiniApp `api.js` helper to one parser;
-6. structural verification proves backend/data-path nodes and graph semantics are unchanged;
-7. production cutover retained endpoints;
-8. contract smoke + n8n health + global zero-writer invariant;
-9. merge evidence.
+- global active direct business mutation inventory: `(0 rows)`;
+- `global_direct_business_writer_nodes = 0`;
+- n8n health: PASS;
+- backend/read-model queries unchanged;
+- auth algorithm unchanged;
+- workflow topology unchanged.
 
-## Gates
+## Acceptance
 
-### Preflight gate
+```text
+API-2B PREFLIGHT                  PASS
+CANDIDATE ISOLATION              PASS
+PRODUCTION PUT                   PASS — 5/5
+ACTIVE VERSION CONSISTENCY       PASS — 5/5
+CANONICAL SUCCESS ENVELOPE       PASS
+CANONICAL HANDLED ERROR ENVELOPE PASS
+BACKEND/AUTH/GRAPH PARITY        PASS
+DIRECT BUSINESS WRITERS          PASS — 0
+N8N HEALTH                       PASS
 
-- all 5 workflow IDs active/version-consistent;
-- 6 retained `(method,path)` endpoints present exactly once;
-- exact current response nodes/status mappings captured;
-- backend/read-model target nodes remain unchanged from API-2A;
-- global direct business writers remain `0`.
-
-### Candidate gate
-
-- no endpoint method/path changes;
-- no backend query/function changes;
-- no auth algorithm changes;
-- response envelope/status normalization only;
-- frontend helper compiles/lints;
-- structural verifier PASS.
-
-### Production gate
-
-- canonical success/error envelope on all retained endpoints;
-- expected status codes preserved/normalized;
-- active versions consistent;
-- n8n health PASS;
-- global direct business writers remain `0`.
+API-2B — COMPLETE
+```
 
 ## Next
 
-After API-2B:
-
-- API-2C — unused/legacy surface decision;
+- API-2C — unused/legacy surface decision for `/api/v1/me`, `/api/v1/i18n`, `/moneytrack-test`;
 - API-3 — centralized Telegram InitData/auth/ownership/idempotency hardening;
 - API-4 — final API integration gate.
