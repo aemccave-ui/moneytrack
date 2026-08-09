@@ -7,7 +7,7 @@ LOG_FILE="$STATE_DIR/alerts.log"
 LATEST_FILE="$STATE_DIR/latest"
 MARKER_FILE="$STATE_DIR/UNACKNOWLEDGED"
 
-for c in date hostname install sed logger; do
+for c in date hostname install sed cut logger; do
   command -v "$c" >/dev/null 2>&1 || {
     echo "required_command_missing=$c"
     exit 1
