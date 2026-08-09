@@ -3,7 +3,7 @@
 ## Status
 
 - **PROD-H1 — COMPLETE**
-- **PROD-H2 — CURRENT: Backup & Restore Hardening**
+- **PROD-H2 — CURRENT: recovery correctness PASS; recurring schedule pending**
 - PROD-H3 — Runtime / Secrets / TLS Hardening
 - PROD-H4 — Monitoring & Runbook Gate
 - PROD-H5 — Final Production Hardening Gate
@@ -47,8 +47,6 @@ Fresh read-only inventory and focused evidence resolution completed against prod
 - n8n + n8n PostgreSQL: `/root/stack/n8n/docker-compose.yml`;
 - MoneyTrack PostgreSQL: `/opt/moneytrack/postgres/docker-compose.yml`.
 
-The production containers carry Compose provenance labels that point to these files.
-
 **Exact current runtime versions — CAPTURED.**
 
 - n8n: runtime `2.22.5`, image ref `n8nio/n8n:latest`, current immutable digest `n8nio/n8n@sha256:a49bc161141d6c4b9c495b5a6e3c7c1932e61d2ed2fe3fdca01262064b4b23ca`;
@@ -62,21 +60,17 @@ All three critical containers use Docker `json-file` logging with empty log opti
 
 `certbot.timer` is installed, enabled and active.
 
-**MoneyTrack backup/recovery — GAP CONFIRMED.**
-
-Search found extensive HabitsTrack backup and restore-verification assets, but no MoneyTrack-specific backup artifacts or systemd units. `/opt/moneytrack/backups` exists as a candidate directory, but no proved MoneyTrack recovery chain was found.
-
 **Automation checkout drift — MEDIUM debt.**
 
 `/home/adm_mt/moneytrack-automation` is on `main` but contains modified `bin/release.sh` and untracked `config/`. `config/` may contain secrets and must not be committed blindly.
 
-## Current debt after H1
+## Debt after H1
 
 ### HIGH
 
 **H-01 — MoneyTrack backup / restore verification does not exist.**
 
-Required in PROD-H2.
+Addressed by PROD-H2 manual backup + isolated restore proof. Recurring scheduling remains to complete H2 operations.
 
 **H-02 — production n8n is referenced as `n8nio/n8n:latest`.**
 
@@ -86,7 +80,7 @@ Current known-good runtime is 2.22.5 and current immutable digest is known. Requ
 
 **M-01 — Docker logs have no rotation limits.** Required in PROD-H3.
 
-**M-02 — PostgreSQL uses moving `postgres:16` tags.** PROD-H3 must either pin exact immutable images or record an explicit controlled-minor-update exception.
+**M-02 — PostgreSQL uses moving `postgres:16` tags.** PROD-H3 will pin to `postgres:16.14` or record an explicit controlled-minor-update exception.
 
 **M-03 — automation checkout has local drift.** PROD-H3/4 must document the real deployment source and keep secrets out of Git.
 
@@ -94,52 +88,79 @@ Current known-good runtime is 2.22.5 and current immutable digest is known. Requ
 
 **M-05 — off-host backup durability is not proved.** Local backup/restore proof is H2; off-host posture is resolved no later than H4/final gate.
 
-## PROD-H2 — frozen scope
+## PROD-H2 — Backup & Restore Hardening
 
-PROD-H2 implements the smallest safe recovery chain for the current production architecture.
+### Manual backup evidence — PASS
 
-Backup set:
+A protected production backup was created at:
 
-1. MoneyTrack PostgreSQL database (`moneytrack-db`, database `moneytrack`) as PostgreSQL custom-format dump;
-2. n8n metadata PostgreSQL (`postgres`, database `n8n`) as PostgreSQL custom-format dump;
-3. n8n persistent data volume, including the persisted encryption key, as a protected archive;
-4. runtime recovery configuration files as a protected archive where available;
-5. manifest with hashes, timestamps, image/version evidence and no secret values.
+`/opt/moneytrack/backups/20260809T141520Z`
 
-Security rules:
+Backup results:
 
-- backup root and backup instances are mode `700`;
-- secret-bearing backup files are mode `600`;
-- bot token/encryption key/env values are never printed;
-- restore verification never targets production databases or volumes;
-- temporary restore containers have no published host ports and are removed automatically.
+- `moneytrack.dump` PASS, 3,848,859 bytes;
+- `n8n-metadata.dump` PASS, 8,367,226 bytes;
+- `n8n-data.tar.gz` PASS, 497,675 bytes;
+- protected runtime configuration archive PASS;
+- SHA256 manifest PASS;
+- `COMPLETE` marker PASS.
 
-Restore proof:
+The backup contains MoneyTrack PostgreSQL, n8n metadata PostgreSQL, n8n persistent recovery-critical state (including the persisted encryption key) and runtime recovery configuration. Secret values were not printed.
 
-- verify backup hashes;
-- restore MoneyTrack dump into an isolated temporary PostgreSQL container;
-- prove core MoneyTrack tables/functions exist after restore;
-- restore n8n metadata dump into a separate isolated temporary PostgreSQL container;
-- prove n8n schema/tables exist after restore;
-- extract the n8n data archive into a temporary host directory and prove a persisted encryption key exists without printing it;
-- remove all temporary restore containers/files;
-- reassert production DB/n8n health after the rehearsal.
+### Isolated restore verification — PASS
 
-H2 does **not** yet install a recurring timer. First obtain one successful manual backup + isolated restore proof. Scheduling/retention is installed only after that proof succeeds.
+The backup hashes were verified and both database dumps were restored into temporary PostgreSQL containers with no published host ports. The restore rehearsal used the exact currently running PostgreSQL image ID rather than a moving tag.
+
+Restore evidence:
+
+- backup hash verification PASS;
+- isolated restore containers READY with host ports NONE;
+- MoneyTrack PostgreSQL restore PASS;
+- MoneyTrack restored schema PASS with 30 tables;
+- n8n metadata restore PASS;
+- n8n restored metadata schema PASS with 93 tables;
+- restored n8n encryption key present PASS, value not printed;
+- production MoneyTrack DB health PASS after rehearsal;
+- production n8n metadata DB health PASS after rehearsal;
+- production n8n health PASS after rehearsal;
+- temporary restore resources cleanup armed and trap-controlled.
+
+**Recovery correctness is therefore proven.** No restore was performed against production data or volumes.
+
+### Recurring recovery policy — pending installation
+
+The prepared production schedule is:
+
+- daily protected backup via `moneytrack-backup.timer`;
+- default local retention: 14 days;
+- weekly isolated restore verification via `moneytrack-restore-verify.timer`;
+- `Persistent=true` on both timers so missed schedules run after downtime;
+- recovery executables copied to `/usr/local/lib/moneytrack/` so jobs do not depend on Git checkout state.
+
+Retention deletes only canonical timestamp-named directories containing a valid `COMPLETE` marker and the required backup files. Incomplete or malformed directories are skipped rather than deleted.
+
+Off-host durability is intentionally not misrepresented as solved by this local schedule. It remains MEDIUM debt for PROD-H4/final gate.
+
+### H2 close gate
+
+PROD-H2 closes when both timers are installed, enabled and active after systemd validation. The already-completed manual backup and isolated restore rehearsal do not need to be repeated during installation.
 
 ## PROD-H3 — frozen target
 
-After H2 succeeds:
+After H2 schedule installation:
 
-- replace mutable n8n `latest` with the known-good 2.22.5 immutable image/digest while preserving current config/volume/database;
-- add bounded Docker log rotation to critical containers;
-- make Compose recovery path explicit and version controlled without committing secret values;
-- resolve PostgreSQL image reproducibility policy;
-- preserve the current persisted n8n encryption key.
+- replace mutable n8n `latest` with known-good 2.22.5 / immutable digest while preserving current config, persistent volume and database;
+- add bounded Docker `json-file` log rotation to `n8n`, `postgres` and `moneytrack-db`;
+- make Compose recovery path explicit without committing secret values;
+- resolve PostgreSQL reproducibility by pinning the currently running 16.14 release or accepting a controlled-minor policy explicitly;
+- preserve the current persisted n8n encryption key;
+- validate merged Compose configuration before any container recreation;
+- recreate only the affected services and reassert DB/API health after each bounded change.
+
+The official PostgreSQL image catalog currently exposes an exact `16.14` tag, so pinning the currently running database release is available if the current Compose layout supports the bounded change.
 
 ## PROD-H4 — target
 
-- scheduled backup + retention;
 - backup-failure visibility;
 - disk/log/certificate/service-health operational checks;
 - off-host backup decision/implementation;
@@ -160,4 +181,4 @@ PROD-H closes only when:
 
 ## Next
 
-Run PROD-H2 manual backup + isolated restore verification. If green, install the recurring recovery schedule and proceed directly to PROD-H3.
+Install and verify the PROD-H2 systemd recovery schedule. If green, mark H2 COMPLETE and proceed directly to PROD-H3 runtime pinning and log rotation.
