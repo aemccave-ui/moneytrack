@@ -132,19 +132,38 @@ python3 scripts/api-2a-verify-read-model-cutover.py \
 
 
 echo
-echo "=== API-2A / 3. BUILD UPDATE + ROLLBACK BODIES ==="
+echo "=== API-2A / 3. BUILD API-SAFE UPDATE + ROLLBACK BODIES ==="
 
 for label in transactions summary reference; do
-  jq '{name,nodes,connections,settings}' \
+  jq '{
+        name,
+        nodes,
+        connections,
+        settings: {
+          executionOrder: (.settings.executionOrder // "v1")
+        }
+      }' \
     "$WORK/$label.candidate.json" \
     > "$WORK/$label.cutover.put.json"
 
-  jq '{name,nodes,connections,settings}' \
+  jq '{
+        name,
+        nodes,
+        connections,
+        settings: {
+          executionOrder: (.settings.executionOrder // "v1")
+        }
+      }' \
     "$WORK/$label.before.json" \
     > "$WORK/$label.rollback.put.json"
 done
 
-echo "put_bodies=READY"
+for label in transactions summary reference; do
+  printf '%s cutover_settings=' "$label"
+  jq -c '.settings' "$WORK/$label.cutover.put.json"
+done
+
+echo "api_safe_put_bodies=READY"
 
 
 cutover_one() {
