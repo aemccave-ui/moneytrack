@@ -48,17 +48,20 @@ echo "backup_dir=$BACKUP_DIR"
 )
 echo "backup_hash_verification=PASS"
 
-PG_IMAGE="$(docker inspect moneytrack-db --format '{{.Config.Image}}')"
-[ -n "$PG_IMAGE" ] || { echo "postgres_image_resolution=FAIL"; exit 1; }
-echo "restore_postgres_image=$PG_IMAGE"
+# Rehearsal uses the exact image object already running in production, not the mutable postgres:16 tag.
+PG_IMAGE_ID="$(docker inspect moneytrack-db --format '{{.Image}}')"
+[ -n "$PG_IMAGE_ID" ] || { echo "postgres_image_resolution=FAIL"; exit 1; }
+echo "restore_postgres_image_id=$PG_IMAGE_ID"
 
-docker run -d --name "$MT_C" \
-  -e POSTGRES_PASSWORD="$VERIFY_PASSWORD" \
-  "$PG_IMAGE" >/dev/null
+docker image inspect "$PG_IMAGE_ID" >/dev/null 2>&1 || { echo "restore_postgres_image_local=FAIL"; exit 1; }
 
-docker run -d --name "$N8N_C" \
+docker run --pull=never -d --name "$MT_C" \
   -e POSTGRES_PASSWORD="$VERIFY_PASSWORD" \
-  "$PG_IMAGE" >/dev/null
+  "$PG_IMAGE_ID" >/dev/null
+
+docker run --pull=never -d --name "$N8N_C" \
+  -e POSTGRES_PASSWORD="$VERIFY_PASSWORD" \
+  "$PG_IMAGE_ID" >/dev/null
 
 wait_pg "$MT_C" || { echo "moneytrack_restore_container_readiness=FAIL"; exit 1; }
 wait_pg "$N8N_C" || { echo "n8n_restore_container_readiness=FAIL"; exit 1; }
