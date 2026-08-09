@@ -16,7 +16,7 @@ require() {
   }
 }
 
-for c in docker curl find stat date df awk grep sed sort openssl systemctl findmnt; do
+for c in docker curl find stat date df awk grep sed sort openssl systemctl findmnt timeout sha256sum git mktemp; do
   require "$c"
 done
 
@@ -31,7 +31,10 @@ warn() { echo "$1=WARN${2:+ $2}"; warn=$((warn+1)); }
 fail() { echo "$1=FAIL${2:+ $2}"; fail=$((fail+1)); }
 
 check_tls() {
-  local host="$1" cert="$TMP/${host}.cert" end epoch now days
+  local host cert end epoch now days
+  host="$1"
+  cert="$TMP/${host}.cert"
+
   if ! timeout 8 openssl s_client -servername "$host" -connect "$host:443" </dev/null 2>/dev/null \
       | openssl x509 -noout -enddate > "$cert" 2>/dev/null; then
     fail "tls_${host//./_}" "connect_or_parse_failed=true"
