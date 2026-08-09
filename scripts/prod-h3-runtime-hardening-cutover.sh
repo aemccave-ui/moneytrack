@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 N8N_BASE="/root/stack/n8n/docker-compose.yml"
 MT_BASE="/opt/moneytrack/postgres/docker-compose.yml"
 N8N_OVERLAY="/root/stack/n8n/docker-compose.prod-h.yml"
@@ -96,10 +97,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-for c in docker curl sha256sum grep awk sed find; do
+for c in docker curl sha256sum grep awk sed find install; do
   command -v "$c" >/dev/null 2>&1 || { echo "required_command_missing=$c"; exit 1; }
 done
 docker compose version >/dev/null 2>&1 || { echo "docker_compose_plugin=FAIL"; exit 1; }
+[ -f "$SCRIPT_DIR/prod-h2-backup-now.sh" ] || { echo "recovery_backup_script_missing=$SCRIPT_DIR/prod-h2-backup-now.sh"; exit 1; }
 
 echo "=== PROD-H3 RUNTIME HARDENING CUTOVER START ==="
 
@@ -251,7 +253,7 @@ done
 echo "log_rotation_gate=PASS"
 
 # Encryption material must remain present after n8n recreation; value is never printed.
-docker exec n8n node - <<'NODE'
+docker exec -i n8n node - <<'NODE'
 const fs = require('fs');
 const p = '/home/node/.n8n/config';
 const j = JSON.parse(fs.readFileSync(p, 'utf8'));
@@ -269,6 +271,14 @@ HTTP="$(curl -sS --max-time 8 -o "$BODY" -w '%{http_code}' http://127.0.0.1:5678
 grep -Fq '"code":"INIT_DATA_MISSING"' "$BODY" || { echo "api_missing_auth_contract=FAIL body=$(cat "$BODY")"; exit 1; }
 echo "api_missing_auth_contract=PASS http=401"
 echo "production_health_post_cutover=PASS"
+
+# Refresh the installed recurring backup executable so future recovery archives include
+# the hardening overlays, then create one fresh post-hardening backup immediately.
+install -m 0750 "$SCRIPT_DIR/prod-h2-backup-now.sh" /usr/local/lib/moneytrack/prod-h2-backup-now.sh
+echo "installed_recovery_backup_script_refresh=PASS"
+/usr/local/lib/moneytrack/prod-h2-backup-now.sh | tee "$TMP/post-hardening-backup.log"
+grep -Fq 'backup_result=PASS' "$TMP/post-hardening-backup.log" || { echo "post_hardening_backup=FAIL"; exit 1; }
+echo "post_hardening_backup=PASS overlays_protected=PASS"
 
 # Remove temporary rollback aliases after successful acceptance.
 docker image rm "$ROLLBACK_N8N" "$ROLLBACK_PG" >/dev/null 2>&1 || true
