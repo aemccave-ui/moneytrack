@@ -2,129 +2,162 @@
 
 ## Status
 
-CURRENT — PROD-H1 runtime/recovery inventory.
+- **PROD-H1 — COMPLETE**
+- **PROD-H2 — CURRENT: Backup & Restore Hardening**
+- PROD-H3 — Runtime / Secrets / TLS Hardening
+- PROD-H4 — Monitoring & Runbook Gate
+- PROD-H5 — Final Production Hardening Gate
 
 ## Base
 
-The MoneyTrack backend domain extraction and API programs are closed. The stable API baseline is merged to `main`.
-
-PROD-H is separate from MiniApp UX work. It does not add business features and must not reopen closed API/domain phases without fresh blocking evidence.
+The MoneyTrack backend-domain and API programs are closed. PROD-H is separate from MiniApp UX work and must not reopen closed API/domain phases without fresh blocking evidence.
 
 ## Goal
 
-Make the existing production runtime recoverable, observable, reproducible and operationally safe enough to treat the current API/backend baseline as a production service rather than manually maintained server state.
+Make the existing production runtime recoverable, observable and reproducible enough to operate as a production service rather than as undocumented server state.
 
-## Scope
+## PROD-H1 — production inventory — COMPLETE
 
-PROD-H covers runtime reproducibility, secrets/config hygiene, database recovery, reverse proxy/TLS, health/restart/capacity, monitoring/alerting and a concise operational runbook.
-
-It explicitly does **not** include MiniApp UX, new business features, new API endpoints, speculative orchestration/platform migrations, replacing n8n for architectural purity, destructive recovery testing against production, or secret rotation without a concrete reason.
-
-## PROD-H1 — first production inventory
-
-Fresh read-only inventory completed against production.
+Fresh read-only inventory and focused evidence resolution completed against production.
 
 ### Healthy baseline
 
-- host: Ubuntu 24.04.4 LTS;
-- root filesystem: 193 GB total, 148 GB available, 24% used;
-- `n8n`, n8n PostgreSQL (`postgres`) and MoneyTrack PostgreSQL (`moneytrack-db`) are running;
-- all three containers use restart policy `unless-stopped`;
-- n8n data is on Docker volume `n8n_n8n_data`;
-- n8n PostgreSQL data is on Docker volume `n8n_postgres_data`;
-- MoneyTrack PostgreSQL data is bind-mounted from `/opt/moneytrack/postgres/data`;
-- MoneyTrack DB readiness: PASS, size ~51 MB;
-- n8n metadata DB readiness: PASS, size ~42 MB;
-- n8n health: PASS;
-- n8n runtime version: `2.22.5`;
-- `MONEYTRACK_BOT_TOKEN` is present without exposing its value;
-- `/home/adm_mt/moneytrack-automation/config/n8n.env` exists with mode `600` and owner `adm_mt:adm_mt`;
-- public TLS for `n8n.moneytrackapp.xyz` and `app.moneytrackapp.xyz` is currently valid;
-- public listening ports observed are 22/80/443, while n8n port 5678 is loopback-only;
-- UFW is active and allows only 22/80/443 in the inspected rules.
+- Ubuntu 24.04.4 LTS;
+- root filesystem ~24% used, ~148 GB available;
+- `n8n`, n8n PostgreSQL (`postgres`) and MoneyTrack PostgreSQL (`moneytrack-db`) running;
+- restart policy `unless-stopped` on all three containers;
+- n8n persistent state on Docker volume `n8n_n8n_data`;
+- n8n metadata PostgreSQL on Docker volume `n8n_postgres_data`;
+- MoneyTrack PostgreSQL bind-mounted from `/opt/moneytrack/postgres/data`;
+- MoneyTrack DB readiness PASS, size ~51 MB;
+- n8n metadata DB readiness PASS, size ~42 MB;
+- n8n health PASS;
+- public MoneyTrack TLS valid;
+- UFW active; inspected public rules expose only 22/80/443;
+- n8n port 5678 is loopback-only.
 
-### Confirmed / probable debt after first pass
+### H1.1 resolved findings
 
-No active runtime BLOCKER was proven by H1. The service is currently healthy.
+**Encryption key persistence — PASS.**
 
-**HIGH — H-01: MoneyTrack backup/restore path is unproven.**
+`N8N_ENCRYPTION_KEY` is absent from the container environment, but n8n persistent `/home/node/.n8n/config` exists with mode `600`, owner `node:node`, and contains a non-empty persisted encryption key. The value was not printed. No key rotation is required.
 
-The timer inventory contains HabitsTrack backup/restore verification units, but no MoneyTrack-specific backup/restore unit was observed and no backup artifact was found under `/home/adm_mt`. This is evidence of an unproven recovery path, not proof that no external backup exists.
+**Deployment provenance — FOUND.**
 
-**HIGH — H-02: production n8n uses mutable image `n8nio/n8n:latest`.**
+- n8n + n8n PostgreSQL: `/root/stack/n8n/docker-compose.yml`;
+- MoneyTrack PostgreSQL: `/opt/moneytrack/postgres/docker-compose.yml`.
 
-The current runtime reports version `2.22.5`, but recreating/pulling `latest` can move production to a different version. PROD-H must pin the known-good version or immutable digest before the final gate.
+The production containers carry Compose provenance labels that point to these files.
 
-**HIGH — H-03: production recreation/deployment source is not yet proven.**
+**Exact current runtime versions — CAPTURED.**
 
-The initial search under `/home/adm_mt/moneytrack-automation` and `/home/adm_mt/moneytrack` did not find Compose/Dockerfile/systemd deployment definitions. Existing containers restart in place, but clean recreation remains unproven.
+- n8n: runtime `2.22.5`, image ref `n8nio/n8n:latest`, current immutable digest `n8nio/n8n@sha256:a49bc161141d6c4b9c495b5a6e3c7c1932e61d2ed2fe3fdca01262064b4b23ca`;
+- both PostgreSQL containers: PostgreSQL `16.14`, image ref `postgres:16`, current image ID `sha256:4b7183ac05f8ef417db21fd72d71047a4238340c261d3cc3ddb6d579ab5071ae`.
 
-**REVIEW — M-01: `N8N_ENCRYPTION_KEY` is absent from container environment.**
+**Docker log rotation — GAP CONFIRMED.**
 
-This is not yet classified as a failure. n8n can persist a generated encryption key in its `.n8n` configuration. PROD-H1.1 must verify key presence in persistent n8n state without printing the value. Do not rotate or replace the key during inventory.
+All three critical containers use Docker `json-file` logging with empty log options. No `max-size` / `max-file` limit is active.
 
-**REVIEW — M-02: Docker log rotation is not proven.**
+**Certbot renewal — PASS.**
 
-Current log sizes are modest (~0.3 MB n8n, ~5 MB n8n PostgreSQL, ~17 MB MoneyTrack PostgreSQL), but the log-driver limits were not captured.
+`certbot.timer` is installed, enabled and active.
 
-**MEDIUM — M-03: automation checkout contains local drift.**
+**MoneyTrack backup/recovery — GAP CONFIRMED.**
 
-`/home/adm_mt/moneytrack-automation` is a Git checkout but currently reports modified `bin/release.sh` and untracked `config/`. Contents must not be committed blindly because `config/` may contain secrets. The operational source-of-truth relationship must be clarified.
+Search found extensive HabitsTrack backup and restore-verification assets, but no MoneyTrack-specific backup artifacts or systemd units. `/opt/moneytrack/backups` exists as a candidate directory, but no proved MoneyTrack recovery chain was found.
 
-**MEDIUM — M-04: TLS renewal/expiry alerting is not yet proven.**
+**Automation checkout drift — MEDIUM debt.**
 
-Certificates are valid now; renewal timer/monitoring evidence remains to be captured.
+`/home/adm_mt/moneytrack-automation` is on `main` but contains modified `bin/release.sh` and untracked `config/`. `config/` may contain secrets and must not be committed blindly.
 
-**MEDIUM — M-05: PostgreSQL images use `postgres:16`.**
+## Current debt after H1
 
-The major version is controlled, but the exact image build/digest can still move. Final reproducibility policy must either pin exact versions/digests or explicitly accept controlled minor-version movement.
+### HIGH
 
-## PROD-H1.1 — evidence resolver
+**H-01 — MoneyTrack backup / restore verification does not exist.**
 
-Before any mutation, resolve only the ambiguous items above:
+Required in PROD-H2.
 
-1. verify whether persistent n8n config contains an encryption key without displaying it;
-2. read Docker Compose provenance labels (`project`, `service`, `working_dir`, `config_files`) for the three production containers;
-3. capture exact current image IDs/digests and runtime versions;
-4. capture Docker log driver and rotation options;
-5. verify certbot renewal timer state;
-6. search systemd/unit filenames and common backup locations for MoneyTrack-specific recovery assets;
-7. list automation-repository drift by filename only, never secret values.
+**H-02 — production n8n is referenced as `n8nio/n8n:latest`.**
 
-PROD-H1.1 is read-only. It must not restart containers, pull images, modify env files or inspect secret values.
+Current known-good runtime is 2.22.5 and current immutable digest is known. Required in PROD-H3.
 
-## Severity model
+### MEDIUM
 
-- **BLOCKER** — active unhealthy runtime, broken/expired TLS, required secret/config missing with no persisted equivalent, or credible immediate loss/restart failure.
-- **HIGH** — no proven backup/restore path, mutable critical image with unsafe recreation path, sensitive files broadly readable, missing persistence, or unrecoverable clean deployment.
-- **MEDIUM** — incomplete alerting, undocumented deploy/rollback, log-growth risk, weak off-host/retention posture, or controlled version drift.
-- **LOW** — housekeeping/documentation that does not materially increase current production risk.
+**M-01 — Docker logs have no rotation limits.** Required in PROD-H3.
 
-## Phase decomposition
+**M-02 — PostgreSQL uses moving `postgres:16` tags.** PROD-H3 must either pin exact immutable images or record an explicit controlled-minor-update exception.
 
-- **PROD-H1 — Runtime / Recovery Inventory** — CURRENT.
-- **PROD-H2 — Backup & Restore Hardening** — required unless H1.1 proves an existing MoneyTrack recovery path.
-- **PROD-H3 — Runtime / Secrets / TLS Hardening** — pin runtime and resolve H1/H1.1 configuration gaps.
-- **PROD-H4 — Monitoring & Runbook Gate** — minimum alerts + executable operations handover.
-- **PROD-H5 — Final Production Hardening Gate** — read-only acceptance.
+**M-03 — automation checkout has local drift.** PROD-H3/4 must document the real deployment source and keep secrets out of Git.
 
-Subphases with no work are closed as N/A rather than generating artificial implementation.
+**M-04 — cert renewal exists, but expiry/failure alerting is not yet proved.** Required in PROD-H4 unless existing monitoring evidence closes it.
+
+**M-05 — off-host backup durability is not proved.** Local backup/restore proof is H2; off-host posture is resolved no later than H4/final gate.
+
+## PROD-H2 — frozen scope
+
+PROD-H2 implements the smallest safe recovery chain for the current production architecture.
+
+Backup set:
+
+1. MoneyTrack PostgreSQL database (`moneytrack-db`, database `moneytrack`) as PostgreSQL custom-format dump;
+2. n8n metadata PostgreSQL (`postgres`, database `n8n`) as PostgreSQL custom-format dump;
+3. n8n persistent data volume, including the persisted encryption key, as a protected archive;
+4. runtime recovery configuration files as a protected archive where available;
+5. manifest with hashes, timestamps, image/version evidence and no secret values.
+
+Security rules:
+
+- backup root and backup instances are mode `700`;
+- secret-bearing backup files are mode `600`;
+- bot token/encryption key/env values are never printed;
+- restore verification never targets production databases or volumes;
+- temporary restore containers have no published host ports and are removed automatically.
+
+Restore proof:
+
+- verify backup hashes;
+- restore MoneyTrack dump into an isolated temporary PostgreSQL container;
+- prove core MoneyTrack tables/functions exist after restore;
+- restore n8n metadata dump into a separate isolated temporary PostgreSQL container;
+- prove n8n schema/tables exist after restore;
+- extract the n8n data archive into a temporary host directory and prove a persisted encryption key exists without printing it;
+- remove all temporary restore containers/files;
+- reassert production DB/n8n health after the rehearsal.
+
+H2 does **not** yet install a recurring timer. First obtain one successful manual backup + isolated restore proof. Scheduling/retention is installed only after that proof succeeds.
+
+## PROD-H3 — frozen target
+
+After H2 succeeds:
+
+- replace mutable n8n `latest` with the known-good 2.22.5 immutable image/digest while preserving current config/volume/database;
+- add bounded Docker log rotation to critical containers;
+- make Compose recovery path explicit and version controlled without committing secret values;
+- resolve PostgreSQL image reproducibility policy;
+- preserve the current persisted n8n encryption key.
+
+## PROD-H4 — target
+
+- scheduled backup + retention;
+- backup-failure visibility;
+- disk/log/certificate/service-health operational checks;
+- off-host backup decision/implementation;
+- concise deploy/restart/rollback/restore runbook.
 
 ## Exit gate
 
 PROD-H closes only when:
 
-- production restart/recreation path is documented and credible;
-- MoneyTrack DB and n8n metadata DB have a defined backup path and successful isolated restore evidence;
-- required persistent state is on persistent mounts/volumes;
+- production restart/recreation path is credible and documented;
+- both PostgreSQL databases have recurring backups and successful isolated restore evidence;
+- n8n recovery-critical persistent state, including the encryption key, is protected;
 - critical images are reproducible or have an explicit accepted exception;
-- encryption-key persistence and sensitive config permissions are safe;
-- TLS is valid with renewal/expiry monitoring;
-- disk/log growth has a control or alert;
+- log growth has a bound or alert;
+- TLS renewal and expiry/failure monitoring is operational;
 - critical service health and backup failures can surface to an operator;
-- n8n and both databases are healthy;
 - final gate reports no unresolved BLOCKER/HIGH debt.
 
 ## Next
 
-Run PROD-H1.1 read-only evidence resolver. Then execute the smallest evidence-driven H2/H3 changes, not a generic hardening checklist.
+Run PROD-H2 manual backup + isolated restore verification. If green, install the recurring recovery schedule and proceed directly to PROD-H3.
