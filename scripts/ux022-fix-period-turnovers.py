@@ -28,9 +28,13 @@ def query_node(data, name):
 
 def replace_once(text, old, new, marker):
     count = text.count(old)
-    if count != 1:
-        raise SystemExit(f"PATCH=FAIL marker={marker} matches={count}")
-    return text.replace(old, new, 1)
+    if count == 1:
+        print(f"{marker}=PATCH")
+        return text.replace(old, new, 1)
+    if count == 0 and new in text:
+        print(f"{marker}=ALREADY")
+        return text
+    raise SystemExit(f"PATCH=FAIL marker={marker} matches={count}")
 
 
 def patch_transactions():
