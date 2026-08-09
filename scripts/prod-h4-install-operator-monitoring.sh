@@ -48,7 +48,7 @@ cat > /etc/systemd/system/moneytrack-health-monitor.service <<'UNIT'
 Description=MoneyTrack production health monitor
 After=docker.service network-online.target
 Wants=network-online.target
-OnFailure=moneytrack-operator-alert@%n.service
+OnFailure=moneytrack-operator-alert@moneytrack-health-monitor.service
 
 [Service]
 Type=oneshot
@@ -75,12 +75,12 @@ install -d -m 0755 \
 
 cat > /etc/systemd/system/moneytrack-backup.service.d/prod-h4-alert.conf <<'UNIT'
 [Unit]
-OnFailure=moneytrack-operator-alert@%n.service
+OnFailure=moneytrack-operator-alert@moneytrack-backup.service
 UNIT
 
 cat > /etc/systemd/system/moneytrack-restore-verify.service.d/prod-h4-alert.conf <<'UNIT'
 [Unit]
-OnFailure=moneytrack-operator-alert@%n.service
+OnFailure=moneytrack-operator-alert@moneytrack-restore-verify.service
 UNIT
 
 cat > "$DEBT_FILE" <<'EOF'
