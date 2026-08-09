@@ -2,7 +2,11 @@
 
 ## Status
 
-CURRENT — API-3A COMPLETE; API-3B implementation/cutover
+API-3A — COMPLETE
+
+API-3B — COMPLETE / PRODUCTION CUTOVER PASS
+
+API-3C — NEXT
 
 ## Base
 
@@ -21,12 +25,6 @@ MiniApp request
   -> request validation / thin adapter
   -> backend/read-model boundary
 ```
-
-## Telegram validation baseline
-
-MoneyTrack validates Telegram `initData` server-side using the Telegram HMAC validation scheme before trusting user data. API-3 additionally requires freshness validation using `auth_date`.
-
-Telegram defines `auth_date` as the Unix time associated with the Mini App init data and recommends checking it to reject outdated data, but Telegram does not define MoneyTrack's maximum accepted age. MoneyTrack therefore owns this operational policy.
 
 ## API-3A production inventory — COMPLETE
 
@@ -53,13 +51,10 @@ Inventory findings:
 - nodes performing a clock/freshness check: **0/8**;
 - exception-style auth nodes: **6**;
 - handled HTTP-error auth nodes: **2**;
-- every path derives `telegram_user_id` only after HMAC verification: **PASS**;
-- webhook-level authentication remains `none` for all 8 endpoints because Telegram InitData authentication is application-level;
-- `MONEYTRACK_BOT_TOKEN` is present in runtime without exposing its value;
+- every path derived `telegram_user_id` only after HMAC verification;
+- `MONEYTRACK_BOT_TOKEN` present in n8n runtime without exposing its value;
 - global active direct business writers: **0**;
 - n8n health: **PASS**.
-
-The four MiniApp API verifier nodes share one identical implementation fingerprint. Delete and Reference each have their own implementation, while Transactions and Explorer Summary combine request validation and Telegram auth in distinct Code nodes.
 
 ## Frozen freshness policy
 
@@ -68,13 +63,9 @@ MoneyTrack API-3B policy:
 - `MONEYTRACK_INIT_DATA_MAX_AGE_SECONDS` — default **86400** seconds (24 hours);
 - `MONEYTRACK_INIT_DATA_MAX_FUTURE_SKEW_SECONDS` — default **300** seconds (5 minutes).
 
-Both are runtime-configurable. The defaults remain active when the environment variables are absent or invalid, so API correctness does not depend on a deployment-time config mutation.
-
-Rationale: Telegram requires/recommends validating `auth_date` but does not prescribe a TTL. A 24-hour default is compatibility-first: it removes indefinite replay while avoiding unexpectedly short MiniApp session validity. The policy can be tightened later without editing workflow code.
+Both are runtime-configurable. Defaults remain active when environment variables are absent or invalid.
 
 ## Canonical auth error vocabulary
-
-API-3B freezes the following machine-readable auth errors:
 
 - `INIT_DATA_MISSING` — 401;
 - `INVALID_INIT_DATA` — 401;
@@ -101,65 +92,91 @@ Authentication failures use the canonical API-2B envelope:
 
 ## API-3B implementation model
 
-The repository owns one canonical verifier source fragment. A deterministic transformer injects that exact verifier implementation into every active auth path.
+The repository owns one canonical verifier source fragment, version marker `api3b-v1`. A deterministic transformer injects that exact verifier implementation into every active auth path.
 
-Physical topology remains intentionally workflow-local because the current MoneyTrack repository/runtime has no established reusable Execute Sub-workflow auth boundary. Introducing a new cross-workflow runtime dependency solely for auth would add a new failure topology during hardening.
+Physical topology remains workflow-local because MoneyTrack has no established reusable Execute Sub-workflow auth boundary. This avoids creating a new cross-workflow runtime dependency solely for auth hardening.
 
-Canonicalization therefore means:
+For the six former exception-style auth paths, API-3B replaced thrown auth failures with handled output plus an IF auth gate and canonical auth-error responder. Original success downstream paths were preserved.
 
-- one repository source of verifier semantics;
-- one HMAC implementation;
-- one freshness implementation;
-- one error vocabulary;
-- deterministic structural verification that every active path contains the canonical verifier version.
+Transactions and Explorer Summary retained their existing request-validation graphs; only the embedded auth segment was replaced.
 
-For the six current exception-style auth nodes (`MiniApp API` x4, Delete, Reference), API-3B replaces thrown auth failures with handled output plus an IF auth gate and canonical `Respond to Webhook` auth-error branch. The original successful downstream path is preserved byte-for-byte.
+## API-3B production evidence — COMPLETE
 
-Transactions and Explorer Summary already have an IF request-valid branch and handled error responder. Their request-validation semantics and graph stay unchanged; only the embedded Telegram-auth implementation is replaced by the canonical verifier fragment.
+Successful production cutover ran from the post-rollback baseline and passed every gate.
 
-## Auth contract target
+Production workflow versions:
 
-Every in-scope HTTP request must:
+| Workflow | Before | After | Result |
+|---|---:|---:|---|
+| MiniApp API `7TJ2xQTxLsTydXZc` | 481 | 482 | PASS |
+| Delete `MTxDel7Qp2Vn9Kc4` | 5 | 6 | PASS |
+| Transaction Reference `MTxRef4Qp8Lm2Xs6` | 6 | 7 | PASS |
+| Transactions `UX022TxApi202608` | 9 | 10 | PASS |
+| Explorer Summary `UX022Summary202608` | 8 | 9 | PASS |
 
-1. obtain raw Telegram `initData` only from the supported transport inputs;
-2. reject missing auth material;
-3. parse the query-string representation without trusting decoded user data before verification;
-4. require and verify Telegram `hash` using bot token and HMAC-SHA-256;
-5. compare hashes with constant-time buffer comparison where possible;
-6. require a positive integer `auth_date`;
-7. reject future-skew/outdated auth data according to the frozen MoneyTrack policy;
-8. parse the verified Telegram user object;
-9. derive `telegram_user_id` only from verified data;
-10. return stable auth error codes/statuses through the canonical API envelope;
-11. never trust caller-provided Telegram user identity.
+Candidate and production gates:
 
-## API-3 subphases
+- tooling compile: PASS;
+- canonical verifier fragment gate: PASS;
+- fresh active/version-consistent identity: PASS 5/5;
+- structural auth isolation: PASS 5/5;
+- canonical auth nodes: **8/8**;
+- exception-style canonical auth nodes: **0**;
+- production PUT: PASS 5/5;
+- production/candidate node + connection parity: PASS 5/5;
+- request validation unchanged for Transactions/Summary: PASS;
+- backend/Postgres nodes unchanged: PASS.
 
-### API-3A — Auth Contract & Duplication Inventory
+Missing-auth smoke across all 8 active HTTP endpoints:
 
-**COMPLETE.**
+```text
+HTTP 401
+{"ok":false,"error":{"code":"INIT_DATA_MISSING"}}
+```
 
-### API-3B — Canonical Verifier + Cutover
+Result: **PASS 8/8**.
 
-Current scope:
+Signed freshness smoke used the runtime bot token without printing its value:
 
-- canonical verifier source + deterministic transformer;
-- handled auth-error control-flow for six exception-style paths;
-- embedded canonical auth in Transactions/Summary validators;
-- configurable `auth_date` freshness;
-- exact candidate/production structural verification;
-- missing-auth `401` contract smoke across all 8 endpoints;
-- signed current/expired initData smoke without printing the bot token;
-- preserve endpoint methods/paths, backend queries/functions, business fields and domain semantics.
+- freshly signed initData with a synthetic unknown Telegram user reached the backend and returned `404 USER_NOT_FOUND` — signature/auth accepted;
+- signed initData older than the 24-hour default returned `401 AUTH_DATE_EXPIRED`;
+- signed initData more than 5 minutes in the future returned `401 AUTH_DATE_IN_FUTURE`;
+- temporary signed payload files were removed after the smoke.
 
-### API-3C — Ownership / Idempotency Gate
+Final invariants:
 
-Review the retained HTTP write surface after auth hardening:
+- global active direct business writers: **0**;
+- n8n health: **PASS**.
 
-- prove ownership is enforced at backend/domain boundaries;
-- identify any request that can cause duplicate effects on retry;
-- add idempotency only where a concrete non-idempotent write path exists;
-- do not invent idempotency machinery for read-only endpoints.
+## Auth contract now active
+
+Every in-scope HTTP request:
+
+1. obtains raw Telegram `initData` only from supported transport inputs;
+2. rejects missing auth material;
+3. parses query-string data before trusting decoded user fields;
+4. verifies Telegram `hash` with bot token and HMAC-SHA-256;
+5. uses constant-time hash comparison;
+6. requires a positive integer `auth_date`;
+7. rejects future-skew/outdated auth data according to MoneyTrack policy;
+8. parses the verified Telegram user object;
+9. derives `telegram_user_id` only from verified data;
+10. returns stable auth error codes/statuses;
+11. never trusts caller-provided Telegram identity.
+
+## API-3C — Ownership / Idempotency Gate
+
+API-3C is intentionally narrow.
+
+It must:
+
+- enumerate the retained HTTP write surface after API-3B;
+- prove ownership is enforced inside the backend/domain write boundary;
+- determine retry/idempotency behavior from the actual write semantics;
+- add idempotency machinery only if a concrete duplicate-effect risk exists;
+- avoid adding idempotency infrastructure to read-only endpoints.
+
+Expected retained HTTP write candidate from prior inventory is `DELETE /api/v1/transaction`, but API-3C must reassert this from fresh runtime evidence rather than assume it.
 
 ## Invariants
 
@@ -177,16 +194,18 @@ API-3 must not:
 
 API-3 closes only when:
 
-- one canonical auth contract protects all active HTTP endpoints;
-- HMAC verification remains correct;
-- `auth_date` freshness is enforced by frozen configurable policy;
-- stable auth error envelopes/statuses are active;
-- verified identity is the only identity source;
-- ownership/idempotency review has no blocking debt;
-- global direct business writers remain `0`;
-- n8n health PASS.
+- canonical auth protects all active HTTP endpoints — PASS;
+- HMAC verification correct — PASS;
+- `auth_date` freshness enforced — PASS;
+- stable auth errors active — PASS;
+- verified identity is the only HTTP identity source — PASS;
+- ownership/idempotency review has no blocking debt — PENDING API-3C;
+- global direct business writers remain `0` — PASS;
+- n8n health PASS — PASS.
 
 ## Next
+
+API-3C — Ownership / Idempotency Gate.
 
 After API-3 closes:
 
