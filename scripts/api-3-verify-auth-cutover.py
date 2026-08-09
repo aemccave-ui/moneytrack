@@ -211,7 +211,10 @@ def verify_combined(label, before, after, fragment):
         raise SystemExit(f"{label}: canonical auth failure not mapped into existing handled error branch")
 
     before_prefix, before_suffix = split_combined(before_js)
-    after_without_fragment = after_js.replace(fragment + "\n", "", 1)
+    injected = "\n\n" + fragment
+    if injected not in after_js:
+        raise SystemExit(f"{label}: exact canonical fragment injection boundary missing")
+    after_without_fragment = after_js.replace(injected, "", 1)
     after_prefix, after_suffix = split_combined(after_without_fragment)
     if before_prefix != after_prefix:
         raise SystemExit(f"{label}: request-validation prefix changed")
