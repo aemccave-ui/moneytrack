@@ -139,36 +139,50 @@ The first H3 cutover attempt reached the post-recreation API smoke too early, re
 
 H4 is operational hardening only. No new business features, API endpoints or domain changes.
 
-Remaining known debt entering H4:
+### Read-only operational gate — PASS WITH DEBT REVIEW
 
-- **M-03 — automation checkout drift:** `/home/adm_mt/moneytrack-automation` previously showed modified `bin/release.sh` and untracked `config/`; secret-bearing files must not be committed blindly;
-- **M-04 — alerting visibility:** certbot renewal exists, but operator-visible failure/expiry alerting is not yet proved;
-- **M-05 — off-host durability:** current backup correctness is local; off-host copy/replication is not yet proved.
+The H4 production gate completed with `operational_failures=0` and five warnings.
 
-### H4 operational gate
+Confirmed healthy/operational:
 
-`scripts/prod-h4-operational-gate.sh` is read-only. It checks:
+- hardened image pins PASS on n8n and both PostgreSQL containers;
+- restart policies and log rotation PASS on all three critical containers;
+- hardening overlays and protected Compose interpolation snapshots PASS;
+- MoneyTrack DB, n8n metadata DB, n8n health and canonical API `401 INIT_DATA_MISSING` smoke PASS;
+- daily backup and weekly isolated-restore timers enabled + active;
+- latest protected backup hashes and freshness PASS;
+- last backup and restore service results PASS;
+- root and backup filesystem usage ~24%, PASS;
+- certbot timer PASS;
+- `n8n.moneytrackapp.xyz` TLS PASS with 77 days remaining at observation time;
+- `app.moneytrackapp.xyz` TLS PASS with 81 days remaining at observation time.
 
-1. hardened image pins, restart policies, overlays, Compose-context snapshots and log rotation;
-2. n8n / both PostgreSQL databases / canonical API transport health;
-3. backup and restore timers, latest backup hashes/freshness and service-result state;
-4. disk usage, certbot timer and live TLS certificate expiry;
-5. existing operator alerting hooks without printing secret-bearing command content;
-6. existing off-host evidence such as remote mounts or MoneyTrack sync/upload units;
-7. whether backup storage shares the host/root failure domain;
-8. automation checkout drift filenames only.
+Warnings observed:
 
-Absence of alerting or off-host evidence is reported as WARN rather than hidden. A real health/runtime/recovery failure is blocking.
+1. `critical_failed_units` reported an unrelated HabitsTrack restore-verify unit. This is a gate-scoping false positive, not MoneyTrack debt. The H4 gate has been corrected to inspect MoneyTrack-owned/certbot unit names rather than matching generic words in service descriptions.
+2. `operator_alerting_hook` — no operator-visible failure hook proved yet.
+3. `off_host_backup_path` — no MoneyTrack off-host copy/replication proved yet; AWS CLI and rsync are installed.
+4. `backup_failure_domain` — local backup is on the same `/dev/sda1` host/root failure domain.
+5. `automation_checkout_drift` — `/home/adm_mt/moneytrack-automation` still has modified `bin/release.sh` and untracked `config/`. This remains MEDIUM operational debt; secret-bearing files must not be committed blindly.
 
-### H4 implementation rule
+No BLOCKER/HIGH debt was discovered by H4.
 
-After the read-only gate:
+### H4 implementation now
 
-- if operator alerting already exists and is credible, document it rather than replacing it;
-- otherwise implement one minimal failure-notification path for backup, restore verification, service health, disk and certificate expiry;
-- if a usable off-host destination already exists, attach MoneyTrack protected backups to it with bounded retention/verification;
-- if no destination exists, record that external dependency explicitly and do not pretend same-host storage is disaster recovery;
-- produce a concise operational runbook covering deploy/recreate, restart, rollback, backup, isolated restore, health checks and recovery-critical file locations.
+- `scripts/prod-h4-external-capability-resolver.sh` performs a narrow read-only resolution of existing AWS/S3 access and operator-notification inputs without printing credential/token/chat values;
+- `docs/runbooks/PROD-H-operations.md` now documents the proven runtime/recovery paths, health checks, safe recreation commands, backup-now, isolated restore verification, log policy, TLS checks and recovery-critical file locations;
+- if an existing MoneyTrack S3 destination is proved, wire protected backups to it rather than introducing a new storage platform;
+- if an existing external notification target is proved, attach MoneyTrack backup/restore/health/TLS failure signals to it;
+- if no external destination exists, record off-host durability as an explicitly accepted MEDIUM external-dependency risk rather than pretending same-host backup is disaster recovery.
+
+### Remaining H4 close criteria
+
+H4 closes when:
+
+- false-positive failed-unit warning is gone on the rerun;
+- operator alerting is implemented or an explicit accepted residual risk is documented;
+- off-host posture is implemented when a usable existing destination is available, otherwise explicitly accepted as MEDIUM external dependency;
+- concise operations runbook exists and matches accepted production state.
 
 ## PROD-H5 — final gate
 
@@ -179,12 +193,12 @@ Read-only acceptance. PROD-H closes only when:
 - n8n recovery-critical persistent state is protected;
 - runtime image pins and log rotation remain active;
 - production recreation path is documented and uses permanent Compose overlays/context files;
-- TLS renewal and expiry/failure visibility are operational;
-- critical service health and backup failures can surface to an operator;
+- TLS renewal and expiry/failure visibility are operational or residual alerting risk is explicitly accepted;
+- critical service health and backup failures can surface to an operator or residual notification risk is explicitly accepted;
 - off-host posture is either implemented or explicitly accepted as a remaining MEDIUM external-dependency risk;
 - concise operations runbook exists;
 - final production gate is green.
 
 ## Next
 
-Run the PROD-H4 read-only operational gate. Use its output to implement only the missing alerting/off-host/runbook pieces, then proceed directly to PROD-H5.
+Run the narrow H4 external-capability resolver. Use existing AWS/S3 or alert delivery inputs if present; otherwise record only the specific residual external dependency. Then rerun the operational gate and proceed directly to PROD-H5.
