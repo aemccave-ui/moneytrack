@@ -75,6 +75,29 @@ api_contract_once() {
   grep -Fq '"code":"INIT_DATA_MISSING"' "$body"
 }
 
+validate_provenance() {
+  local actual="$1" base="$2" rollback_file="$3" subject="$4"
+  local first second extra
+
+  if [ "$actual" = "$base" ]; then
+    echo "$subject compose_provenance=BASE"
+    return 0
+  fi
+
+  IFS=',' read -r first second extra <<< "$actual"
+  if [ "$first" = "$base" ] \
+      && [ -n "${second:-}" ] \
+      && [ -z "${extra:-}" ] \
+      && [[ "$second" == /tmp/moneytrack-prod-h3-cutover.*/"$rollback_file" ]] \
+      && [ ! -e "$second" ]; then
+    echo "$subject stale_rollback_provenance=ACCEPTED residue=$second"
+    return 0
+  fi
+
+  echo "$subject compose_provenance_drift=FAIL actual=$actual"
+  return 1
+}
+
 echo "=== PROD-H3 PREFLIGHT START ==="
 
 for f in "$N8N_BASE" "$MT_BASE"; do
@@ -121,9 +144,9 @@ echo "runtime_version_gate=PASS n8n=$N8N_VER postgres=$PG_N8N_VER moneytrack_db=
 N8N_CFG="$(docker inspect n8n --format '{{index .Config.Labels "com.docker.compose.project.config_files"}}')"
 PG_CFG="$(docker inspect postgres --format '{{index .Config.Labels "com.docker.compose.project.config_files"}}')"
 MT_CFG="$(docker inspect moneytrack-db --format '{{index .Config.Labels "com.docker.compose.project.config_files"}}')"
-[ "$N8N_CFG" = "$N8N_BASE" ] || { echo "n8n_compose_provenance_drift=FAIL actual=$N8N_CFG"; exit 1; }
-[ "$PG_CFG" = "$N8N_BASE" ] || { echo "n8n_postgres_compose_provenance_drift=FAIL actual=$PG_CFG"; exit 1; }
-[ "$MT_CFG" = "$MT_BASE" ] || { echo "moneytrack_db_compose_provenance_drift=FAIL actual=$MT_CFG"; exit 1; }
+validate_provenance "$N8N_CFG" "$N8N_BASE" "n8n-rollback.yml" "n8n"
+validate_provenance "$PG_CFG" "$N8N_BASE" "n8n-rollback.yml" "n8n_postgres"
+validate_provenance "$MT_CFG" "$MT_BASE" "mt-rollback.yml" "moneytrack_db"
 echo "compose_provenance_gate=PASS"
 
 N8N_WORKDIR="$(docker inspect n8n --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}')"
@@ -153,14 +176,12 @@ MT_PROJECT="$(docker inspect moneytrack-db --format '{{index .Config.Labels "com
 [ -n "$N8N_PROJECT" ] && [ -n "$MT_PROJECT" ] || { echo "compose_project_resolution=FAIL"; exit 1; }
 echo "compose_projects=PASS n8n_project=$N8N_PROJECT moneytrack_project=$MT_PROJECT"
 
-# Fingerprints allow the cutover to prove that recreation did not silently alter runtime env.
 N8N_ENV_FP="$(env_fingerprint n8n)"
 PG_ENV_FP="$(env_fingerprint postgres)"
 MT_ENV_FP="$(env_fingerprint moneytrack-db)"
 [ -n "$N8N_ENV_FP" ] && [ -n "$PG_ENV_FP" ] && [ -n "$MT_ENV_FP" ] || { echo "environment_fingerprint_gate=FAIL"; exit 1; }
 echo "environment_fingerprint_gate=PASS values_not_printed=PASS"
 
-# Render from the original Compose working directories so their .env/interpolation context is preserved.
 render_compose "$N8N_WORKDIR" "$N8N_PROJECT" "$N8N_BASE" "$TMP/n8n-overlay.yml" "$TMP/n8n-rendered.yml" "$TMP/n8n-render.err"
 render_compose "$MT_WORKDIR" "$MT_PROJECT" "$MT_BASE" "$TMP/mt-overlay.yml" "$TMP/mt-rendered.yml" "$TMP/mt-render.err"
 echo "compose_interpolation_gate=PASS"
