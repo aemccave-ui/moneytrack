@@ -171,10 +171,13 @@ check_tls n8n.moneytrackapp.xyz
 check_tls app.moneytrackapp.xyz
 
 printf '\n=== H4 / 5. ALERTING VISIBILITY ===\n'
-failed_units="$(systemctl --failed --no-legend --plain 2>/dev/null | grep -Ei 'moneytrack|n8n|postgres|certbot' || true)"
+# Scope failed-unit review to MoneyTrack-owned/system TLS units only. Do not flag unrelated
+# projects merely because their description happens to contain words like PostgreSQL.
+failed_units="$(systemctl --failed --no-legend --plain 2>/dev/null \
+  | awk '$1 ~ /^moneytrack-/ || $1 ~ /^certbot([.@-]|$)/ {print}' || true)"
 if [ -z "$failed_units" ]; then pass "critical_failed_units" "count=0"; else warn "critical_failed_units" "present=true"; printf '%s\n' "$failed_units" | sed 's/^/  /'; fi
 
-onfailure_files="$(grep -RIlE '^[[:space:]]*OnFailure=' /etc/systemd/system 2>/dev/null | grep -Ei 'moneytrack|n8n|postgres|certbot' || true)"
+onfailure_files="$(grep -RIlE '^[[:space:]]*OnFailure=' /etc/systemd/system 2>/dev/null | grep -Ei 'moneytrack|certbot' || true)"
 monitor_units="$(systemctl list-unit-files --no-legend 2>/dev/null | awk '{print $1}' | grep -Ei 'moneytrack.*(alert|monitor|health)|((alert|monitor|health).*moneytrack)' || true)"
 if [ -n "$onfailure_files" ] || [ -n "$monitor_units" ]; then
   pass "operator_alerting_hook" "evidence_present=true"
