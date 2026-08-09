@@ -44,3 +44,35 @@ export async function getAccounts(signal) {
   const payload = await request('api/v1/accounts', signal, { allowEmpty: true })
   return payload ?? { accounts: [] }
 }
+
+export async function getTransactionReference(signal) {
+  const payload = await request('api/v1/transaction-reference', signal, { allowEmpty: true })
+  return payload ?? { currencies: [], categories: [] }
+}
+
+export async function deleteTransaction(id) {
+  const response = await fetch(`${API_BASE}/api/v1/transaction?id=${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: {
+      Accept: 'application/json',
+      'X-Telegram-Init-Data': telegramInitData(),
+    },
+  })
+
+  const body = await response.text()
+  if (!response.ok) {
+    throw new Error(`Удаление недоступно: API ${response.status}${body ? ` — ${body.slice(0, 120)}` : ''}`)
+  }
+
+  if (!body.trim()) return null
+  try {
+    const payload = JSON.parse(body)
+    if (payload?.error) throw new Error(payload.error)
+    return payload?.data ?? payload
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new Error('Некорректный ответ API при удалении', { cause: error })
+    }
+    throw error
+  }
+}

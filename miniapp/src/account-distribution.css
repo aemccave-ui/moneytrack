@@ -1,5 +1,6 @@
 .noSectionTitle { margin-top: 12px; }
 .compactSectionStart { margin-top: 12px; }
+.currencyBalancesHeader { margin-bottom: 8px; }
 .accountsSectionHeader { margin-bottom: 6px; transform: translateY(-4px); }
 .transactionsSection { margin-top: 16px; }
 .transactionsSection .sectionHeader { margin-bottom: 8px; }

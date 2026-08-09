@@ -1,0 +1,88 @@
+{
+  "id": "MTxRef4Qp8Lm2Xs6",
+  "name": "MoneyTrack MiniApp Transaction Reference",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "path": "api/v1/transaction-reference",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-240, 0],
+      "id": "8b65b387-f7bf-4f53-9261-0eb2f3a80247",
+      "name": "transaction reference",
+      "webhookId": "72b78a9e-9950-428c-b6f0-f93a1fa99e72"
+    },
+    {
+      "parameters": {
+        "jsCode": "const headers = $json.headers || {};\nconst query = $json.query || {};\nconst initData = headers[\"x-telegram-init-data\"] || headers[\"X-Telegram-Init-Data\"] || query.initData || query.init_data || null;\nreturn [{ json: { initData } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "id": "13fc204d-9f42-4d1e-aa34-f6eb1fe48c78",
+      "name": "Normalize Reference Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require(\"crypto\");\nconst initData = $json.initData;\nif (!initData) throw new Error(\"INIT_DATA_MISSING\");\nconst botToken = $env.MONEYTRACK_BOT_TOKEN;\nif (!botToken) throw new Error(\"BOT_TOKEN_MISSING\");\nconst params = {};\nfor (const part of initData.split(\"&\")) {\n  const eq = part.indexOf(\"=\");\n  if (eq === -1) continue;\n  params[decodeURIComponent(part.slice(0, eq))] = decodeURIComponent(part.slice(eq + 1));\n}\nconst receivedHash = params.hash;\nif (!receivedHash) throw new Error(\"HASH_MISSING\");\ndelete params.hash;\nconst dataCheckString = Object.keys(params).sort().map((key) => `${key}=${params[key]}`).join(\"\\n\");\nconst secretKey = crypto.createHmac(\"sha256\", \"WebAppData\").update(botToken).digest();\nconst calculatedHash = crypto.createHmac(\"sha256\", secretKey).update(dataCheckString).digest(\"hex\");\nif (calculatedHash !== receivedHash) throw new Error(\"INVALID_INIT_DATA_HASH\");\nconst user = JSON.parse(params.user);\nreturn [{ json: { telegram_user_id: user.id } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 0],
+      "id": "d4606789-f944-459a-b2d0-69cb19a559be",
+      "name": "Verify Telegram InitData reference"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with user_ctx as (\n  select u.id as user_id, coalesce(s.language_code, u.language_code, 'en') as language_code\n  from moneytrack.app_users u\n  left join moneytrack.user_settings s on s.user_id = u.id\n  where u.telegram_user_id = {{ $json.telegram_user_id }}::bigint\n  limit 1\n),\ncurrency_usage as (\n  select t.currency_original as code, count(*)::bigint as usage_count\n  from moneytrack.transactions t\n  join user_ctx u on u.user_id = t.user_id\n  group by t.currency_original\n),\ncurrency_rows as (\n  select c.code, coalesce(cu.usage_count, 0)::bigint as usage_count\n  from moneytrack.currencies c\n  left join currency_usage cu on cu.code = c.code\n  where coalesce(c.is_active, true) = true\n),\ncategory_rows as (\n  select\n    c.id,\n    c.code,\n    coalesce(\n      nullif(to_jsonb(c)->>'parent_id', '')::bigint,\n      nullif(to_jsonb(c)->>'parent_category_id', '')::bigint\n    ) as parent_id,\n    coalesce(nullif(to_jsonb(c)->>'sort_order', '')::int, 0) as sort_order,\n    coalesce(t_user.name, t_en.name, c.code) as name\n  from moneytrack.category_catalog c\n  cross join user_ctx u\n  left join moneytrack.category_catalog_translations t_user\n    on t_user.category_id = c.id and t_user.language_code = u.language_code\n  left join moneytrack.category_catalog_translations t_en\n    on t_en.category_id = c.id and t_en.language_code = 'en'\n  where c.is_active = true and (c.user_id = u.user_id or c.user_id = 0)\n)\nselect\n  exists(select 1 from user_ctx) as user_found,\n  coalesce((\n    select jsonb_agg(\n      jsonb_build_object('code', cr.code, 'usage_count', cr.usage_count)\n      order by (cr.usage_count > 0) desc, cr.code asc\n    )\n    from currency_rows cr\n  ), '[]'::jsonb) as currencies,\n  coalesce((\n    select jsonb_agg(\n      jsonb_build_object(\n        'id', cr.id,\n        'code', cr.code,\n        'name', cr.name,\n        'parent_id', cr.parent_id,\n        'sort_order', cr.sort_order\n      ) order by cr.sort_order, cr.name\n    )\n    from category_rows cr\n  ), '[]'::jsonb) as categories;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [480, 0],
+      "id": "c7f19722-5f97-427a-9186-95862744d972",
+      "name": "Get Transaction Reference",
+      "credentials": {
+        "postgres": {
+          "id": "tM27zg5m7tREo2ep",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first().json || {};\nif (!row.user_found) throw new Error(\"USER_NOT_FOUND\");\nreturn [{ json: { data: { currencies: row.currencies || [], categories: row.categories || [] } } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 0],
+      "id": "1a75f876-b36b-49bd-8628-8a38eca80adc",
+      "name": "Format Transaction Reference"
+    },
+    {
+      "parameters": {"options": {}},
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [960, 0],
+      "id": "9a9fb9fb-9ea0-4e83-8ffd-f87e49d84087",
+      "name": "Respond Reference"
+    }
+  ],
+  "connections": {
+    "transaction reference": {"main": [[{"node": "Normalize Reference Request", "type": "main", "index": 0}]]},
+    "Normalize Reference Request": {"main": [[{"node": "Verify Telegram InitData reference", "type": "main", "index": 0}]]},
+    "Verify Telegram InitData reference": {"main": [[{"node": "Get Transaction Reference", "type": "main", "index": 0}]]},
+    "Get Transaction Reference": {"main": [[{"node": "Format Transaction Reference", "type": "main", "index": 0}]]},
+    "Format Transaction Reference": {"main": [[{"node": "Respond Reference", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1", "binaryMode": "separate"},
+  "staticData": null,
+  "meta": {"templateCredsSetupCompleted": true},
+  "pinData": {}
+}

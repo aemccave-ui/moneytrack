@@ -12,10 +12,6 @@
 .fabMenu { order: 60; }
 .labBottomNav { order: 70; }
 
-.balanceBreakdownSection .sectionHeader {
-  display: none;
-}
-
 .balanceBreakdownSection {
   margin-top: 16px;
 }
