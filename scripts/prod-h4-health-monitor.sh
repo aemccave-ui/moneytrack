@@ -5,7 +5,7 @@ BACKUP_ROOT="${BACKUP_ROOT:-/opt/moneytrack/backups}"
 TMP="$(mktemp -d /tmp/moneytrack-prod-h4-monitor.XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
 
-for c in docker curl find date df awk grep openssl systemctl timeout sha256sum mktemp sed; do
+for c in docker curl find date df awk grep openssl systemctl timeout sha256sum mktemp sed sort tail basename; do
   command -v "$c" >/dev/null 2>&1 || {
     echo "required_command_missing=$c"
     exit 1
