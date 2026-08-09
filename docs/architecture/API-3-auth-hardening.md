@@ -2,19 +2,21 @@
 
 ## Status
 
+API-3 — CLOSED
+
 API-3A — COMPLETE
 
 API-3B — COMPLETE / PRODUCTION CUTOVER PASS
 
-API-3C — NEXT
+API-3C — COMPLETE / READ-ONLY OWNERSHIP-IDEMPOTENCY GATE PASS
 
 ## Base
 
-API-1, API-2A, API-2B and API-2C are closed and merged. `POST /moneytrack-test` has been removed. The active HTTP surface consists of seven retained MiniApp API endpoints plus deprecated-but-active `/api/v1/me`.
+API-1 and API-2 are closed. `POST /moneytrack-test` has been removed. The active HTTP surface consists of seven retained MiniApp API endpoints plus deprecated-but-active `/api/v1/me`.
 
 ## Goal
 
-Establish one canonical Telegram MiniApp authentication contract for every active MoneyTrack HTTP endpoint without moving business semantics back into n8n.
+Establish one canonical Telegram MiniApp authentication contract for every active MoneyTrack HTTP endpoint without moving business semantics back into n8n, and prove the retained HTTP write surface is ownership-safe and does not need additional idempotency machinery.
 
 Target architecture:
 
@@ -23,47 +25,31 @@ MiniApp request
   -> canonical Telegram InitData verification
   -> verified telegram_user_id
   -> request validation / thin adapter
-  -> backend/read-model boundary
+  -> backend/read-model or write boundary
 ```
 
-## API-3A production inventory — COMPLETE
+## API-3A — Inventory COMPLETE
 
-Read-only preflight completed against fresh active/version-consistent production workflows.
+Fresh production inventory established:
 
-Active HTTP surface: **8 endpoints**.
-
-| Method | Path | Workflow |
-|---|---|---|
-| GET | `/api/v1/dashboard` | `7TJ2xQTxLsTydXZc` |
-| GET | `/api/v1/accounts` | `7TJ2xQTxLsTydXZc` |
-| GET | `/api/v1/i18n` | `7TJ2xQTxLsTydXZc` |
-| GET | `/api/v1/me` | `7TJ2xQTxLsTydXZc` |
-| DELETE | `/api/v1/transaction` | `MTxDel7Qp2Vn9Kc4` |
-| GET | `/api/v1/transaction-reference` | `MTxRef4Qp8Lm2Xs6` |
-| GET | `/api/v1/transactions` | `UX022TxApi202608` |
-| GET | `/api/v1/accounts-explorer-summary` | `UX022Summary202608` |
-
-Inventory findings:
-
-- auth-related Code nodes: **8**;
-- distinct full-node auth fingerprints: **5**;
-- nodes containing `auth_date`: **0/8**;
-- nodes performing a clock/freshness check: **0/8**;
-- exception-style auth nodes: **6**;
-- handled HTTP-error auth nodes: **2**;
-- every path derived `telegram_user_id` only after HMAC verification;
-- `MONEYTRACK_BOT_TOKEN` present in n8n runtime without exposing its value;
+- active HTTP endpoints: **8**;
+- auth-related Code nodes before hardening: **8**;
+- distinct verifier implementations before hardening: **5**;
+- `auth_date` checks before hardening: **0/8**;
+- clock/freshness checks before hardening: **0/8**;
+- exception-style auth before hardening: **6**;
+- handled HTTP auth before hardening: **2**;
 - global active direct business writers: **0**;
 - n8n health: **PASS**.
 
 ## Frozen freshness policy
 
-MoneyTrack API-3B policy:
+MoneyTrack policy:
 
 - `MONEYTRACK_INIT_DATA_MAX_AGE_SECONDS` — default **86400** seconds (24 hours);
 - `MONEYTRACK_INIT_DATA_MAX_FUTURE_SKEW_SECONDS` — default **300** seconds (5 minutes).
 
-Both are runtime-configurable. Defaults remain active when environment variables are absent or invalid.
+Both remain runtime-configurable.
 
 ## Canonical auth error vocabulary
 
@@ -79,32 +65,13 @@ Both are runtime-configurable. Defaults remain active when environment variables
 - `INVALID_USER_DATA` — 401;
 - `BOT_TOKEN_MISSING` — 500.
 
-Authentication failures use the canonical API-2B envelope:
+Authentication failures use the canonical API-2B envelope.
 
-```json
-{
-  "ok": false,
-  "error": {
-    "code": "AUTH_DATE_EXPIRED"
-  }
-}
-```
+## API-3B — Canonical Verifier + Cutover COMPLETE
 
-## API-3B implementation model
+The repository owns one canonical verifier source fragment with version marker `api3b-v1`.
 
-The repository owns one canonical verifier source fragment, version marker `api3b-v1`. A deterministic transformer injects that exact verifier implementation into every active auth path.
-
-Physical topology remains workflow-local because MoneyTrack has no established reusable Execute Sub-workflow auth boundary. This avoids creating a new cross-workflow runtime dependency solely for auth hardening.
-
-For the six former exception-style auth paths, API-3B replaced thrown auth failures with handled output plus an IF auth gate and canonical auth-error responder. Original success downstream paths were preserved.
-
-Transactions and Explorer Summary retained their existing request-validation graphs; only the embedded auth segment was replaced.
-
-## API-3B production evidence — COMPLETE
-
-Successful production cutover ran from the post-rollback baseline and passed every gate.
-
-Production workflow versions:
+Production workflow versions after successful cutover:
 
 | Workflow | Before | After | Result |
 |---|---:|---:|---|
@@ -114,37 +81,18 @@ Production workflow versions:
 | Transactions `UX022TxApi202608` | 9 | 10 | PASS |
 | Explorer Summary `UX022Summary202608` | 8 | 9 | PASS |
 
-Candidate and production gates:
+Production gates:
 
-- tooling compile: PASS;
-- canonical verifier fragment gate: PASS;
-- fresh active/version-consistent identity: PASS 5/5;
-- structural auth isolation: PASS 5/5;
 - canonical auth nodes: **8/8**;
 - exception-style canonical auth nodes: **0**;
-- production PUT: PASS 5/5;
-- production/candidate node + connection parity: PASS 5/5;
-- request validation unchanged for Transactions/Summary: PASS;
-- backend/Postgres nodes unchanged: PASS.
-
-Missing-auth smoke across all 8 active HTTP endpoints:
-
-```text
-HTTP 401
-{"ok":false,"error":{"code":"INIT_DATA_MISSING"}}
-```
-
-Result: **PASS 8/8**.
-
-Signed freshness smoke used the runtime bot token without printing its value:
-
-- freshly signed initData with a synthetic unknown Telegram user reached the backend and returned `404 USER_NOT_FOUND` — signature/auth accepted;
-- signed initData older than the 24-hour default returned `401 AUTH_DATE_EXPIRED`;
-- signed initData more than 5 minutes in the future returned `401 AUTH_DATE_IN_FUTURE`;
-- temporary signed payload files were removed after the smoke.
-
-Final invariants:
-
+- production PUT: **PASS 5/5**;
+- production/candidate parity: **PASS 5/5**;
+- request validation unchanged for Transactions/Summary: **PASS**;
+- backend/Postgres nodes unchanged: **PASS**;
+- missing-auth `401 INIT_DATA_MISSING`: **PASS 8/8**;
+- freshly signed initData: **AUTH ACCEPTED / PASS**;
+- expired signed initData: **401 AUTH_DATE_EXPIRED / PASS**;
+- future signed initData: **401 AUTH_DATE_IN_FUTURE / PASS**;
 - global active direct business writers: **0**;
 - n8n health: **PASS**.
 
@@ -164,49 +112,59 @@ Every in-scope HTTP request:
 10. returns stable auth error codes/statuses;
 11. never trusts caller-provided Telegram identity.
 
-## API-3C — Ownership / Idempotency Gate
+## API-3C — Ownership / Idempotency Gate COMPLETE
 
-API-3C is intentionally narrow.
+Fresh production evidence proved exactly one active retained HTTP mutation:
 
-It must:
+```text
+DELETE /api/v1/transaction
+workflow MTxDel7Qp2Vn9Kc4
+```
 
-- enumerate the retained HTTP write surface after API-3B;
-- prove ownership is enforced inside the backend/domain write boundary;
-- determine retry/idempotency behavior from the actual write semantics;
-- add idempotency machinery only if a concrete duplicate-effect risk exists;
-- avoid adding idempotency infrastructure to read-only endpoints.
+The workflow:
 
-Expected retained HTTP write candidate from prior inventory is `DELETE /api/v1/transaction`, but API-3C must reassert this from fresh runtime evidence rather than assume it.
+- retains canonical `api3b-v1` authentication;
+- contains no direct business-table mutation;
+- delegates exactly once to `moneytrack.finance_delete_transaction_v1`.
 
-## Invariants
+Backend ownership is enforced by the target lock predicate:
 
-API-3 must not:
+```sql
+where t.id = p_transaction_id
+  and t.user_id = p_user_id
+for update
+```
 
-- change finance/receipt/user/budget/FX semantics;
-- rename retained HTTP endpoints;
-- change response business fields inside `data`;
-- reopen BE-DOM or API-2 work;
-- add direct n8n business-table writes;
-- trust `initDataUnsafe` or caller-supplied user identity;
-- reintroduce `/moneytrack-test`.
+and by ownership predicates on receipt-item, receipt and transaction deletes.
 
-## Gate
+Retry classification:
 
-API-3 closes only when:
+- first successful DELETE removes the ownership-scoped aggregate;
+- a repeated authenticated DELETE finds no matching transaction and produces no additional mutation;
+- resulting business state is unchanged after retry;
+- concurrent duplicate deletes are bounded by row locking and the final delete-count guard.
 
-- canonical auth protects all active HTTP endpoints — PASS;
-- HMAC verification correct — PASS;
-- `auth_date` freshness enforced — PASS;
-- stable auth errors active — PASS;
-- verified identity is the only HTTP identity source — PASS;
-- ownership/idempotency review has no blocking debt — PENDING API-3C;
-- global direct business writers remain `0` — PASS;
-- n8n health PASS — PASS.
+Disposition: **STATE-IDEMPOTENT — NO IDEMPOTENCY KEY/STORE REQUIRED**.
+
+API-3C required no production mutation.
+
+## Final API-3 gate
+
+- canonical auth protects all active HTTP endpoints — **PASS**;
+- HMAC verification correct — **PASS**;
+- `auth_date` freshness enforced — **PASS**;
+- stable auth errors active — **PASS**;
+- verified identity is the only HTTP identity source — **PASS**;
+- retained HTTP write surface fully enumerated — **PASS**;
+- backend ownership enforcement — **PASS**;
+- blocking duplicate-effect/idempotency debt — **NONE**;
+- global direct business writers remain `0` — **PASS**;
+- n8n health — **PASS**.
+
+## Decision
+
+**API-3 — CLOSED.**
 
 ## Next
 
-API-3C — Ownership / Idempotency Gate.
-
-After API-3 closes:
-
-- API-4 — final API integration gate and stable API baseline.
+- API-4 — Final API Integration Gate / stable API baseline.
