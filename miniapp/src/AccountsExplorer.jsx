@@ -44,9 +44,12 @@ function flattenAccounts(accounts) {
   return [...byId.values()]
 }
 
-function buildHierarchy(accounts, baseCurrency) {
+function buildHierarchy(accounts) {
   const flatAccounts = flattenAccounts(accounts)
-  const byId = new Map(flatAccounts.map((account) => [String(account.id ?? account.account_id), { account, children: [] }]))
+  const byId = new Map(flatAccounts.map((account) => [
+    String(account.id ?? account.account_id),
+    { account, children: [] },
+  ]))
   const roots = []
 
   byId.forEach((node) => {
@@ -56,23 +59,16 @@ function buildHierarchy(accounts, baseCurrency) {
     else roots.push(node)
   })
 
-  const normalize = (node) => {
-    const children = node.children.map(normalize)
-      .sort((a, b) => String(a.account.name || '').localeCompare(String(b.account.name || ''), 'ru'))
-    const currency = String(node.account.currency_code || baseCurrency).toUpperCase()
-    const ownBase = Number(node.account.balance_base
-      ?? (currency === baseCurrency ? node.account.balance_original : 0)
-      ?? 0)
-    return {
-      account: node.account,
-      children,
-      totalBase: ownBase + children.reduce((sum, child) => sum + child.totalBase, 0),
-    }
-  }
+  const normalize = (node) => ({
+    account: node.account,
+    children: node.children
+      .map(normalize)
+      .sort((a, b) => String(a.account.name || '').localeCompare(String(b.account.name || ''), 'ru')),
+  })
 
-  return roots.map(normalize)
-    .filter((node) => Math.abs(node.totalBase) >= 1 || node.children.length > 0)
-    .sort((a, b) => Math.abs(b.totalBase) - Math.abs(a.totalBase))
+  return roots
+    .map(normalize)
+    .sort((a, b) => String(a.account.name || '').localeCompare(String(b.account.name || ''), 'ru'))
 }
 
 function subtreeFullyExcluded(node, excluded) {
@@ -81,24 +77,50 @@ function subtreeFullyExcluded(node, excluded) {
   return node.children.every((child) => subtreeFullyExcluded(child, excluded))
 }
 
-function includedSubtreeTotal(node, excluded, baseCurrency) {
+function snapshotBase(snapshotById, id) {
+  const snapshot = snapshotById.get(String(id))
+  if (!snapshot || snapshot.balance_base == null) return null
+  const value = Number(snapshot.balance_base)
+  return Number.isFinite(value) ? value : null
+}
+
+function includedSubtreeTotal(node, excluded, snapshotById) {
   const id = String(node.account.id ?? node.account.account_id)
-  const hasChildren = node.children.length > 0
 
-  if (!hasChildren && excluded.has(id)) return 0
-  if (hasChildren && subtreeFullyExcluded(node, excluded)) return 0
+  if (!node.children.length) {
+    if (excluded.has(id)) return 0
+    return snapshotBase(snapshotById, id)
+  }
 
-  const currency = String(node.account.currency_code || baseCurrency).toUpperCase()
-  const ownBase = Number(
-    node.account.balance_base
-    ?? (currency === baseCurrency ? node.account.balance_original : 0)
-    ?? 0,
-  )
+  if (subtreeFullyExcluded(node, excluded)) return 0
 
-  return ownBase + node.children.reduce(
-    (sum, child) => sum + includedSubtreeTotal(child, excluded, baseCurrency),
-    0,
-  )
+  let total = 0
+  for (const child of node.children) {
+    const childTotal = includedSubtreeTotal(child, excluded, snapshotById)
+    if (childTotal == null) return null
+    total += childTotal
+  }
+  return total
+}
+
+function selectedLeafTotal(hierarchy, excluded, snapshotById) {
+  let total = 0
+  let missing = false
+
+  const visit = (node) => {
+    const id = String(node.account.id ?? node.account.account_id)
+    if (node.children.length) {
+      node.children.forEach(visit)
+      return
+    }
+    if (excluded.has(id)) return
+    const value = snapshotBase(snapshotById, id)
+    if (value == null) missing = true
+    else total += value
+  }
+
+  hierarchy.forEach(visit)
+  return missing ? null : total
 }
 
 function periodDates(period, dateFrom, dateTo) {
@@ -215,29 +237,18 @@ function LeafOperations({ node, dateFrom, dateTo, baseCurrency, privacy }) {
 
   return (
     <div className="explorerLeafOperations">
-      <div
-        className="accountPeriodSummary"
-        aria-label="Обороты счета за выбранный период"
-      >
+      <div className="accountPeriodSummary" aria-label="Обороты счета за выбранный период">
         <div className="accountPeriodMetric resultMetric">
           <span>Сальдо</span>
-          <strong className="sensitive">
-            {privacy ? '••••••' : money(summary.result, currency)}
-          </strong>
+          <strong className="sensitive">{privacy ? '••••••' : money(summary.result, currency)}</strong>
         </div>
-
         <div className="accountPeriodMetric incomeMetric">
           <span>Доход</span>
-          <strong className="sensitive">
-            {privacy ? '••••••' : money(summary.income, currency)}
-          </strong>
+          <strong className="sensitive">{privacy ? '••••••' : money(summary.income, currency)}</strong>
         </div>
-
         <div className="accountPeriodMetric expenseMetric">
           <span>Расход</span>
-          <strong className="sensitive">
-            {privacy ? '••••••' : money(summary.expense, currency)}
-          </strong>
+          <strong className="sensitive">{privacy ? '••••••' : money(summary.expense, currency)}</strong>
         </div>
       </div>
 
@@ -263,7 +274,7 @@ export default function AccountsExplorer({
   onPrivacyToggle,
   initialAccountId,
 }) {
-  const hierarchy = useMemo(() => buildHierarchy(accounts, baseCurrency), [accounts, baseCurrency])
+  const hierarchy = useMemo(() => buildHierarchy(accounts), [accounts])
   const allNodes = useMemo(() => {
     const result = []
     const visit = (node) => {
@@ -312,6 +323,18 @@ export default function AccountsExplorer({
 
   const aggregate = aggregateState.key === aggregateKey ? aggregateState.payload : null
   const aggregateError = aggregateState.key === aggregateKey ? aggregateState.error : ''
+  const snapshotById = useMemo(() => new Map(
+    (aggregate?.account_balances || []).map((item) => [String(item.account_id), item]),
+  ), [aggregate])
+  const displayCurrency = aggregate?.base_currency || baseCurrency
+  const snapshotMissingRateCount = Number(aggregate?.snapshot_missing_rate_count || 0)
+  const displayedTotal = aggregate && snapshotMissingRateCount === 0
+    ? selectedLeafTotal(hierarchy, excluded, snapshotById)
+    : null
+  const serverTotal = aggregate?.total_base == null ? null : Number(aggregate.total_base)
+  const totalMismatch = displayedTotal != null
+    && serverTotal != null
+    && Math.abs(displayedTotal - serverTotal) > 0.01
 
   useEffect(() => {
     const controller = new AbortController()
@@ -330,13 +353,7 @@ export default function AccountsExplorer({
         }
       })
     return () => controller.abort()
-  }, [
-    aggregateKey,
-    excludedIds,
-    invalidRange,
-    resolvedPeriod.dateFrom,
-    resolvedPeriod.dateTo,
-  ])
+  }, [aggregateKey, excludedIds, invalidRange, resolvedPeriod.dateFrom, resolvedPeriod.dateTo])
 
   const toggleParent = (id) => setExpanded((current) => {
     const next = new Set(current)
@@ -371,9 +388,6 @@ export default function AccountsExplorer({
     })
   }
 
-  const displayedTotal = aggregate?.total_base
-  const displayCurrency = aggregate?.base_currency || baseCurrency
-
   return (
     <section className="accountsExplorer">
       <section className="balanceHeader" aria-labelledby="accounts-balance-title">
@@ -388,13 +402,19 @@ export default function AccountsExplorer({
       </section>
 
       {aggregateError && <div className="explorerInlineError" role="alert">{aggregateError}</div>}
+      {snapshotMissingRateCount > 0 && (
+        <div className="explorerInlineError" role="alert">
+          Не удалось пересчитать часть счетов в {displayCurrency} на выбранную дату: отсутствует курс валюты.
+        </div>
+      )}
+      {totalMismatch && (
+        <div className="explorerInlineError" role="alert">
+          Баланс счетов не согласован с серверным итогом. Показана сумма строк счетов.
+        </div>
+      )}
 
       <BalanceHero
-        label={selectedPeriodLabel(
-          period,
-          resolvedPeriod.dateFrom,
-          resolvedPeriod.dateTo,
-        )}
+        label={selectedPeriodLabel(period, resolvedPeriod.dateFrom, resolvedPeriod.dateTo)}
         result={aggregate?.period_summary?.result}
         income={aggregate?.period_summary?.income}
         expense={aggregate?.period_summary?.expense}
@@ -404,46 +424,16 @@ export default function AccountsExplorer({
       />
 
       <div className="periodTabs" role="group" aria-label="Период операций">
-        <button
-          type="button"
-          className={period === 'week' ? 'isActive' : ''}
-          onClick={() => setPeriod('week')}
-        >
-          Неделя
-        </button>
-
-        <button
-          type="button"
-          className={period === 'month' ? 'isActive' : ''}
-          onClick={() => setPeriod('month')}
-        >
-          Месяц
-        </button>
-
-        <button
-          type="button"
-          className={period === 'range' ? 'isActive' : ''}
-          onClick={() => setPeriod('range')}
-        >
-          Диапазон
-        </button>
+        <button type="button" className={period === 'week' ? 'isActive' : ''} onClick={() => setPeriod('week')}>Неделя</button>
+        <button type="button" className={period === 'month' ? 'isActive' : ''} onClick={() => setPeriod('month')}>Месяц</button>
+        <button type="button" className={period === 'range' ? 'isActive' : ''} onClick={() => setPeriod('range')}>Диапазон</button>
       </div>
 
       {period === 'range' && (
         <div className="dateRange">
-          <input
-            aria-label="Дата начала"
-            type="date"
-            value={dateFrom}
-            onChange={(event) => setDateFrom(event.target.value)}
-          />
+          <input aria-label="Дата начала" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
           <span>—</span>
-          <input
-            aria-label="Дата окончания"
-            type="date"
-            value={dateTo}
-            onChange={(event) => setDateTo(event.target.value)}
-          />
+          <input aria-label="Дата окончания" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
         </div>
       )}
 
@@ -455,14 +445,16 @@ export default function AccountsExplorer({
           <AccountTree
             hierarchy={hierarchy}
             expanded={expanded}
-            baseCurrency={baseCurrency}
+            baseCurrency={displayCurrency}
             privacy={privacy}
             money={money}
-            resolveNodeAmount={(node, { hasChildren, defaultAmount }) => (
-              hasChildren
-                ? money(includedSubtreeTotal(node, excluded, baseCurrency), baseCurrency)
-                : defaultAmount
-            )}
+            resolveNodeAmount={(node, { id, hasChildren }) => {
+              if (!aggregate) return '—'
+              const value = hasChildren
+                ? includedSubtreeTotal(node, excluded, snapshotById)
+                : snapshotBase(snapshotById, id)
+              return value == null ? '—' : money(value, displayCurrency)
+            }}
             excluded={excluded}
             onToggleParent={(id) => toggleParent(id)}
             onToggleLeafIncluded={(id) => toggleIncluded(id)}
@@ -487,7 +479,6 @@ export default function AccountsExplorer({
           />
         ) : <div className="emptyCard">Счета пока не созданы</div>}
       </section>
-
     </section>
   )
 }
