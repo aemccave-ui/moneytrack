@@ -11,7 +11,7 @@ MARKER="# moneytrack-prod-h3-managed-v1"
 BACKUP_ROOT="/opt/moneytrack/backups"
 
 require() { command -v "$1" >/dev/null 2>&1 || { echo "required_command_missing=$1"; exit 1; }; }
-for c in docker sha256sum grep awk sed find stat curl; do require "$c"; done
+for c in docker sha256sum grep awk sed find stat curl sort; do require "$c"; done
 docker compose version >/dev/null 2>&1 || { echo "docker_compose_plugin=FAIL"; exit 1; }
 
 TMP="$(mktemp -d /tmp/moneytrack-prod-h3-preflight.XXXXXX)"
@@ -48,6 +48,33 @@ services:
         max-file: "5"
 EOF
 
+env_fingerprint() {
+  docker inspect "$1" --format '{{range .Config.Env}}{{println .}}{{end}}' \
+    | LC_ALL=C sort \
+    | sha256sum \
+    | awk '{print $1}'
+}
+
+render_compose() {
+  local workdir="$1" project="$2" base="$3" overlay="$4" out="$5" err="$6"
+  (
+    cd "$workdir"
+    docker compose -p "$project" -f "$base" -f "$overlay" config >"$out" 2>"$err"
+  )
+  if grep -Fq 'variable is not set' "$err"; then
+    echo "compose_interpolation_gate=FAIL project=$project"
+    sed 's/^/  /' "$err"
+    return 1
+  fi
+}
+
+api_contract_once() {
+  local body="$TMP/api-preflight-body.json" http
+  http="$(curl -sS --max-time 8 -o "$body" -w '%{http_code}' http://127.0.0.1:5678/webhook/api/v1/dashboard || true)"
+  [ "$http" = "401" ] || return 1
+  grep -Fq '"code":"INIT_DATA_MISSING"' "$body"
+}
+
 echo "=== PROD-H3 PREFLIGHT START ==="
 
 for f in "$N8N_BASE" "$MT_BASE"; do
@@ -81,7 +108,6 @@ for c in n8n postgres moneytrack-db; do
   docker inspect "$c" >/dev/null 2>&1 || { echo "required_container_missing=$c"; exit 1; }
   [ "$(docker inspect "$c" --format '{{.State.Running}}')" = "true" ] || { echo "required_container_not_running=$c"; exit 1; }
 done
-
 echo "critical_containers_running=PASS"
 
 N8N_VER="$(docker exec n8n n8n --version 2>/dev/null | tail -n1)"
@@ -99,6 +125,13 @@ MT_CFG="$(docker inspect moneytrack-db --format '{{index .Config.Labels "com.doc
 [ "$PG_CFG" = "$N8N_BASE" ] || { echo "n8n_postgres_compose_provenance_drift=FAIL actual=$PG_CFG"; exit 1; }
 [ "$MT_CFG" = "$MT_BASE" ] || { echo "moneytrack_db_compose_provenance_drift=FAIL actual=$MT_CFG"; exit 1; }
 echo "compose_provenance_gate=PASS"
+
+N8N_WORKDIR="$(docker inspect n8n --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}')"
+PG_WORKDIR="$(docker inspect postgres --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}')"
+MT_WORKDIR="$(docker inspect moneytrack-db --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}')"
+[ "$N8N_WORKDIR" = "$PG_WORKDIR" ] || { echo "n8n_project_workdir_consistency=FAIL"; exit 1; }
+[ -d "$N8N_WORKDIR" ] && [ -d "$MT_WORKDIR" ] || { echo "compose_working_dir_gate=FAIL"; exit 1; }
+echo "compose_working_dir_gate=PASS n8n=$N8N_WORKDIR moneytrack=$MT_WORKDIR"
 
 for c in n8n postgres moneytrack-db; do
   restart="$(docker inspect "$c" --format '{{.HostConfig.RestartPolicy.Name}}')"
@@ -120,12 +153,19 @@ MT_PROJECT="$(docker inspect moneytrack-db --format '{{index .Config.Labels "com
 [ -n "$N8N_PROJECT" ] && [ -n "$MT_PROJECT" ] || { echo "compose_project_resolution=FAIL"; exit 1; }
 echo "compose_projects=PASS n8n_project=$N8N_PROJECT moneytrack_project=$MT_PROJECT"
 
-# Validate merged candidate configuration without writing production overlay files.
-docker compose -p "$N8N_PROJECT" -f "$N8N_BASE" -f "$TMP/n8n-overlay.yml" config > "$TMP/n8n-rendered.yml"
-docker compose -p "$MT_PROJECT" -f "$MT_BASE" -f "$TMP/mt-overlay.yml" config > "$TMP/mt-rendered.yml"
+# Fingerprints allow the cutover to prove that recreation did not silently alter runtime env.
+N8N_ENV_FP="$(env_fingerprint n8n)"
+PG_ENV_FP="$(env_fingerprint postgres)"
+MT_ENV_FP="$(env_fingerprint moneytrack-db)"
+[ -n "$N8N_ENV_FP" ] && [ -n "$PG_ENV_FP" ] && [ -n "$MT_ENV_FP" ] || { echo "environment_fingerprint_gate=FAIL"; exit 1; }
+echo "environment_fingerprint_gate=PASS values_not_printed=PASS"
+
+# Render from the original Compose working directories so their .env/interpolation context is preserved.
+render_compose "$N8N_WORKDIR" "$N8N_PROJECT" "$N8N_BASE" "$TMP/n8n-overlay.yml" "$TMP/n8n-rendered.yml" "$TMP/n8n-render.err"
+render_compose "$MT_WORKDIR" "$MT_PROJECT" "$MT_BASE" "$TMP/mt-overlay.yml" "$TMP/mt-rendered.yml" "$TMP/mt-render.err"
+echo "compose_interpolation_gate=PASS"
 echo "candidate_compose_render=PASS"
 
-# Minimal assertions against rendered candidates.
 grep -Fq "image: $N8N_DIGEST" "$TMP/n8n-rendered.yml" || { echo "candidate_n8n_pin=FAIL"; exit 1; }
 [ "$(grep -Fc "image: $PG_TAG" "$TMP/n8n-rendered.yml")" -ge 1 ] || { echo "candidate_n8n_postgres_pin=FAIL"; exit 1; }
 grep -Fq "image: $PG_TAG" "$TMP/mt-rendered.yml" || { echo "candidate_moneytrack_postgres_pin=FAIL"; exit 1; }
@@ -147,6 +187,8 @@ fi
 curl -fsS --max-time 5 http://127.0.0.1:5678/healthz >/dev/null
 docker exec moneytrack-db pg_isready -U moneytrack -d moneytrack >/dev/null
 docker exec postgres pg_isready -U n8n -d n8n >/dev/null
+api_contract_once || { echo "api_contract_pre_cutover=FAIL"; exit 1; }
+echo "api_contract_pre_cutover=PASS http=401"
 echo "production_health_pre_cutover=PASS"
 
 echo "=== PROD-H3 PREFLIGHT PASS ==="
