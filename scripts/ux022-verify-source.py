@@ -40,7 +40,12 @@ auth = read("scripts/api-3-telegram-initdata-verifier.fragment.js")
 
 require("collapsed_default", "useState(() => new Set())" in explorer and "accountsExplorer.expanded" not in explorer)
 require("date_before_filters", explorer.index("period === 'range'") < explorer.index("<AccountsFilters"))
-require("parent_own_display", "resolveOwnAmount" in explorer and "fullSubtreeTotal" in explorer)
+require(
+    "parent_aggregate_only",
+    "fullSubtreeTotal" in explorer
+    and "const details = !hasChildren" in tree
+    and "accountOwnAmount" not in tree,
+)
 require(
     "tri_state_selection",
     "return 'partial'" in tree
@@ -74,6 +79,14 @@ require(
 require(
     "reference_inventory_classifies_user_settings",
     "c.table_name = 'user_settings' and c.column_name like '%account_id%'" in reference_inventory_sql,
+)
+require(
+    "reference_inventory_classifies_grouping_migration_journals",
+    "ux022_grouping_created_account_migration_backup" in reference_inventory_sql
+    and "ux022_grouping_transaction_migration_backup" in reference_inventory_sql
+    and "ux022_grouping_transfer_migration_backup" in reference_inventory_sql
+    and "ux022_grouping_user_default_migration_backup" in reference_inventory_sql
+    and "ux022_grouping_user_settings_migration_backup" in reference_inventory_sql,
 )
 require(
     "rollback_drops_default_guard",
