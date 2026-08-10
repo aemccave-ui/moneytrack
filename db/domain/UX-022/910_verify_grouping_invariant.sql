@@ -51,6 +51,7 @@ select
     parent.currency_code as parent_currency,
     child.id as migration_target_id,
     child.name as migration_target_name,
+    child.sort_order as migration_target_sort_order,
     (
         select count(*)
         from moneytrack.ux022_grouping_transaction_migration_backup b
@@ -79,4 +80,4 @@ or exists (
     where (b.original_from_account_id = parent.id or b.original_to_account_id = parent.id)
       and b.target_account_id = child.id
 )
-order by parent.user_id, parent.id, child.id;
+order by parent.user_id, parent.id, child.sort_order nulls last, child.id;
