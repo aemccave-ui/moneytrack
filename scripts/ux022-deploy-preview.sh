@@ -19,12 +19,21 @@ MIGRATION_FILE="$(mktemp)"
 RUNTIME_MUTATED=0
 PREVIEW_MUTATED=0
 
-workflow_ids=(UX022TxApi202608 UX022Summary202608 UX022Presets202608)
+# This script is intentionally incapable of production-frontend delivery.
+[[ "$PREVIEW_ROOT" == "/var/www/moneytrack-miniapp-preview" ]] || {
+  echo "preview_target_guard=FAIL root=$PREVIEW_ROOT" >&2
+  exit 1
+}
+[[ "$PREVIEW_URL" == "https://preview.moneytrackapp.xyz" ]] || {
+  echo "preview_target_guard=FAIL url=$PREVIEW_URL" >&2
+  exit 1
+}
 
 echo '# Phase'
 echo 'UX-022 preview delivery'
 echo '# Gate'
 echo 'source -> migration -> backup -> api -> smoke -> preview'
+echo 'preview_target_guard=PASS'
 
 cleanup_tmp() {
   rm -rf "$CANDIDATE_DIR" "$MIGRATION_FILE"
@@ -109,6 +118,7 @@ echo "runtime_backup=PASS path=$BACKUP_DIR"
   for file in \
     "$ROOT/db/domain/UX-022/010_filter_presets.sql" \
     "$ROOT/db/domain/UX-022/020_account_lifecycle.sql" \
+    "$ROOT/db/domain/UX-022/025_account_lifecycle_hardening.sql" \
     "$ROOT/db/domain/UX-022/030_accounts_explorer_read_models.sql"; do
     sed -E '/^[[:space:]]*(begin|commit);[[:space:]]*$/Id' "$file"
   done
