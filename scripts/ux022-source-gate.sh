@@ -10,12 +10,19 @@ echo '# Gate'
 echo 'source_static_lint_build'
 
 # Syntax validation must run before npm install/build and before any runtime gate.
-bash -n \
+# `bash -n file1 file2 ...` parses only file1 and treats the rest as positional
+# arguments, so validate every script in its own invocation.
+for shell_script in \
   scripts/ux022-source-gate.sh \
   scripts/ux022-db-runtime.sh \
   scripts/ux022-render-migration.sh \
   scripts/ux022-migration-gate.sh \
   scripts/ux022-deploy-preview.sh
+do
+  bash -n "$shell_script"
+done
+
+echo 'shell_syntax_validation=PASS'
 
 python3 -m py_compile \
   scripts/ux022-generate-api-workflows.py \
