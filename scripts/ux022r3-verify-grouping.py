@@ -136,12 +136,23 @@ require(
     and "data-account-role={hasChildren ? 'group' : 'operational'}" in tree,
 )
 require(
-    "restored_frontend_native_actions",
-    "accountSwipeTrack" in tree
-    and "accountMoveShortcut" in tree
-    and "onPointer" not in tree
-    and "accountSwipeActions" in frontend_css
-    and "position: static !important" in frontend_css,
+    "long_press_move_preserves_grouping_contract",
+    "MoveAccountSheet" not in tree
+    and "accountMoveShortcut" not in tree
+    and "}, 480)" in tree
+    and "document.elementFromPoint" in tree
+    and "new Set(subtreeIds(node))" in tree
+    and "isDragSource" in tree
+    and "isDropTarget" in tree
+    and "accountLongPressWiggle" in frontend_css,
+)
+require(
+    "account_actions_edit_archive_delete_only",
+    "<span>Изменить</span>" in tree
+    and "<span>Архив</span>" in tree
+    and "<span>Удалить</span>" in tree
+    and "Копировать" not in tree
+    and "grid-template-columns: repeat(3, 56px)" in frontend_css,
 )
 
 print("UX022R3_GROUPING_GATE=PASS")
