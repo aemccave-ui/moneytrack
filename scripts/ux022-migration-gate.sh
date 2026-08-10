@@ -9,6 +9,7 @@ files=(
   "$ROOT/db/domain/UX-022/020_account_lifecycle.sql"
   "$ROOT/db/domain/UX-022/025_account_lifecycle_hardening.sql"
   "$ROOT/db/domain/UX-022/030_accounts_explorer_read_models.sql"
+  "$ROOT/db/domain/UX-022/035_accounts_explorer_read_model_hardening.sql"
 )
 verifiers=(
   "$ROOT/db/domain/UX-022/900_verify_contract.sql"
