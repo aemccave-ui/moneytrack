@@ -27,8 +27,10 @@ recent = read("miniapp/src/RecentOperations.jsx")
 api = read("miniapp/src/api.js")
 presets_sql = read("db/domain/UX-022/010_filter_presets.sql")
 lifecycle_sql = read("db/domain/UX-022/020_account_lifecycle.sql")
+lifecycle_hardening_sql = read("db/domain/UX-022/025_account_lifecycle_hardening.sql")
 read_models_sql = read("db/domain/UX-022/030_accounts_explorer_read_models.sql")
 generator = read("scripts/ux022-generate-api-workflows.py")
+deployer = read("scripts/ux022-deploy-preview.sh")
 auth = read("scripts/api-3-telegram-initdata-verifier.fragment.js")
 
 require("collapsed_default", "useState(() => new Set())" in explorer and "accountsExplorer.expanded" not in explorer)
@@ -46,6 +48,8 @@ require("archive_restore_ui", "ArchivedAccountsSheet" in explorer and "restoreAc
 require("move_preview_ui", "previewMoveAccountOperations" in explorer and "Будет перенесено" in explorer)
 require("immutable_preset_frontend", "createFilterPreset" in filters and "renameFilterPreset" in filters and "date_from" not in filters and "date_to" not in filters)
 require("immutable_preset_backend", "filter_preset_create_v1" in presets_sql and "filter_preset_rename_v1" in presets_sql and "p_date_from" not in presets_sql and "p_date_to" not in presets_sql)
+require("legacy_preset_shape_fail_closed", "UX022_FILTER_PRESETS_LEGACY_SHAPE_INCOMPATIBLE" in presets_sql)
+require("copy_code_independent", "v_source.code ||" not in lifecycle_hardening_sql and "v_code := 'account_'" in lifecycle_hardening_sql)
 
 snapshot_chunk = read_models_sql.split("transaction_movements as", 1)[1].split("period_transactions as", 1)[0]
 require("snapshot_independent_of_date_from", "p_date_from" not in snapshot_chunk and "p_as_of" in snapshot_chunk)
@@ -57,14 +61,51 @@ require("delete_no_transaction_cascade", "delete from moneytrack.transactions" n
 require("archive_zero_balance", "ACCOUNT_BALANCE_NOT_ZERO" in lifecycle_sql and "account_archive_v1" in lifecycle_sql)
 require("canonical_auth_contract", "api3b-v1" in auth and "api-3-telegram-initdata-verifier.fragment.js" in generator)
 require("frontend_preview_does_not_name_prod", "app.moneytrackapp.xyz" not in api + explorer + tree + filters + recent)
+require("preview_deployer_no_prod_target", "app.moneytrackapp.xyz" not in deployer)
+require("runtime_uses_three_restorable_workflows", "UX022AccountLifecycle202608" not in deployer and deployer.count("export_workflow UX022") == 3)
 
 with tempfile.TemporaryDirectory(prefix="ux022-source-") as tmp:
     out = Path(tmp)
     subprocess.run([sys.executable, str(ROOT / "scripts/ux022-generate-api-workflows.py"), "--out-dir", str(out)], check=True)
     candidates = sorted(out.glob("*.candidate.json"))
     require("workflow_candidates_generated", len(candidates) == 4)
+
+    merged = out / "ux022-presets-lifecycle.merged.json"
+    subprocess.run([
+        sys.executable,
+        str(ROOT / "scripts/ux022-merge-lifecycle-into-presets.py"),
+        "--presets", str(out / "ux022-presets.candidate.json"),
+        "--lifecycle", str(out / "ux022-lifecycle.candidate.json"),
+        "--output", str(merged),
+    ], check=True)
+    merged_workflow = json.loads(merged.read_text(encoding="utf-8"))
+    require("merged_workflow_preserves_id", merged_workflow.get("id") == "UX022Presets202608")
+    merged_names = [node.get("name") for node in merged_workflow.get("nodes", [])]
+    require("merged_workflow_node_names_unique", len(merged_names) == len(set(merged_names)))
+    merged_paths = {
+        node.get("parameters", {}).get("path")
+        for node in merged_workflow.get("nodes", [])
+        if node.get("type") == "n8n-nodes-base.webhook"
+    }
+    require("merged_workflow_lifecycle_routes_present", {
+        "api/v1/filter-presets",
+        "api/v1/accounts",
+        "api/v1/accounts/copy",
+        "api/v1/accounts/move",
+        "api/v1/accounts/archive",
+        "api/v1/accounts/restore",
+        "api/v1/accounts/archived",
+        "api/v1/accounts/move-operations/preview",
+        "api/v1/accounts/move-operations",
+    }.issubset(merged_paths))
+
+    runtime_candidates = [
+        out / "ux022-transactions.candidate.json",
+        out / "ux022-summary.candidate.json",
+        merged,
+    ]
     all_queries: list[str] = []
-    for candidate in candidates:
+    for candidate in runtime_candidates:
         workflow = json.loads(candidate.read_text(encoding="utf-8"))
         for node in workflow.get("nodes", []):
             if node.get("type") == "n8n-nodes-base.postgres":
