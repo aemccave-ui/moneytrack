@@ -1,11 +1,12 @@
 \set ON_ERROR_STOP on
 
--- Run only after loading 010/020/025/030 inside the caller's validation transaction.
+-- Run only after loading 010/020/025/030/035 inside the caller's validation transaction.
 
 do $verify$
 declare
     v_missing text[] := '{}'::text[];
     v_preset_columns text[];
+    v_summary_def text;
 begin
     if to_regprocedure('moneytrack.api_accounts_explorer_summary_read_model_v2(bigint,bigint[],bigint[],bigint[],date,date,date)') is null then
         v_missing := array_append(v_missing, 'api_accounts_explorer_summary_read_model_v2');
@@ -81,6 +82,14 @@ begin
         'moneytrack.ux022_account_is_default_v1(bigint,bigint)'::regprocedure
     )) = 0 then
         raise exception 'UX022_DEFAULT_ACCOUNT_SCHEMA_TOLERANCE_MISSING';
+    end if;
+
+    v_summary_def := pg_get_functiondef(
+        'moneytrack.api_accounts_explorer_summary_read_model_v2(bigint,bigint[],bigint[],bigint[],date,date,date)'::regprocedure
+    );
+    if position('join selected_accounts sa on sa.id = cb.account_id' in lower(v_summary_def)) = 0
+       or position('where cb.balance_base is null' in lower(v_summary_def)) = 0 then
+        raise exception 'UX022_SELECTED_SNAPSHOT_FX_GATE_MISSING';
     end if;
 end;
 $verify$;
