@@ -20,6 +20,28 @@ Canonical errors:
 - `ACCOUNT_PARENT_HAS_OPERATIONS`
 - `ACCOUNT_GROUP_NOT_POSTABLE`
 
+## Legacy normalization
+
+Existing data may contain a parent account with direct operation history. UX-022R3 normalizes that legacy state once during migration.
+
+For each such active parent:
+
+1. Find active direct child accounts with the same currency as the parent.
+2. Only a leaf child is eligible to receive financial history.
+3. Exactly one eligible child is required.
+4. Move all direct transactions from the parent to that child.
+5. Rewrite transfer endpoints that reference the parent to that same child.
+6. The parent is then a pure grouping account.
+
+The migration fails without changing committed data when:
+
+- no same-currency leaf child exists;
+- more than one same-currency leaf child exists;
+- a transfer exists directly between the parent and selected child, because it would collapse into a self-transfer;
+- both parent and selected child have an opening balance.
+
+The migration journals every rewritten transaction and transfer so the normalization can be reversed by the UX-022 rollback.
+
 ## UI semantics
 
 - Parent/grouping row balance is descendants aggregate only.
@@ -37,4 +59,4 @@ If an existing operational account must be split into several accounts:
 3. Move the existing operational account under the new grouping account.
 4. Create/move additional leaf accounts under the grouping account.
 
-Existing operation history is never silently moved or rewritten by hierarchy changes.
+Normal hierarchy changes never silently move or rewrite transaction history. The only automatic history move is the explicit one-time UX-022R3 legacy normalization described above.
