@@ -128,7 +128,6 @@ function App() {
   }, [])
 
   useEffect(() => {
-    setActionsOpen(false)
     const frame = window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: 'auto' }))
     return () => window.cancelAnimationFrame(frame)
   }, [activeScreen])
@@ -244,8 +243,16 @@ function App() {
   })
 
   const openExplorer = (id = null) => {
+    setActionsOpen(false)
+    setAccountCreateOpen(false)
     setExplorerAccountId(id)
     setActiveScreen('accounts')
+  }
+
+  const openHome = () => {
+    setActionsOpen(false)
+    setAccountCreateOpen(false)
+    setActiveScreen('home')
   }
 
   const navigation = navigationItems.map((item) => ({
@@ -253,7 +260,7 @@ function App() {
     onClick: item.id === 'accounts'
       ? () => openExplorer()
       : item.id === 'home'
-        ? () => setActiveScreen('home')
+        ? openHome
         : undefined,
   }))
 
