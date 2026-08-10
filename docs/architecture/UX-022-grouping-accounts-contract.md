@@ -26,19 +26,14 @@ Existing data may contain a parent account with direct operation history. UX-022
 
 For each such active parent:
 
-1. Find active direct child accounts with the same currency as the parent.
-2. Only a leaf child is eligible to receive financial history.
-3. Exactly one eligible child is required.
+1. Find active direct leaf children with the same currency as the parent.
+2. Exclude candidates that would collapse a direct parent↔child transfer or conflict with an opening balance.
+3. If several safe candidates remain, choose deterministically by `sort_order`, then `id`.
 4. Move all direct transactions from the parent to that child.
 5. Rewrite transfer endpoints that reference the parent to that same child.
 6. The parent is then a pure grouping account.
 
-The migration fails without changing committed data when:
-
-- no same-currency leaf child exists;
-- more than one same-currency leaf child exists;
-- a transfer exists directly between the parent and selected child, because it would collapse into a self-transfer;
-- both parent and selected child have an opening balance.
+The migration fails without changing committed data only when no safe same-currency leaf child exists.
 
 The migration journals every rewritten transaction and transfer so the normalization can be reversed by the UX-022 rollback.
 
