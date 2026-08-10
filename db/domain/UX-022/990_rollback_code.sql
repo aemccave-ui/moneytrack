@@ -4,6 +4,15 @@
 
 begin;
 
+drop trigger if exists ux022_transfers_group_posting_guard on moneytrack.transfers;
+drop trigger if exists ux022_transactions_group_posting_guard on moneytrack.transactions;
+drop trigger if exists ux022_accounts_parent_group_guard on moneytrack.accounts;
+drop function if exists moneytrack.ux022_guard_transfer_postable_accounts_v1();
+drop function if exists moneytrack.ux022_guard_transaction_postable_account_v1();
+drop function if exists moneytrack.ux022_guard_parent_account_v1();
+drop function if exists moneytrack.ux022_account_has_active_children_v1(bigint,bigint);
+drop function if exists moneytrack.ux022_account_has_direct_operations_v1(bigint,bigint);
+
 drop function if exists moneytrack.api_transactions_read_model_v2(bigint,bigint,date,date,boolean,bigint[],bigint[],bigint[]);
 drop function if exists moneytrack.api_accounts_explorer_summary_read_model_v2(bigint,bigint[],bigint[],bigint[],date,date,date);
 
