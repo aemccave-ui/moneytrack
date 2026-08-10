@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { announceSwipeOpen, nextSwipeScope, SWIPE_OPEN_EVENT } from './swipe-coordinator.js'
 
+const ROOT_DROP_TARGET = '__root__'
+
 const accountId = (account) => String(account.id ?? account.account_id)
 const accountParentId = (account) => account.parent_account_id
   ?? account.parent_id
@@ -310,11 +312,14 @@ export function AccountTree({
     const hitElements = typeof document.elementsFromPoint === 'function'
       ? document.elementsFromPoint(x, y)
       : [document.elementFromPoint(x, y)].filter(Boolean)
+    const rootHit = hitElements.some((element) => element.closest?.('[data-account-root-drop]'))
     const candidates = hitElements
       .map((element) => element.closest?.('[data-account-id]'))
       .filter(Boolean)
     const candidate = candidates.find((element) => !dragRef.current.blocked.has(String(element.dataset.accountId)))
-    const valid = candidate?.dataset?.accountId ? String(candidate.dataset.accountId) : null
+    const valid = rootHit
+      ? ROOT_DROP_TARGET
+      : candidate?.dataset?.accountId ? String(candidate.dataset.accountId) : null
     if (dragRef.current.targetId !== valid) {
       dragRef.current.targetId = valid
       setDropTargetId(valid)
@@ -328,9 +333,11 @@ export function AccountTree({
     setDraggingId(null)
     setDropTargetId(null)
     setDragOffset({ x: 0, y: 0 })
-    if (cancelled || !sourceId || !targetId || targetId === currentParentId) return
+    const hasTarget = targetId != null
+    const nextParentId = targetId === ROOT_DROP_TARGET ? null : targetId
+    if (cancelled || !sourceId || !hasTarget || nextParentId === currentParentId) return
     window.Telegram?.WebApp?.HapticFeedback?.impactOccurred?.('medium')
-    await onMoveAccount?.(sourceId, targetId)
+    await onMoveAccount?.(sourceId, nextParentId)
   }
 
   const renderNodes = (nodes, depth = 0) => nodes.map((node) => {
@@ -369,5 +376,13 @@ export function AccountTree({
     )
   })
 
-  return <div className={`accountTree ${className}`.trim()}>{renderNodes(hierarchy)}</div>
+  return (
+    <div className={`accountTree ${className}`.trim()}>
+      <div
+        className={`accountRootDropZone ${draggingId ? 'isDragRootZone' : ''} ${dropTargetId === ROOT_DROP_TARGET ? 'isDropTarget' : ''}`}
+        data-account-root-drop="true"
+      >В верхний уровень</div>
+      {renderNodes(hierarchy)}
+    </div>
+  )
 }
