@@ -8,16 +8,19 @@ An account has exactly one runtime role determined by data:
 - **grouping account** — may have children and MUST NOT have direct transactions/transfers.
 
 A grouping account may itself be a child of another grouping account.
+A grouping account MUST NOT be used as a default posting account.
 
 ## Forbidden transitions
 
 - An account that has any direct transaction or transfer history cannot become a parent.
+- A default posting account cannot become a parent until its default references are moved to an operational account.
 - A grouping account cannot receive a new transaction, opening balance, adjustment, income, expense, transfer debit, or transfer credit.
 - Moving operation history into a grouping account is forbidden by the same database invariant.
 
 Canonical errors:
 
 - `ACCOUNT_PARENT_HAS_OPERATIONS`
+- `ACCOUNT_PARENT_IS_DEFAULT`
 - `ACCOUNT_GROUP_NOT_POSTABLE`
 
 ## Legacy normalization
@@ -27,15 +30,15 @@ Existing data may contain a parent account with direct operation history. UX-022
 For each such active parent:
 
 1. Find active direct leaf children with the same currency as the parent.
-2. Exclude candidates that would collapse a direct parent↔child transfer or conflict with an opening balance.
-3. If several safe candidates remain, choose deterministically by `sort_order`, then `id`.
-4. Move all direct transactions from the parent to that child.
-5. Rewrite transfer endpoints that reference the parent to that same child.
-6. The parent is then a pure grouping account.
+2. Skip a child when moving history to it would collapse a direct parent↔child transfer or create two opening balances on one account.
+3. If several safe children remain, choose deterministically by `sort_order`, then `id`.
+4. If no existing child is safe, create a dedicated active leaf child with the same currency and account type, named `<parent> — операции`.
+5. Move all direct transactions from the parent to the chosen/created child.
+6. Rewrite transfer endpoints that reference the parent to that same child.
+7. Move per-currency and `user_settings` default-account references from the parent to that child.
+8. The parent is then a pure grouping account.
 
-The migration fails without changing committed data only when no safe same-currency leaf child exists.
-
-The migration journals every rewritten transaction and transfer so the normalization can be reversed by the UX-022 rollback.
+Every rewritten transaction, transfer and default reference is journaled. A child created only for normalization is journaled as well. UX-022 rollback restores the original references/history and removes the migration-created child only when it has no new post-migration data.
 
 ## UI semantics
 
