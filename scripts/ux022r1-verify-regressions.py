@@ -15,20 +15,30 @@ def require(name: str, condition: bool) -> None:
 
 
 app = read("miniapp/src/App.jsx")
+main = read("miniapp/src/main.jsx")
+telegram_guard = read("miniapp/src/telegram-interaction-guard.js")
 recent = read("miniapp/src/RecentOperations.jsx")
 recent_css = read("miniapp/src/recent-operations.css")
 account_tree = read("miniapp/src/AccountTree.jsx")
 accounts_css = read("miniapp/src/accounts-explorer.css")
 create_sheet = read("miniapp/src/AccountCreateSheet.jsx")
 explorer = read("miniapp/src/AccountsExplorer.jsx")
+api = read("miniapp/src/api.js")
+navigation = read("miniapp/packages/lab-design-system/navigation.jsx")
 
 require(
-    "home_screen_scroll_reset",
-    "function forceScrollTop()" in app
-    and "window.history.scrollRestoration = 'manual'" in app
-    and "document.scrollingElement.scrollTop = 0" in app
-    and "[activeScreen, dashboardReady]" in app
-    and "window.setTimeout(forceScrollTop, 260)" in app,
+    "home_screen_scroll_guard_native",
+    "./telegram-interaction-guard.js" in main
+    and "SCROLL_LOCK_MS = 1400" in telegram_guard
+    and "scrollIntoView" in telegram_guard
+    and "window.requestAnimationFrame(scrollLockTick)" in telegram_guard
+    and "window.addEventListener('pageshow'" in telegram_guard
+    and "document.addEventListener('visibilitychange'" in telegram_guard
+    and "data-nav-id={item.id}" in navigation,
+)
+require(
+    "telegram_vertical_swipe_conflict_guard",
+    "disableVerticalSwipes?.()" in telegram_guard,
 )
 require(
     "operation_swipe_pointer_fallback",
@@ -36,11 +46,12 @@ require(
     and "transactionSwipeShell ${actionsOpen ? 'actionsOpen' : ''} ${dragX < 0 ? 'isSwiping' : ''}" in recent,
 )
 require(
-    "operation_swipe_touch_path",
-    "onTouchStart={touchStart}" in recent
-    and "onTouchMove={touchMove}" in recent
-    and "onTouchEnd={touchEnd}" in recent
-    and "event.pointerType === 'touch'" in recent,
+    "operation_swipe_native_touch_path",
+    "row.addEventListener('touchstart', start, { passive: true })" in recent
+    and "row.addEventListener('touchmove', move, { passive: false })" in recent
+    and "row.addEventListener('touchend', end, { passive: true })" in recent
+    and "onTouchStart=" not in recent
+    and "SWIPE_THRESHOLD = 28" in recent,
 )
 require(
     "operation_swipe_touch_action",
@@ -61,11 +72,12 @@ require(
     and "ACTION_REVEAL = 220" in account_tree,
 )
 require(
-    "account_swipe_touch_path",
-    "onTouchStart={touchStart}" in account_tree
-    and "onTouchMove={touchMove}" in account_tree
-    and "onTouchEnd={touchEnd}" in account_tree
-    and "event.pointerType === 'touch'" in account_tree
+    "account_swipe_native_touch_path",
+    "row.addEventListener('touchstart', start, { passive: true })" in account_tree
+    and "row.addEventListener('touchmove', move, { passive: false })" in account_tree
+    and "row.addEventListener('touchend', end, { passive: true })" in account_tree
+    and "onTouchStart=" not in account_tree
+    and "SWIPE_THRESHOLD = 28" in account_tree
     and "overscroll-behavior-x:contain" in accounts_css,
 )
 require(
@@ -84,6 +96,11 @@ require(
 require(
     "parent_operations_before_children",
     account_tree.find("      {details}\n      {hasChildren && isExpanded") >= 0,
+)
+require(
+    "expanded_account_operations_own_only",
+    "include_descendants: 'false'" in api
+    and "setOptionalIdFilter(params, 'selected_account_ids', [accountId])" in api,
 )
 require(
     "accounts_plus_matches_global_fab",
