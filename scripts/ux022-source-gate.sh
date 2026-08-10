@@ -29,10 +29,12 @@ python3 -m py_compile \
   scripts/ux022-merge-lifecycle-into-presets.py \
   scripts/ux022-runtime-smoke.py \
   scripts/ux022-verify-source.py \
-  scripts/ux022r3-verify-grouping.py
+  scripts/ux022r3-verify-grouping.py \
+  scripts/ux022r3-verify-interactions.py
 
 python3 scripts/ux022-verify-source.py
 python3 scripts/ux022r3-verify-grouping.py
+python3 scripts/ux022r3-verify-interactions.py
 
 cd miniapp
 npm ci
