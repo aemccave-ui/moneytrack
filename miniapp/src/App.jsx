@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { LabBottomNavigation } from '../packages/lab-design-system/navigation.jsx'
 import { getAccounts, getDashboard } from './api.js'
+import AccountCreateSheet from './AccountCreateSheet.jsx'
 import AccountsExplorer from './AccountsExplorer.jsx'
 import { BalanceHero } from './BalanceHero.jsx'
 import { RecentOperations } from './RecentOperations.jsx'
@@ -98,6 +99,7 @@ function App() {
   const [explorerAccountId, setExplorerAccountId] = useState(null)
   const [privacy, setPrivacy] = useState(false)
   const [actionsOpen, setActionsOpen] = useState(false)
+  const [accountCreateOpen, setAccountCreateOpen] = useState(false)
   const [currencyBreakdownOpen, setCurrencyBreakdownOpen] = useState(false)
   const [accountBreakdownOpen, setAccountBreakdownOpen] = useState(false)
   const [accountCaptionOverflow, setAccountCaptionOverflow] = useState(false)
@@ -124,6 +126,12 @@ function App() {
       .catch((reason) => setError(reason.message || 'Не удалось загрузить данные'))
     return () => controller.abort()
   }, [])
+
+  useEffect(() => {
+    setActionsOpen(false)
+    const frame = window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: 'auto' }))
+    return () => window.cancelAnimationFrame(frame)
+  }, [activeScreen])
 
   const reloadAccounts = async () => {
     const accountData = await getAccounts()
@@ -238,7 +246,6 @@ function App() {
   const openExplorer = (id = null) => {
     setExplorerAccountId(id)
     setActiveScreen('accounts')
-    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const navigation = navigationItems.map((item) => ({
@@ -265,6 +272,13 @@ function App() {
           initialAccountId={explorerAccountId}
           onAccountsChanged={reloadAccounts}
         />
+        <div className={`fabMenu ${actionsOpen ? 'open' : ''}`}>
+          <div className="fabActions" aria-hidden={!actionsOpen}>
+            <button type="button" className="fabAction" onClick={() => { setActionsOpen(false); setAccountCreateOpen(true) }}><span>Счёт</span><b className="glyph" aria-hidden="true">▤</b></button>
+          </div>
+          <button type="button" className="fab" onClick={() => setActionsOpen((value) => !value)} aria-label={actionsOpen ? 'Закрыть добавление счёта' : 'Открыть добавление счёта'} aria-expanded={actionsOpen}><span aria-hidden="true">{actionsOpen ? '×' : '+'}</span></button>
+        </div>
+        {accountCreateOpen && <AccountCreateSheet accounts={accounts} baseCurrency={baseCurrency} onClose={() => setAccountCreateOpen(false)} onSaved={reloadAccounts} />}
         <LabBottomNavigation items={navigation} activeId="accounts" />
       </main>
     )
