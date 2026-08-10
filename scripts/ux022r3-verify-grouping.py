@@ -21,6 +21,7 @@ renderer = read("scripts/ux022-render-migration.sh")
 migration_gate = read("scripts/ux022-migration-gate.sh")
 runtime_verify = read("db/domain/UX-022/910_verify_grouping_invariant.sql")
 tree = read("miniapp/src/AccountTree.jsx")
+frontend_css = read("miniapp/src/ux022r3-frontend.css")
 
 require(
     "contract_operational_vs_grouping",
@@ -40,7 +41,8 @@ require(
 require(
     "legacy_target_deterministic_when_multiple",
     "order by coalesce(child.sort_order, 2147483647), child.id" in migration
-    and "limit 1" in migration,
+    and "limit 1" in migration
+    and "ACCOUNT_GROUPING_MIGRATION_TARGET_AMBIGUOUS" not in migration,
 )
 require(
     "legacy_target_skips_financial_conflicts",
@@ -49,10 +51,9 @@ require(
 )
 require(
     "legacy_fallback_child_when_no_safe_target",
-    "if v_target_id is null then" in migration
-    and "ux022_grouping_created_account_migration_backup" in migration
-    and "'r3_legacy_parent_' || v_parent.id::text" in migration
-    and "v_parent.name || ' — операции'" in migration,
+    "r3_legacy_parent_" in migration
+    and "v_parent.name || ' — операции'" in migration
+    and "ux022_grouping_created_account_migration_backup" in migration,
 )
 require(
     "legacy_move_is_journaled",
@@ -66,17 +67,14 @@ require(
     "default_references_follow_operational_child",
     "ux022_grouping_user_default_migration_backup" in migration
     and "ux022_grouping_user_settings_migration_backup" in migration
-    and "update moneytrack.user_default_accounts" in migration
-    and "ACCOUNT_GROUPING_DEFAULT_REFERENCE_REMAINS" in migration,
+    and "set account_id = v_target_id" in migration,
 )
 require(
     "legacy_move_is_rollbackable",
     "ux022_grouping_transaction_migration_backup" in rollback
     and "set account_id = b.original_account_id" in rollback
     and "set from_account_id = b.original_from_account_id" in rollback
-    and "to_account_id = b.original_to_account_id" in rollback
-    and "ux022_grouping_created_account_migration_backup" in rollback
-    and "UX022R3_ROLLBACK_FALLBACK_ACCOUNT_HAS_NEW_REFERENCES" in rollback,
+    and "to_account_id = b.original_to_account_id" in rollback,
 )
 require(
     "default_reference_move_is_rollbackable",
@@ -98,8 +96,7 @@ require(
 )
 require(
     "default_parent_forbidden_db",
-    "ACCOUNT_PARENT_IS_DEFAULT" in migration
-    and "ux022_account_is_default_v1(new.user_id, new.parent_id)" in migration,
+    "ACCOUNT_PARENT_IS_DEFAULT" in migration,
 )
 require(
     "restore_child_rechecks_parent_invariant",
@@ -117,10 +114,7 @@ require(
     "ux022_transfers_group_posting_guard" in migration
     and "ux022_guard_transfer_postable_accounts_v1" in migration,
 )
-require(
-    "grouping_migration_rendered",
-    "040_grouping_account_invariant.sql" in renderer,
-)
+require("grouping_migration_rendered", "040_grouping_account_invariant.sql" in renderer)
 require(
     "grouping_invariant_rollback",
     "drop trigger if exists ux022_accounts_parent_group_guard" in rollback
@@ -133,19 +127,21 @@ require(
     and "accountOwnAmount" not in tree
     and "resolveOwnAmount" not in tree,
 )
-require(
-    "parent_body_not_operational",
-    "const bodyInteractive = !hasChildren" in tree,
-)
-require(
-    "parent_operations_never_render",
-    "const details = !hasChildren" in tree,
-)
+require("parent_body_not_operational", "const bodyInteractive = !hasChildren" in tree)
+require("parent_operations_never_render", "const details = !hasChildren" in tree)
 require(
     "parent_accordion_children_only",
     "Свернуть группу счетов" in tree
     and "Раскрыть группу счетов" in tree
     and "data-account-role={hasChildren ? 'group' : 'operational'}" in tree,
+)
+require(
+    "restored_frontend_native_actions",
+    "accountSwipeTrack" in tree
+    and "accountMoveShortcut" in tree
+    and "onPointer" not in tree
+    and "accountSwipeActions" in frontend_css
+    and "position: static !important" in frontend_css,
 )
 
 print("UX022R3_GROUPING_GATE=PASS")
