@@ -12,6 +12,18 @@ body {
   min-height: 0;
 }
 
+body::after {
+  content: "R2.1";
+  position: fixed;
+  z-index: 9999;
+  top: 2px;
+  right: 4px;
+  pointer-events: none;
+  color: rgba(22,63,67,.42);
+  font-size: 8px;
+  line-height: 1;
+}
+
 .app {
   height: 100dvh;
   min-height: 0;
