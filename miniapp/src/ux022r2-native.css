@@ -99,6 +99,20 @@ body {
   scroll-snap-stop: always;
 }
 
+.accountMoveShortcut {
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  margin-left: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(29,85,89,.07);
+  color: #547a78;
+  font-size: 18px;
+  line-height: 1;
+}
+
 .accountSwipeActions {
   position: static !important;
   inset: auto !important;
