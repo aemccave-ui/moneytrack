@@ -19,6 +19,7 @@ The pre-sync UX branch head is preserved at `backup/ux-022-pre-main-sync-2026081
 
 - balance is a dated snapshot at `date_to`; `date_from` never changes the snapshot;
 - categories affect income/expense/result/operations, never balance snapshot;
+- the tree may receive the full active-account snapshot, but `total_base` and `snapshot_missing_rate_count` are scoped only to the selected accounts; an FX gap on an excluded account must not blank the selected total;
 - parent is a real account and may have its own operations and balance;
 - parent total = parent own balance + all descendant balances;
 - internal transfers wholly inside a selected parent subtree are hidden/zero-impact at parent level;
@@ -26,7 +27,9 @@ The pre-sync UX branch head is preserved at `backup/ux-022-pre-main-sync-2026081
 - hierarchy edit changes only `parent_id` and must reject self/cycle/cross-user/archived targets;
 - moving account history is an atomic ownership reassignment, not a financial transfer and never performs hidden FX;
 - archive requires zero own balance and cannot hide active descendants;
-- hard delete is allowed only for a truly empty account and never cascades financial history.
+- archive/delete must protect default-account references without compiling against optional legacy column names; unknown legacy reference shapes fail closed at migration validation;
+- hard delete is allowed only for a truly empty account and never cascades financial history;
+- rollback-only migration validation and persistent migration apply consume the same rendered migration body, preventing validate/apply drift.
 
 ## Delivery gates
 
