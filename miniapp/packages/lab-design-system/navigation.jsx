@@ -32,6 +32,7 @@ export function LabBottomNavigation({ items, activeId, ariaLabel = 'Основн
         <button
           type="button"
           key={item.id}
+          data-nav-id={item.id}
           className={`labBottomNavItem ${item.id === activeId ? 'isActive' : ''}`}
           aria-current={item.id === activeId ? 'page' : undefined}
           onClick={item.onClick}
