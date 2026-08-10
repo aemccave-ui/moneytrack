@@ -41,9 +41,28 @@ as $function$
     );
 $function$;
 
+-- Persistent rollback journal for the one-time legacy data normalization.
+-- Re-running the migration is idempotent: rows already journaled are retained.
+create table if not exists moneytrack.ux022_grouping_transaction_migration_backup (
+    transaction_id bigint primary key,
+    user_id bigint not null,
+    original_account_id bigint not null,
+    target_account_id bigint not null,
+    migrated_at timestamptz not null default now()
+);
+
+create table if not exists moneytrack.ux022_grouping_transfer_migration_backup (
+    transfer_id bigint primary key,
+    user_id bigint not null,
+    original_from_account_id bigint not null,
+    original_to_account_id bigint not null,
+    target_account_id bigint not null,
+    migrated_at timestamptz not null default now()
+);
+
 -- One-time legacy normalization.
 -- A legacy parent that still owns direct history is converted into a pure grouping
--- account by moving that history to exactly one active leaf child with the same
+-- account by moving that history to exactly one active LEAF child with the same
 -- account currency. We deliberately refuse to guess when zero or several eligible
 -- children exist, or when moving the history would collapse a transfer/opening balance.
 do $block$
@@ -52,6 +71,7 @@ declare
     v_target_id bigint;
     v_target_count bigint;
 begin
+    -- Audit the whole migration set before touching any financial row.
     for v_parent in
         select a.id, a.user_id, upper(a.currency_code) as currency_code, a.name
         from moneytrack.accounts a
@@ -114,7 +134,7 @@ begin
         end if;
     end loop;
 
-    -- All legacy parents were validated first. Apply deterministic moves only now.
+    -- All legacy parents were validated first. Journal and apply deterministic moves.
     for v_parent in
         select a.id, a.user_id, upper(a.currency_code) as currency_code
         from moneytrack.accounts a
@@ -131,6 +151,24 @@ begin
            and coalesce(child.is_active, true) = true
            and upper(child.currency_code) = v_parent.currency_code
            and not moneytrack.ux022_account_has_active_children_v1(child.user_id, child.id);
+
+        insert into moneytrack.ux022_grouping_transaction_migration_backup(
+            transaction_id, user_id, original_account_id, target_account_id
+        )
+        select t.id, t.user_id, t.account_id, v_target_id
+        from moneytrack.transactions t
+        where t.user_id = v_parent.user_id
+          and t.account_id = v_parent.id
+        on conflict (transaction_id) do nothing;
+
+        insert into moneytrack.ux022_grouping_transfer_migration_backup(
+            transfer_id, user_id, original_from_account_id, original_to_account_id, target_account_id
+        )
+        select tr.id, tr.user_id, tr.from_account_id, tr.to_account_id, v_target_id
+        from moneytrack.transfers tr
+        where tr.user_id = v_parent.user_id
+          and (tr.from_account_id = v_parent.id or tr.to_account_id = v_parent.id)
+        on conflict (transfer_id) do nothing;
 
         update moneytrack.transactions t
            set account_id = v_target_id
