@@ -9,8 +9,19 @@ echo 'UX-022 source/static'
 echo '# Gate'
 echo 'source_static_lint_build'
 
+# Syntax validation must run before npm install/build and before any runtime gate.
+bash -n \
+  scripts/ux022-source-gate.sh \
+  scripts/ux022-migration-gate.sh \
+  scripts/ux022-deploy-preview.sh
+
+python3 -m py_compile \
+  scripts/ux022-generate-api-workflows.py \
+  scripts/ux022-merge-lifecycle-into-presets.py \
+  scripts/ux022-runtime-smoke.py \
+  scripts/ux022-verify-source.py
+
 python3 scripts/ux022-verify-source.py
-python3 -m py_compile scripts/ux022-generate-api-workflows.py scripts/ux022-verify-source.py
 
 cd miniapp
 npm ci
