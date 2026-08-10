@@ -209,9 +209,11 @@ rsync -a --delete "$ROOT/miniapp/dist/" "$PREVIEW_ROOT/"
 echo "preview_frontend_deploy=PASS root=$PREVIEW_ROOT"
 
 # 11. Preview artifact identity: compare the actual Vite asset and its bytes.
-local_asset="$(grep -oE '/assets/[^"'"' ]+\.js' "$ROOT/miniapp/dist/index.html" | head -n1)"
+# Vite emits asset URLs inside double-quoted HTML attributes, so avoid shell-quote
+# gymnastics here and match up to a double quote or whitespace.
+local_asset="$(grep -oE '/assets/[^"[:space:]]+\.js' "$ROOT/miniapp/dist/index.html" | head -n1)"
 preview_html="$(curl -fsS "$PREVIEW_URL/")"
-remote_asset="$(printf '%s' "$preview_html" | grep -oE '/assets/[^"'"' ]+\.js' | head -n1)"
+remote_asset="$(printf '%s' "$preview_html" | grep -oE '/assets/[^"[:space:]]+\.js' | head -n1)"
 [[ -n "$local_asset" && -n "$remote_asset" && "$local_asset" == "$remote_asset" ]]
 local_sha="$(sha256sum "$ROOT/miniapp/dist$local_asset" | awk '{print $1}')"
 remote_tmp="$(mktemp)"
