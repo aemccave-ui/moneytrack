@@ -18,6 +18,17 @@ begin
     end if;
 
     select count(*)
+      into v_violation_count
+      from moneytrack.accounts a
+     where coalesce(a.is_active, true) = true
+       and moneytrack.ux022_account_has_active_children_v1(a.user_id, a.id)
+       and moneytrack.ux022_account_is_default_v1(a.user_id, a.id);
+
+    if v_violation_count <> 0 then
+        raise exception 'UX022R3_VERIFY_GROUPING_DEFAULT_REFERENCE_REMAINS: %', v_violation_count;
+    end if;
+
+    select count(*)
       into v_trigger_count
       from pg_trigger t
       join pg_class c on c.oid = t.tgrelid
@@ -37,6 +48,9 @@ begin
 
     if to_regclass('moneytrack.ux022_grouping_transaction_migration_backup') is null
        or to_regclass('moneytrack.ux022_grouping_transfer_migration_backup') is null
+       or to_regclass('moneytrack.ux022_grouping_created_account_migration_backup') is null
+       or to_regclass('moneytrack.ux022_grouping_user_default_migration_backup') is null
+       or to_regclass('moneytrack.ux022_grouping_user_settings_migration_backup') is null
     then
         raise exception 'UX022R3_VERIFY_GROUPING_ROLLBACK_JOURNAL_MISSING';
     end if;
@@ -52,6 +66,12 @@ select
     child.id as migration_target_id,
     child.name as migration_target_name,
     child.sort_order as migration_target_sort_order,
+    exists (
+        select 1
+        from moneytrack.ux022_grouping_created_account_migration_backup c
+        where c.account_id = child.id
+          and c.parent_account_id = parent.id
+    ) as fallback_created,
     (
         select count(*)
         from moneytrack.ux022_grouping_transaction_migration_backup b
@@ -63,7 +83,19 @@ select
         from moneytrack.ux022_grouping_transfer_migration_backup b
         where (b.original_from_account_id = parent.id or b.original_to_account_id = parent.id)
           and b.target_account_id = child.id
-    ) as migrated_transfers
+    ) as migrated_transfers,
+    (
+        select count(*)
+        from moneytrack.ux022_grouping_user_default_migration_backup b
+        where b.original_account_id = parent.id
+          and b.target_account_id = child.id
+    ) as migrated_currency_defaults,
+    (
+        select count(*)
+        from moneytrack.ux022_grouping_user_settings_migration_backup b
+        where b.original_account_id = parent.id
+          and b.target_account_id = child.id
+    ) as migrated_setting_defaults
 from moneytrack.accounts parent
 join moneytrack.accounts child
   on child.parent_id = parent.id
@@ -79,5 +111,11 @@ or exists (
     from moneytrack.ux022_grouping_transfer_migration_backup b
     where (b.original_from_account_id = parent.id or b.original_to_account_id = parent.id)
       and b.target_account_id = child.id
+)
+or exists (
+    select 1
+    from moneytrack.ux022_grouping_created_account_migration_backup c
+    where c.parent_account_id = parent.id
+      and c.account_id = child.id
 )
 order by parent.user_id, parent.id, child.sort_order nulls last, child.id;
