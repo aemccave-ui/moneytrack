@@ -101,8 +101,14 @@ require("runtime_uses_three_restorable_workflows", "UX022AccountLifecycle202608"
 require(
     "migration_validate_apply_same_body",
     "035_accounts_explorer_read_model_hardening.sql" in renderer
-    and '"$ROOT/scripts/ux022-render-migration.sh"' in migration_gate
-    and '"$ROOT/scripts/ux022-render-migration.sh"' in deployer,
+    and 'bash "$ROOT/scripts/ux022-render-migration.sh"' in migration_gate
+    and 'bash "$ROOT/scripts/ux022-render-migration.sh"' in deployer,
+)
+require(
+    "clean_checkout_script_invocation",
+    'bash "$ROOT/scripts/ux022-source-gate.sh"' in deployer
+    and 'bash "$ROOT/scripts/ux022-migration-gate.sh"' in deployer
+    and 'bash "$ROOT/scripts/ux022-render-migration.sh"' in migration_gate,
 )
 require("runtime_preflight_before_mutation", "runtime_preflight=PASS" in deployer and deployer.index("runtime_preflight=PASS") < deployer.index("ux022-source-gate.sh"))
 require(
