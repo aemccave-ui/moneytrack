@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { deleteTransaction } from './api.js'
+import { announceSwipeOpen, nextSwipeScope, SWIPE_OPEN_EVENT } from './swipe-coordinator.js'
 
 const operationTypeLabel = (type) => ({
   income: 'Доход',
@@ -37,15 +38,32 @@ function TransactionRow({
   baseCurrency,
   money,
   expanded,
+  swipeOpen,
+  onSwipeOpen,
+  onSwipeClose,
   onExpand,
   onDeleted,
 }) {
+  const shellRef = useRef(null)
   const transfer = tx.transaction_type === 'transfer'
   const incoming = transfer && tx.transfer_direction === 'incoming'
   const positive = tx.transaction_type === 'income' || incoming
   const amountCurrency = tx.currency_original || tx.currency || baseCurrency
   const rawAmount = Number(tx.amount_original ?? tx.amount ?? 0)
   const amount = positive ? Math.abs(rawAmount) : -Math.abs(rawAmount)
+
+  useEffect(() => {
+    if (swipeOpen) return
+    const shell = shellRef.current
+    if (shell && shell.scrollLeft > 0) shell.scrollTo({ left: 0, behavior: 'smooth' })
+  }, [swipeOpen])
+
+  const handleScroll = () => {
+    const shell = shellRef.current
+    if (!shell) return
+    if (shell.scrollLeft > 18 && !swipeOpen) onSwipeOpen?.()
+    else if (shell.scrollLeft < 4 && swipeOpen) onSwipeClose?.()
+  }
 
   const remove = async () => {
     if (transfer) {
@@ -63,12 +81,18 @@ function TransactionRow({
 
   return (
     <article className={`transactionCard ${expanded ? 'expanded' : ''}`}>
-      <div className="transactionSwipeShell" aria-label="Смахните строку влево для действий">
+      <div ref={shellRef} className="transactionSwipeShell" aria-label="Смахните строку влево для действий" onScroll={handleScroll}>
         <div className="transactionSwipeTrack">
           <button
             type="button"
             className="transactionRow"
-            onClick={onExpand}
+            onClick={(event) => {
+              if ((shellRef.current?.scrollLeft || 0) > 4) {
+                event.preventDefault()
+                return
+              }
+              onExpand()
+            }}
             aria-expanded={expanded}
           >
             <span className={`transactionTypeMark ${positive ? 'income' : 'expense'}`} aria-hidden="true">{positive ? '↑' : '↓'}</span>
@@ -108,6 +132,8 @@ export function RecentOperations({
   emptyLabel = 'Операций пока нет',
 }) {
   const [expandedId, setExpandedId] = useState(null)
+  const [openSwipeId, setOpenSwipeId] = useState(null)
+  const [swipeScope] = useState(() => nextSwipeScope('operations'))
   const groupList = groups || (() => {
     const byDate = new Map()
     ;(transactions || []).forEach((tx) => {
@@ -117,6 +143,27 @@ export function RecentOperations({
     })
     return [...byDate.entries()]
   })()
+
+  useEffect(() => {
+    if (openSwipeId == null) return undefined
+    const timer = window.setTimeout(() => setOpenSwipeId(null), 2000)
+    return () => window.clearTimeout(timer)
+  }, [openSwipeId])
+
+  useEffect(() => {
+    const onExternalSwipe = (event) => {
+      if (openSwipeId == null) return
+      const ownKey = `${swipeScope}:${openSwipeId}`
+      if (event.detail?.key !== ownKey) setOpenSwipeId(null)
+    }
+    window.addEventListener(SWIPE_OPEN_EVENT, onExternalSwipe)
+    return () => window.removeEventListener(SWIPE_OPEN_EVENT, onExternalSwipe)
+  }, [openSwipeId, swipeScope])
+
+  const openSwipe = (id) => {
+    setOpenSwipeId(id)
+    announceSwipeOpen(`${swipeScope}:${id}`)
+  }
 
   return (
     <section className="section recentOperationsSection">
@@ -137,6 +184,9 @@ export function RecentOperations({
                     baseCurrency={baseCurrency}
                     money={money}
                     expanded={expandedId === id}
+                    swipeOpen={openSwipeId === id}
+                    onSwipeOpen={() => openSwipe(id)}
+                    onSwipeClose={() => setOpenSwipeId((current) => current === id ? null : current)}
                     onExpand={() => setExpandedId((current) => current === id ? null : id)}
                     onDeleted={onDeleted}
                   />
