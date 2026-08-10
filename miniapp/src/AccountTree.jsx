@@ -106,7 +106,6 @@ function TreeRow({
   const ownAmount = resolveOwnAmount?.(node, { id, hasChildren, accountCurrency })
 
   const press = useRef({ timer: null, x: 0, y: 0, dx: 0, pointerId: null, dragging: false, swiped: false, dragTarget: null })
-  const [dragTarget, setDragTarget] = useState(null)
   const [lifted, setLifted] = useState(false)
   const [swipeX, setSwipeX] = useState(0)
   const actionsOpen = openActionsId === id
@@ -141,14 +140,10 @@ function TreeRow({
 
   const updateDragTarget = (clientX, clientY) => {
     const element = document.elementFromPoint(clientX, clientY)
-    let target = null
-    if (element?.closest?.('[data-account-root-drop="true"]')) target = '__ROOT__'
-    else {
-      const candidate = element?.closest?.('[data-account-id]')?.dataset?.accountId || null
-      target = candidate && candidate !== id ? candidate : null
-    }
+    const rootDrop = element?.closest?.('[data-account-root-drop="true"]')
+    const candidate = rootDrop ? null : element?.closest?.('[data-account-id]')?.dataset?.accountId || null
+    const target = rootDrop ? '__ROOT__' : candidate && candidate !== id ? candidate : null
     press.current.dragTarget = target
-    setDragTarget(target)
   }
 
   const moveGesture = (clientX, clientY, preventDefault) => {
@@ -175,7 +170,6 @@ function TreeRow({
       press.current.dragging = false
       press.current.dragTarget = null
       setLifted(false)
-      setDragTarget(null)
       setSwipeX(0)
       if (target === '__ROOT__') await onMoveAccount?.(id, null)
       else if (target && target !== id) await onMoveAccount?.(id, target)
@@ -228,7 +222,6 @@ function TreeRow({
     press.current.dragTarget = null
     setLifted(false)
     setSwipeX(0)
-    setDragTarget(null)
   }
 
   const touchStart = (event) => {
@@ -255,7 +248,6 @@ function TreeRow({
     press.current.dragTarget = null
     setLifted(false)
     setSwipeX(0)
-    setDragTarget(null)
   }
 
   const selectionControl = selectedIds ? (
