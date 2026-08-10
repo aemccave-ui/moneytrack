@@ -55,7 +55,7 @@ function TransactionRow({
   useEffect(() => {
     if (swipeOpen) return
     const shell = shellRef.current
-    if (shell && shell.scrollLeft > 0) shell.scrollTo({ left: 0, behavior: 'smooth' })
+    if (shell && shell.scrollLeft > 0) shell.scrollLeft = 0
   }, [swipeOpen])
 
   const handleScroll = () => {
