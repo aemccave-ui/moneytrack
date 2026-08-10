@@ -29,6 +29,8 @@ presets_sql = read("db/domain/UX-022/010_filter_presets.sql")
 lifecycle_sql = read("db/domain/UX-022/020_account_lifecycle.sql")
 lifecycle_hardening_sql = read("db/domain/UX-022/025_account_lifecycle_hardening.sql")
 read_models_sql = read("db/domain/UX-022/030_accounts_explorer_read_models.sql")
+reference_inventory_sql = read("db/domain/UX-022/905_reference_inventory.sql")
+rollback_sql = read("db/domain/UX-022/990_rollback_code.sql")
 generator = read("scripts/ux022-generate-api-workflows.py")
 deployer = read("scripts/ux022-deploy-preview.sh")
 auth = read("scripts/api-3-telegram-initdata-verifier.fragment.js")
@@ -55,6 +57,25 @@ require("immutable_preset_frontend", "createFilterPreset" in filters and "rename
 require("immutable_preset_backend", "filter_preset_create_v1" in presets_sql and "filter_preset_rename_v1" in presets_sql and "p_date_from" not in presets_sql and "p_date_to" not in presets_sql)
 require("legacy_preset_shape_fail_closed", "UX022_FILTER_PRESETS_LEGACY_SHAPE_INCOMPATIBLE" in presets_sql)
 require("copy_code_independent", "v_source.code ||" not in lifecycle_hardening_sql and "v_code := 'account_'" in lifecycle_hardening_sql)
+require(
+    "schema_tolerant_default_guard",
+    "ux022_account_is_default_v1" in lifecycle_hardening_sql
+    and "jsonb_each_text(to_jsonb(s))" in lifecycle_hardening_sql
+    and "to_regclass('moneytrack.user_default_accounts')" in lifecycle_hardening_sql
+    and "UX022_DEFAULT_ACCOUNT_REFERENCE_SHAPE_UNKNOWN" in lifecycle_hardening_sql,
+)
+require(
+    "archive_delete_use_default_guard",
+    lifecycle_hardening_sql.count("moneytrack.ux022_account_is_default_v1(v_user_id, p_account_id)") >= 2,
+)
+require(
+    "reference_inventory_classifies_user_settings",
+    "c.table_name = 'user_settings' and c.column_name like '%account_id%'" in reference_inventory_sql,
+)
+require(
+    "rollback_drops_default_guard",
+    "drop function if exists moneytrack.ux022_account_is_default_v1(bigint,bigint);" in rollback_sql,
+)
 
 snapshot_chunk = read_models_sql.split("transaction_movements as", 1)[1].split("period_transactions as", 1)[0]
 require("snapshot_independent_of_date_from", "p_date_from" not in snapshot_chunk and "p_as_of" in snapshot_chunk)
