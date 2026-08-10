@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { deleteTransaction } from './api.js'
 
 const ACTION_REVEAL = 176
-const SWIPE_THRESHOLD = 46
+const SWIPE_THRESHOLD = 28
 
 const operationTypeLabel = (type) => ({
   income: 'Доход',
@@ -40,7 +40,9 @@ function TransactionRow({
   onActionsClose,
   onDeleted,
 }) {
-  const gesture = useRef({ startX: 0, startY: 0, dx: 0, pointerId: null, swiped: false })
+  const rowRef = useRef(null)
+  const nativeTouchHandlers = useRef({})
+  const gesture = useRef({ startX: 0, startY: 0, dx: 0, dy: 0, axis: null, active: false, pointerId: null, swiped: false })
   const [dragX, setDragX] = useState(0)
   const transfer = tx.transaction_type === 'transfer'
   const incoming = transfer && tx.transfer_direction === 'incoming'
@@ -59,23 +61,38 @@ function TransactionRow({
     gesture.current.startX = clientX
     gesture.current.startY = clientY
     gesture.current.dx = 0
+    gesture.current.dy = 0
+    gesture.current.axis = null
+    gesture.current.active = true
     gesture.current.swiped = false
   }
 
   const moveGesture = (clientX, clientY, preventDefault) => {
+    if (!gesture.current.active) return
     const dx = clientX - gesture.current.startX
     const dy = clientY - gesture.current.startY
     gesture.current.dx = dx
-    if (Math.abs(dx) > Math.abs(dy) && dx < 0) {
-      preventDefault?.()
+    gesture.current.dy = dy
+
+    if (!gesture.current.axis && Math.max(Math.abs(dx), Math.abs(dy)) > 6) {
+      gesture.current.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y'
+    }
+    if (gesture.current.axis !== 'x') return
+
+    preventDefault?.()
+    if (dx < 0) {
       if (Math.abs(dx) > 8) gesture.current.swiped = true
       setDragX(Math.max(-ACTION_REVEAL, dx))
+    } else {
+      setDragX(0)
     }
   }
 
   const finishGesture = () => {
-    const dx = gesture.current.dx
-    if (dx < -SWIPE_THRESHOLD) {
+    if (!gesture.current.active) return
+    const shouldOpen = gesture.current.axis === 'x' && gesture.current.dx < -SWIPE_THRESHOLD
+    gesture.current.active = false
+    if (shouldOpen) {
       gesture.current.swiped = true
       setDragX(0)
       onActionsOpen()
@@ -84,6 +101,17 @@ function TransactionRow({
       if (actionsOpen) onActionsClose()
     }
     gesture.current.dx = 0
+    gesture.current.dy = 0
+    gesture.current.axis = null
+  }
+
+  const cancelGesture = () => {
+    gesture.current.active = false
+    gesture.current.dx = 0
+    gesture.current.dy = 0
+    gesture.current.axis = null
+    gesture.current.swiped = false
+    setDragX(0)
   }
 
   const pointerDown = (event) => {
@@ -115,30 +143,47 @@ function TransactionRow({
   const pointerCancel = (event) => {
     if (event.pointerType === 'touch') return
     releasePointer(event)
-    gesture.current.dx = 0
-    gesture.current.swiped = false
-    setDragX(0)
+    cancelGesture()
   }
 
-  const touchStart = (event) => {
-    const touch = event.touches[0]
-    if (!touch) return
-    beginGesture(touch.clientX, touch.clientY)
+  nativeTouchHandlers.current = {
+    start(event) {
+      if (event.touches.length !== 1) return
+      const touch = event.touches[0]
+      beginGesture(touch.clientX, touch.clientY)
+    },
+    move(event) {
+      const touch = event.touches[0]
+      if (!touch) return
+      moveGesture(touch.clientX, touch.clientY, () => event.preventDefault())
+    },
+    end() {
+      finishGesture()
+    },
+    cancel() {
+      cancelGesture()
+    },
   }
 
-  const touchMove = (event) => {
-    const touch = event.touches[0]
-    if (!touch) return
-    moveGesture(touch.clientX, touch.clientY, () => event.preventDefault())
-  }
+  useEffect(() => {
+    const row = rowRef.current
+    if (!row) return undefined
+    const start = (event) => nativeTouchHandlers.current.start(event)
+    const move = (event) => nativeTouchHandlers.current.move(event)
+    const end = () => nativeTouchHandlers.current.end()
+    const cancel = () => nativeTouchHandlers.current.cancel()
 
-  const touchEnd = () => finishGesture()
-
-  const touchCancel = () => {
-    gesture.current.dx = 0
-    gesture.current.swiped = false
-    setDragX(0)
-  }
+    row.addEventListener('touchstart', start, { passive: true })
+    row.addEventListener('touchmove', move, { passive: false })
+    row.addEventListener('touchend', end, { passive: true })
+    row.addEventListener('touchcancel', cancel, { passive: true })
+    return () => {
+      row.removeEventListener('touchstart', start)
+      row.removeEventListener('touchmove', move)
+      row.removeEventListener('touchend', end)
+      row.removeEventListener('touchcancel', cancel)
+    }
+  }, [])
 
   const remove = async () => {
     if (transfer) {
@@ -164,6 +209,7 @@ function TransactionRow({
           <button type="button" className="danger" disabled={transfer} onClick={remove}>Удалить</button>
         </div>
         <button
+          ref={rowRef}
           type="button"
           className="transactionRow"
           style={{ transform: `translateX(${actionsOpen ? -ACTION_REVEAL : dragX}px)` }}
@@ -171,10 +217,6 @@ function TransactionRow({
           onPointerMove={pointerMove}
           onPointerUp={pointerUp}
           onPointerCancel={pointerCancel}
-          onTouchStart={touchStart}
-          onTouchMove={touchMove}
-          onTouchEnd={touchEnd}
-          onTouchCancel={touchCancel}
           onClick={(event) => {
             if (gesture.current.swiped) {
               event.preventDefault()
