@@ -4,7 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-: "${DATABASE_URL:?DATABASE_URL is required}"
+# shellcheck source=/dev/null
+source "$ROOT/scripts/ux022-db-runtime.sh"
 : "${MONEYTRACK_SMOKE_INIT_DATA:?MONEYTRACK_SMOKE_INIT_DATA is required for real webhook smoke}"
 
 N8N_CONTAINER="${N8N_CONTAINER:-n8n}"
@@ -29,12 +30,17 @@ PREVIEW_MUTATED=0
   exit 1
 }
 
-for command_name in docker psql pg_dump curl rsync tar sha256sum python3 npm; do
+for command_name in docker curl rsync tar sha256sum python3 npm; do
   command -v "$command_name" >/dev/null 2>&1 || {
     echo "runtime_preflight=FAIL missing_command=$command_name" >&2
     exit 1
   }
 done
+
+ux022_db_init || {
+  echo 'runtime_preflight=FAIL database_runtime' >&2
+  exit 1
+}
 
 docker inspect "$N8N_CONTAINER" >/dev/null 2>&1 || {
   echo "runtime_preflight=FAIL n8n_container=$N8N_CONTAINER" >&2
@@ -58,6 +64,10 @@ echo 'UX-022 preview delivery'
 echo '# Gate'
 echo 'source -> migration -> backup -> api -> smoke -> preview'
 echo 'preview_target_guard=PASS'
+echo "db_runtime_mode=$UX022_DB_MODE"
+if [[ "$UX022_DB_MODE" == "container" ]]; then
+  echo "db_runtime_container=$UX022_DB_CONTAINER"
+fi
 echo 'runtime_preflight=PASS'
 
 cleanup_tmp() {
@@ -112,7 +122,7 @@ rollback() {
     import_publish "$BACKUP_DIR/summary.before.json" UX022Summary202608 || echo 'rollback_summary_workflow=FAIL' >&2
     import_publish "$BACKUP_DIR/presets.before.json" UX022Presets202608 || echo 'rollback_presets_workflow=FAIL' >&2
     docker restart "$N8N_CONTAINER" >/dev/null || echo 'rollback_n8n_restart=FAIL' >&2
-    psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$ROOT/db/domain/UX-022/990_rollback_code.sql" || echo 'rollback_db_code=FAIL' >&2
+    ux022_db_psql_file "$ROOT/db/domain/UX-022/990_rollback_code.sql" || echo 'rollback_db_code=FAIL' >&2
   fi
   echo "rollback_point=$BACKUP_DIR" >&2
   cleanup_tmp
@@ -138,7 +148,7 @@ bash "$ROOT/scripts/ux022-migration-gate.sh"
 # runtime version (used by automatic rollback) and its current draft (preserved for
 # manual recovery/audit if it differed from the published runtime).
 mkdir -p "$BACKUP_DIR"
-pg_dump "$DATABASE_URL" --schema=moneytrack --format=custom --file="$BACKUP_DIR/moneytrack.before.dump"
+ux022_db_pg_dump_schema moneytrack "$BACKUP_DIR/moneytrack.before.dump"
 test -s "$BACKUP_DIR/moneytrack.before.dump"
 export_workflow UX022TxApi202608 transactions.before.json
 export_workflow UX022Summary202608 summary.before.json
@@ -158,7 +168,7 @@ echo "runtime_backup=PASS path=$BACKUP_DIR"
 } > "$MIGRATION_FILE"
 
 RUNTIME_MUTATED=1
-psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$MIGRATION_FILE"
+ux022_db_psql_file "$MIGRATION_FILE"
 echo 'db_migration_apply=PASS'
 
 # 7. Replace only the three known UX workflows. Lifecycle routes are merged into
