@@ -41,7 +41,116 @@ as $function$
     );
 $function$;
 
--- Fail closed instead of silently hiding legacy direct operations under a parent.
+-- One-time legacy normalization.
+-- A legacy parent that still owns direct history is converted into a pure grouping
+-- account by moving that history to exactly one active leaf child with the same
+-- account currency. We deliberately refuse to guess when zero or several eligible
+-- children exist, or when moving the history would collapse a transfer/opening balance.
+do $block$
+declare
+    v_parent record;
+    v_target_id bigint;
+    v_target_count bigint;
+begin
+    for v_parent in
+        select a.id, a.user_id, upper(a.currency_code) as currency_code, a.name
+        from moneytrack.accounts a
+        where coalesce(a.is_active, true) = true
+          and moneytrack.ux022_account_has_active_children_v1(a.user_id, a.id)
+          and moneytrack.ux022_account_has_direct_operations_v1(a.user_id, a.id)
+        order by a.user_id, a.id
+    loop
+        select count(*), min(child.id)
+          into v_target_count, v_target_id
+          from moneytrack.accounts child
+         where child.user_id = v_parent.user_id
+           and child.parent_id = v_parent.id
+           and coalesce(child.is_active, true) = true
+           and upper(child.currency_code) = v_parent.currency_code
+           and not moneytrack.ux022_account_has_active_children_v1(child.user_id, child.id);
+
+        if v_target_count = 0 then
+            raise exception 'ACCOUNT_GROUPING_MIGRATION_TARGET_MISSING: parent_id=% name=% currency=%',
+                v_parent.id, v_parent.name, v_parent.currency_code
+                using errcode = '23514';
+        end if;
+
+        if v_target_count > 1 then
+            raise exception 'ACCOUNT_GROUPING_MIGRATION_TARGET_AMBIGUOUS: parent_id=% name=% currency=% candidates=%',
+                v_parent.id, v_parent.name, v_parent.currency_code, v_target_count
+                using errcode = '23514';
+        end if;
+
+        if exists (
+            select 1
+            from moneytrack.transfers tr
+            where tr.user_id = v_parent.user_id
+              and (
+                    (tr.from_account_id = v_parent.id and tr.to_account_id = v_target_id)
+                 or (tr.to_account_id = v_parent.id and tr.from_account_id = v_target_id)
+              )
+        ) then
+            raise exception 'ACCOUNT_GROUPING_MIGRATION_WOULD_COLLAPSE_TRANSFER: parent_id=% target_id=%',
+                v_parent.id, v_target_id
+                using errcode = '23514';
+        end if;
+
+        if exists (
+            select 1
+            from moneytrack.transactions t
+            where t.user_id = v_parent.user_id
+              and t.account_id = v_parent.id
+              and t.transaction_type = 'openingbalance'
+        ) and exists (
+            select 1
+            from moneytrack.transactions t
+            where t.user_id = v_parent.user_id
+              and t.account_id = v_target_id
+              and t.transaction_type = 'openingbalance'
+        ) then
+            raise exception 'ACCOUNT_GROUPING_MIGRATION_OPENING_BALANCE_CONFLICT: parent_id=% target_id=%',
+                v_parent.id, v_target_id
+                using errcode = '23505';
+        end if;
+    end loop;
+
+    -- All legacy parents were validated first. Apply deterministic moves only now.
+    for v_parent in
+        select a.id, a.user_id, upper(a.currency_code) as currency_code
+        from moneytrack.accounts a
+        where coalesce(a.is_active, true) = true
+          and moneytrack.ux022_account_has_active_children_v1(a.user_id, a.id)
+          and moneytrack.ux022_account_has_direct_operations_v1(a.user_id, a.id)
+        order by a.user_id, a.id
+    loop
+        select child.id
+          into strict v_target_id
+          from moneytrack.accounts child
+         where child.user_id = v_parent.user_id
+           and child.parent_id = v_parent.id
+           and coalesce(child.is_active, true) = true
+           and upper(child.currency_code) = v_parent.currency_code
+           and not moneytrack.ux022_account_has_active_children_v1(child.user_id, child.id);
+
+        update moneytrack.transactions t
+           set account_id = v_target_id
+         where t.user_id = v_parent.user_id
+           and t.account_id = v_parent.id;
+
+        update moneytrack.transfers tr
+           set from_account_id = v_target_id
+         where tr.user_id = v_parent.user_id
+           and tr.from_account_id = v_parent.id;
+
+        update moneytrack.transfers tr
+           set to_account_id = v_target_id
+         where tr.user_id = v_parent.user_id
+           and tr.to_account_id = v_parent.id;
+    end loop;
+end;
+$block$;
+
+-- After normalization there must be no active grouping account with direct history.
 do $block$
 declare
     v_count bigint;
@@ -54,7 +163,7 @@ begin
        and moneytrack.ux022_account_has_direct_operations_v1(a.user_id, a.id);
 
     if v_count > 0 then
-        raise exception 'ACCOUNT_GROUPING_LEGACY_VIOLATION: % parent account(s) have direct operations', v_count
+        raise exception 'ACCOUNT_GROUPING_LEGACY_VIOLATION: % parent account(s) still have direct operations', v_count
             using errcode = '23514';
     end if;
 end;
@@ -67,7 +176,8 @@ as $function$
 declare
     v_parent_user_id bigint;
 begin
-    if new.parent_id is null then
+    -- Inactive rows do not make their parent a runtime grouping account.
+    if new.parent_id is null or not coalesce(new.is_active, true) then
         return new;
     end if;
 
@@ -117,7 +227,7 @@ $function$;
 
 drop trigger if exists ux022_accounts_parent_group_guard on moneytrack.accounts;
 create trigger ux022_accounts_parent_group_guard
-before insert or update of parent_id on moneytrack.accounts
+before insert or update of parent_id, is_active on moneytrack.accounts
 for each row execute function moneytrack.ux022_guard_parent_account_v1();
 
 drop trigger if exists ux022_transactions_group_posting_guard on moneytrack.transactions;
