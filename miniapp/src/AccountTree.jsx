@@ -81,7 +81,7 @@ function TreeRow({
   useEffect(() => {
     if (swipeOpen || dragging) return
     const shell = shellRef.current
-    if (shell && shell.scrollLeft > 0) shell.scrollTo({ left: 0, behavior: 'smooth' })
+    if (shell && shell.scrollLeft > 0) shell.scrollLeft = 0
   }, [dragging, swipeOpen])
 
   useEffect(() => {
