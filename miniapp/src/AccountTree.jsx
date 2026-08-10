@@ -64,10 +64,7 @@ function TreeRow({
   const actionsOpen = openActionsId === id
 
   useEffect(() => {
-    if (!actionsOpen) {
-      setSwipeX(0)
-      return undefined
-    }
+    if (!actionsOpen) return undefined
     const timer = window.setTimeout(() => onActionsClose?.(id), 2000)
     return () => window.clearTimeout(timer)
   }, [actionsOpen, id, onActionsClose])
@@ -123,7 +120,7 @@ function TreeRow({
       return
     }
     if (swipeX < -46) {
-      setSwipeX(-176)
+      setSwipeX(0)
       onActionsOpen?.(id)
     } else {
       setSwipeX(0)
