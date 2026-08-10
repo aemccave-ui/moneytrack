@@ -1,5 +1,7 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://n8n.moneytrackapp.xyz/webhook'
 
+let lastAccountMoveResult = null
+
 function telegramInitData() {
   return window.Telegram?.WebApp?.initData || ''
 }
@@ -158,8 +160,22 @@ export function editAccount({ accountId, name, accountType }, signal) {
   return request('api/v1/accounts', signal, { method: 'PATCH', body: { account_id: Number(accountId), name, account_type: accountType } })
 }
 
-export function moveAccount(accountId, parentId, signal) {
-  return request('api/v1/accounts/move', signal, { method: 'POST', body: { account_id: Number(accountId), parent_id: parentId == null ? null : Number(parentId) } })
+export function consumeLastAccountMoveResult() {
+  const result = lastAccountMoveResult
+  lastAccountMoveResult = null
+  return result
+}
+
+export async function moveAccount(accountId, parentId, signal) {
+  lastAccountMoveResult = null
+  try {
+    const result = await request('api/v1/accounts/move', signal, { method: 'POST', body: { account_id: Number(accountId), parent_id: parentId == null ? null : Number(parentId) } })
+    lastAccountMoveResult = { ok: true }
+    return result
+  } catch (error) {
+    lastAccountMoveResult = { ok: false, message: error?.message || 'Не удалось переместить счёт' }
+    throw error
+  }
 }
 
 export function archiveAccount(accountId, signal) {
