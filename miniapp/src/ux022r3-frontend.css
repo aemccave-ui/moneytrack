@@ -1,4 +1,4 @@
-/* UX-022R3 frontend restoration: keep R3 grouping semantics with R2.1 interaction model. */
+/* UX-022R3 frontend: grouping semantics + compact native swipe + long-press account drag. */
 
 html,
 body,
@@ -26,6 +26,7 @@ body {
 }
 
 .transactionSwipeShell {
+  --transaction-actions-width: 156px;
   position: relative;
   overflow-x: auto !important;
   overflow-y: hidden;
@@ -33,6 +34,7 @@ body {
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   touch-action: pan-x pan-y;
+  scroll-snap-type: x proximity;
 }
 
 .transactionSwipeShell::-webkit-scrollbar,
@@ -42,30 +44,71 @@ body {
 
 .transactionSwipeTrack {
   display: grid;
-  grid-template-columns: calc(100% - 176px) 176px;
-  width: calc(100% + 176px);
-  min-width: calc(100% + 176px);
+  grid-template-columns: calc(100% - var(--transaction-actions-width)) var(--transaction-actions-width);
+  width: calc(100% + var(--transaction-actions-width));
+  min-width: calc(100% + var(--transaction-actions-width));
 }
 
 .transactionRow {
   width: 100%;
   transform: none !important;
   transition: none !important;
+  scroll-snap-align: start;
 }
 
 .transactionSwipeActions {
   position: static !important;
   inset: auto !important;
   width: auto !important;
-  min-width: 176px;
+  min-width: var(--transaction-actions-width);
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, 52px);
   opacity: 1 !important;
   pointer-events: auto !important;
   transform: none !important;
+  scroll-snap-align: end;
+  background: #eef5f3;
+}
+
+.swipeActionButton {
+  min-width: 0;
+  padding: 4px 2px;
+  border: 0;
+  border-left: 1px solid rgba(29,85,89,.06);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  background: transparent;
+  color: #3f605e;
+  font-size: 8px;
+  line-height: 1.05;
+  text-align: center;
+}
+
+.swipeActionButton.danger {
+  color: #a4434d;
+  background: #fff0f1;
+}
+
+.swipeActionButton:disabled {
+  opacity: .42;
+}
+
+.swipeActionIcon {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: 0 0 auto;
 }
 
 .accountSwipeShell {
+  --account-actions-width: 168px;
   position: relative;
   overflow-x: auto !important;
   overflow-y: hidden;
@@ -74,69 +117,71 @@ body {
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   touch-action: pan-x pan-y;
+  scroll-snap-type: x proximity;
 }
 
 .accountSwipeTrack {
   display: grid;
-  grid-template-columns: calc(100% - 220px) 220px;
-  width: calc(100% + 220px);
-  min-width: calc(100% + 220px);
+  grid-template-columns: calc(100% - var(--account-actions-width)) var(--account-actions-width);
+  width: calc(100% + var(--account-actions-width));
+  min-width: calc(100% + var(--account-actions-width));
 }
 
 .accountTreeRow {
   width: 100%;
   transform: none !important;
   transition: none !important;
-}
-
-.accountMoveShortcut {
-  flex: 0 0 34px;
-  width: 34px;
-  height: 34px;
-  margin-left: 4px;
-  padding: 0;
-  border: 0;
-  border-radius: 11px;
-  background: rgba(29,85,89,.09);
-  color: #315f5d;
-  font-size: 20px;
-  line-height: 1;
+  scroll-snap-align: start;
+  -webkit-touch-callout: none;
+  user-select: none;
 }
 
 .accountSwipeActions {
   position: static !important;
   inset: auto !important;
   width: auto !important;
-  min-width: 220px;
+  min-width: var(--account-actions-width);
   display: grid;
-  grid-template-columns: repeat(5, 44px);
+  grid-template-columns: repeat(3, 56px);
   align-items: stretch;
   opacity: 1 !important;
   pointer-events: auto !important;
   transform: none !important;
   background: #eff5f3;
+  scroll-snap-align: end;
 }
 
-.accountSwipeActions button {
-  min-width: 0;
-  padding: 0 2px;
-  border: 0;
-  border-left: 1px solid rgba(29,85,89,.06);
-  background: transparent;
-  color: #3f605e;
+.accountSwipeActions .swipeActionButton {
   font-size: 8px;
-  line-height: 1.05;
-  overflow-wrap: anywhere;
-  writing-mode: horizontal-tb;
-  transform: none;
 }
 
-.accountSwipeActions button.danger {
-  color: #a4434d;
-  background: #fff0f1;
+.accountTreeNode.isDragSource {
+  position: relative;
+  z-index: 20;
 }
 
-.accountRootDropZone {
+.accountTreeNode.isDragSource > .accountSwipeShell {
+  animation: accountLongPressWiggle .24s ease-out;
+  transform: scale(1.012);
+  box-shadow: 0 8px 22px rgba(29,85,89,.18);
+}
+
+.accountTreeNode.isDropTarget > .accountSwipeShell {
+  outline: 2px solid rgba(29,85,89,.48);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(29,85,89,.08);
+}
+
+@keyframes accountLongPressWiggle {
+  0% { transform: rotate(0deg) scale(1); }
+  22% { transform: rotate(-.8deg) scale(1.012); }
+  45% { transform: rotate(.8deg) scale(1.012); }
+  68% { transform: rotate(-.45deg) scale(1.012); }
+  100% { transform: rotate(0deg) scale(1.012); }
+}
+
+.accountRootDropZone,
+.accountMoveShortcut {
   display: none !important;
 }
 
