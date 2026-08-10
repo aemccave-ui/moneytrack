@@ -30,6 +30,7 @@ api = read("miniapp/src/api.js")
 create_sheet = read("miniapp/src/AccountCreateSheet.jsx")
 currency_layout = read("miniapp/src/currency-layout.css")
 frontend_css = read("miniapp/src/ux022r3-frontend.css")
+gesture_policy = read("miniapp/src/telegram-gesture-policy.js")
 presets_sql = read("db/domain/UX-022/010_filter_presets.sql")
 lifecycle_sql = read("db/domain/UX-022/020_account_lifecycle.sql")
 lifecycle_hardening_sql = read("db/domain/UX-022/025_account_lifecycle_hardening.sql")
@@ -68,23 +69,41 @@ require(
     and 'key="accounts"' in app,
 )
 require(
-    "native_operation_swipe",
+    "responsive_operation_swipe_with_icons",
     "transactionSwipeTrack" in recent
+    and recent.count('className="swipeActionButton') == 3
+    and "SwipeActionIcon" in recent
     and "onPointer" not in recent
     and "onTouch" not in recent
-    and "overflow-x: auto !important" in frontend_css
-    and "transactionSwipeActions" in frontend_css
-    and "position: static !important" in frontend_css,
+    and "--transaction-actions-width: 156px" in frontend_css
+    and "scroll-snap-type: x proximity" in frontend_css
+    and "position: static !important" in frontend_css
+    and "disableVerticalSwipes" in gesture_policy,
 )
 require(
-    "native_account_swipe_and_move",
+    "account_swipe_three_actions_with_icons",
     "accountSwipeTrack" in tree
-    and "MoveAccountSheet" in tree
-    and "accountMoveShortcut" in tree
-    and "onPointer" not in tree
-    and "onTouch" not in tree
-    and "accountSwipeActions" in frontend_css
-    and "grid-template-columns: repeat(5, 44px)" in frontend_css,
+    and tree.count('className="swipeActionButton') == 3
+    and "<span>Изменить</span>" in tree
+    and "<span>Архив</span>" in tree
+    and "<span>Удалить</span>" in tree
+    and "Копировать" not in tree
+    and "MoveAccountSheet" not in tree
+    and "accountMoveShortcut" not in tree
+    and "grid-template-columns: repeat(3, 56px)" in frontend_css,
+)
+require(
+    "account_long_press_drag_move",
+    "}, 480)" in tree
+    and "addEventListener('touchmove', touchMove, { passive: false })" in tree
+    and "onLongPressStart" in tree
+    and "onLongPressMove" in tree
+    and "onLongPressEnd" in tree
+    and "document.elementFromPoint" in tree
+    and "isDragSource" in tree
+    and "isDropTarget" in tree
+    and "accountLongPressWiggle" in frontend_css
+    and "HapticFeedback" in tree,
 )
 require("drag_cycle_front_guard", "ACCOUNT_HIERARCHY_CYCLE" in explorer)
 require(
