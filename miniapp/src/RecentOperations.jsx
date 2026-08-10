@@ -40,7 +40,7 @@ function TransactionRow({
   onActionsClose,
   onDeleted,
 }) {
-  const pointer = useRef({ startX: 0, startY: 0 })
+  const pointer = useRef({ startX: 0, startY: 0, dx: 0, pointerId: null, swiped: false })
   const [dragX, setDragX] = useState(0)
   const transfer = tx.transaction_type === 'transfer'
   const incoming = transfer && tx.transfer_direction === 'incoming'
@@ -56,24 +56,51 @@ function TransactionRow({
   }, [actionsOpen, onActionsClose])
 
   const pointerDown = (event) => {
+    if (event.button != null && event.button !== 0) return
     pointer.current.startX = event.clientX
     pointer.current.startY = event.clientY
+    pointer.current.dx = 0
+    pointer.current.pointerId = event.pointerId
+    pointer.current.swiped = false
+    event.currentTarget.setPointerCapture?.(event.pointerId)
   }
 
   const pointerMove = (event) => {
     const dx = event.clientX - pointer.current.startX
     const dy = event.clientY - pointer.current.startY
-    if (Math.abs(dx) > Math.abs(dy) && dx < 0) setDragX(Math.max(-ACTION_REVEAL, dx))
+    pointer.current.dx = dx
+    if (Math.abs(dx) > Math.abs(dy) && dx < 0) {
+      event.preventDefault()
+      if (Math.abs(dx) > 8) pointer.current.swiped = true
+      setDragX(Math.max(-ACTION_REVEAL, dx))
+    }
   }
 
-  const pointerUp = () => {
-    if (dragX < -SWIPE_THRESHOLD) {
+  const releasePointer = (event) => {
+    if (pointer.current.pointerId != null && event.currentTarget.hasPointerCapture?.(pointer.current.pointerId)) {
+      event.currentTarget.releasePointerCapture(pointer.current.pointerId)
+    }
+    pointer.current.pointerId = null
+  }
+
+  const pointerUp = (event) => {
+    const dx = pointer.current.dx
+    releasePointer(event)
+    if (dx < -SWIPE_THRESHOLD) {
+      pointer.current.swiped = true
       setDragX(0)
       onActionsOpen()
     } else {
       setDragX(0)
       if (actionsOpen) onActionsClose()
     }
+  }
+
+  const pointerCancel = (event) => {
+    releasePointer(event)
+    pointer.current.dx = 0
+    pointer.current.swiped = false
+    setDragX(0)
   }
 
   const remove = async () => {
@@ -93,8 +120,8 @@ function TransactionRow({
 
   return (
     <article className={`transactionCard ${expanded ? 'expanded' : ''}`}>
-      <div className="transactionSwipeShell">
-        <div className="transactionSwipeActions" aria-hidden={!actionsOpen}>
+      <div className={`transactionSwipeShell ${actionsOpen ? 'actionsOpen' : ''} ${dragX < 0 ? 'isSwiping' : ''}`}>
+        <div className="transactionSwipeActions" aria-hidden={!actionsOpen && dragX >= 0}>
           <button type="button" disabled={transfer} onClick={() => showInfo('Повтор операции будет подключён отдельным write-contract.')}>Повторить</button>
           <button type="button" disabled={transfer} onClick={() => showInfo('Редактирование операции будет подключено отдельным write-contract.')}>Изменить</button>
           <button type="button" className="danger" disabled={transfer} onClick={remove}>Удалить</button>
@@ -106,8 +133,15 @@ function TransactionRow({
           onPointerDown={pointerDown}
           onPointerMove={pointerMove}
           onPointerUp={pointerUp}
-          onPointerCancel={() => setDragX(0)}
-          onClick={() => { if (Math.abs(dragX) < 8 && !actionsOpen) onExpand() }}
+          onPointerCancel={pointerCancel}
+          onClick={(event) => {
+            if (pointer.current.swiped) {
+              event.preventDefault()
+              pointer.current.swiped = false
+              return
+            }
+            if (!actionsOpen) onExpand()
+          }}
           aria-expanded={expanded}
         >
           <span className={`transactionTypeMark ${positive ? 'income' : 'expense'}`} aria-hidden="true">{positive ? '↑' : '↓'}</span>
