@@ -106,7 +106,6 @@ function TreeRow({
   const ownAmount = resolveOwnAmount?.(node, { id, hasChildren, accountCurrency })
 
   const rowRef = useRef(null)
-  const nativeTouchHandlers = useRef({})
   const press = useRef({
     timer: null,
     x: 0,
@@ -267,32 +266,22 @@ function TreeRow({
     cancelGesture()
   }
 
-  nativeTouchHandlers.current = {
-    start(event) {
-      if (event.touches.length !== 1) return
-      const touch = event.touches[0]
-      beginGesture(touch.clientX, touch.clientY)
-    },
-    move(event) {
-      const touch = event.touches[0]
-      if (!touch) return
-      moveGesture(touch.clientX, touch.clientY, () => event.preventDefault())
-    },
-    async end() {
-      await finishGesture()
-    },
-    cancel() {
-      cancelGesture()
-    },
-  }
-
   useEffect(() => {
     const row = rowRef.current
     if (!row) return undefined
-    const start = (event) => nativeTouchHandlers.current.start(event)
-    const move = (event) => nativeTouchHandlers.current.move(event)
-    const end = () => nativeTouchHandlers.current.end()
-    const cancel = () => nativeTouchHandlers.current.cancel()
+
+    const start = (event) => {
+      if (event.touches.length !== 1) return
+      const touch = event.touches[0]
+      beginGesture(touch.clientX, touch.clientY)
+    }
+    const move = (event) => {
+      const touch = event.touches[0]
+      if (!touch) return
+      moveGesture(touch.clientX, touch.clientY, () => event.preventDefault())
+    }
+    const end = () => finishGesture()
+    const cancel = () => cancelGesture()
 
     row.addEventListener('touchstart', start, { passive: true })
     row.addEventListener('touchmove', move, { passive: false })
@@ -304,7 +293,7 @@ function TreeRow({
       row.removeEventListener('touchend', end)
       row.removeEventListener('touchcancel', cancel)
     }
-  }, [])
+  })
 
   const selectionControl = selectedIds ? (
     <button
