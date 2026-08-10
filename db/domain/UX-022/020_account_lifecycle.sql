@@ -283,8 +283,9 @@ declare
     v_user_id bigint := moneytrack.ux022_resolve_user_id_v1(p_telegram_user_id);
     v_source_currency text;
     v_target_currency text;
-    v_operation_count bigint;
-    v_transfer_count bigint;
+    v_operation_count bigint := 0;
+    v_from_transfer_count bigint := 0;
+    v_to_transfer_count bigint := 0;
 begin
     if p_source_account_id = p_target_account_id then raise exception 'ACCOUNT_MOVE_TARGET_SAME' using errcode = '22023'; end if;
 
@@ -321,13 +322,13 @@ begin
 
     update moneytrack.transfers t set from_account_id = p_target_account_id
     where t.user_id = v_user_id and t.from_account_id = p_source_account_id;
-    get diagnostics v_transfer_count = row_count;
+    get diagnostics v_from_transfer_count = row_count;
 
     update moneytrack.transfers t set to_account_id = p_target_account_id
     where t.user_id = v_user_id and t.to_account_id = p_source_account_id;
-    v_transfer_count := v_transfer_count + row_count;
+    get diagnostics v_to_transfer_count = row_count;
 
-    return query select v_operation_count, v_transfer_count, 'moved'::text;
+    return query select v_operation_count, (v_from_transfer_count + v_to_transfer_count)::bigint, 'moved'::text;
 end;
 $function$;
 
@@ -343,11 +344,10 @@ declare
     v_user_id bigint := moneytrack.ux022_resolve_user_id_v1(p_telegram_user_id);
     v_balance numeric;
 begin
-    if not exists (
-        select 1 from moneytrack.accounts a
-        where a.id = p_account_id and a.user_id = v_user_id and coalesce(a.is_active, true) = true
-        for update
-    ) then raise exception 'ACCOUNT_NOT_FOUND' using errcode = 'P0002'; end if;
+    perform 1 from moneytrack.accounts a
+    where a.id = p_account_id and a.user_id = v_user_id and coalesce(a.is_active, true) = true
+    for update;
+    if not found then raise exception 'ACCOUNT_NOT_FOUND' using errcode = 'P0002'; end if;
 
     if exists (
         select 1 from moneytrack.accounts child
@@ -407,11 +407,10 @@ declare
     v_user_id bigint := moneytrack.ux022_resolve_user_id_v1(p_telegram_user_id);
     v_balance numeric;
 begin
-    if not exists (
-        select 1 from moneytrack.accounts a
-        where a.id = p_account_id and a.user_id = v_user_id
-        for update
-    ) then raise exception 'ACCOUNT_NOT_FOUND' using errcode = 'P0002'; end if;
+    perform 1 from moneytrack.accounts a
+    where a.id = p_account_id and a.user_id = v_user_id
+    for update;
+    if not found then raise exception 'ACCOUNT_NOT_FOUND' using errcode = 'P0002'; end if;
 
     if exists (select 1 from moneytrack.accounts c where c.user_id = v_user_id and c.parent_id = p_account_id) then
         raise exception 'ACCOUNT_HAS_CHILDREN' using errcode = '22023';
