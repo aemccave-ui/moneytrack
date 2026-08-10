@@ -51,6 +51,7 @@ require(
     and "row.addEventListener('touchmove', move, { passive: false })" in recent
     and "row.addEventListener('touchend', end, { passive: true })" in recent
     and "onTouchStart=" not in recent
+    and "nativeTouchHandlers.current =" not in recent
     and "SWIPE_THRESHOLD = 28" in recent,
 )
 require(
@@ -77,6 +78,7 @@ require(
     and "row.addEventListener('touchmove', move, { passive: false })" in account_tree
     and "row.addEventListener('touchend', end, { passive: true })" in account_tree
     and "onTouchStart=" not in account_tree
+    and "nativeTouchHandlers.current =" not in account_tree
     and "SWIPE_THRESHOLD = 28" in account_tree
     and "overscroll-behavior-x:contain" in accounts_css,
 )
