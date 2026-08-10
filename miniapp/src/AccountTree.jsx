@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 const ACTION_REVEAL = 220
-const SWIPE_THRESHOLD = 46
+const SWIPE_THRESHOLD = 28
 const accountId = (account) => String(account.id ?? account.account_id)
 const accountParentId = (account) => account.parent_account_id
   ?? account.parent_id
@@ -105,7 +105,21 @@ function TreeRow({
     : defaultAmount
   const ownAmount = resolveOwnAmount?.(node, { id, hasChildren, accountCurrency })
 
-  const press = useRef({ timer: null, x: 0, y: 0, dx: 0, pointerId: null, dragging: false, swiped: false, dragTarget: null })
+  const rowRef = useRef(null)
+  const nativeTouchHandlers = useRef({})
+  const press = useRef({
+    timer: null,
+    x: 0,
+    y: 0,
+    dx: 0,
+    dy: 0,
+    axis: null,
+    active: false,
+    pointerId: null,
+    dragging: false,
+    swiped: false,
+    dragTarget: null,
+  })
   const [lifted, setLifted] = useState(false)
   const [swipeX, setSwipeX] = useState(0)
   const actionsOpen = openActionsId === id
@@ -125,12 +139,16 @@ function TreeRow({
     press.current.x = clientX
     press.current.y = clientY
     press.current.dx = 0
+    press.current.dy = 0
+    press.current.axis = null
+    press.current.active = true
     press.current.dragging = false
     press.current.swiped = false
     press.current.dragTarget = null
     clearPress()
     if (onMoveAccount) {
       press.current.timer = window.setTimeout(() => {
+        if (!press.current.active || press.current.axis === 'y') return
         press.current.dragging = true
         setLifted(true)
         window.Telegram?.WebApp?.HapticFeedback?.impactOccurred?.('light')
@@ -147,24 +165,38 @@ function TreeRow({
   }
 
   const moveGesture = (clientX, clientY, preventDefault) => {
+    if (!press.current.active) return
     const dx = clientX - press.current.x
     const dy = clientY - press.current.y
     press.current.dx = dx
+    press.current.dy = dy
+
     if (press.current.dragging) {
       preventDefault?.()
       updateDragTarget(clientX, clientY)
       return
     }
-    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) clearPress()
-    if (Math.abs(dx) > Math.abs(dy) && dx < 0) {
-      preventDefault?.()
+
+    if (!press.current.axis && Math.max(Math.abs(dx), Math.abs(dy)) > 6) {
+      press.current.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y'
+      if (press.current.axis) clearPress()
+    }
+    if (press.current.axis !== 'x') return
+
+    preventDefault?.()
+    if (dx < 0) {
       if (Math.abs(dx) > 8) press.current.swiped = true
       setSwipeX(Math.max(-ACTION_REVEAL, dx))
+    } else {
+      setSwipeX(0)
     }
   }
 
   const finishGesture = async () => {
+    if (!press.current.active) return
+    press.current.active = false
     clearPress()
+
     if (press.current.dragging) {
       const target = press.current.dragTarget
       press.current.dragging = false
@@ -175,7 +207,9 @@ function TreeRow({
       else if (target && target !== id) await onMoveAccount?.(id, target)
       return
     }
-    if (press.current.dx < -SWIPE_THRESHOLD) {
+
+    const shouldOpen = press.current.axis === 'x' && press.current.dx < -SWIPE_THRESHOLD
+    if (shouldOpen) {
       press.current.swiped = true
       setSwipeX(0)
       onActionsOpen?.(id)
@@ -184,6 +218,21 @@ function TreeRow({
       if (actionsOpen) onActionsClose?.(id)
     }
     press.current.dx = 0
+    press.current.dy = 0
+    press.current.axis = null
+  }
+
+  const cancelGesture = () => {
+    clearPress()
+    press.current.active = false
+    press.current.dragging = false
+    press.current.swiped = false
+    press.current.dx = 0
+    press.current.dy = 0
+    press.current.axis = null
+    press.current.dragTarget = null
+    setLifted(false)
+    setSwipeX(0)
   }
 
   const releasePointer = (event) => {
@@ -214,41 +263,48 @@ function TreeRow({
 
   const pointerCancel = (event) => {
     if (event.pointerType === 'touch') return
-    clearPress()
     releasePointer(event)
-    press.current.dragging = false
-    press.current.swiped = false
-    press.current.dx = 0
-    press.current.dragTarget = null
-    setLifted(false)
-    setSwipeX(0)
+    cancelGesture()
   }
 
-  const touchStart = (event) => {
-    const touch = event.touches[0]
-    if (!touch) return
-    beginGesture(touch.clientX, touch.clientY)
+  nativeTouchHandlers.current = {
+    start(event) {
+      if (event.touches.length !== 1) return
+      const touch = event.touches[0]
+      beginGesture(touch.clientX, touch.clientY)
+    },
+    move(event) {
+      const touch = event.touches[0]
+      if (!touch) return
+      moveGesture(touch.clientX, touch.clientY, () => event.preventDefault())
+    },
+    async end() {
+      await finishGesture()
+    },
+    cancel() {
+      cancelGesture()
+    },
   }
 
-  const touchMove = (event) => {
-    const touch = event.touches[0]
-    if (!touch) return
-    moveGesture(touch.clientX, touch.clientY, () => event.preventDefault())
-  }
+  useEffect(() => {
+    const row = rowRef.current
+    if (!row) return undefined
+    const start = (event) => nativeTouchHandlers.current.start(event)
+    const move = (event) => nativeTouchHandlers.current.move(event)
+    const end = () => nativeTouchHandlers.current.end()
+    const cancel = () => nativeTouchHandlers.current.cancel()
 
-  const touchEnd = async () => {
-    await finishGesture()
-  }
-
-  const touchCancel = () => {
-    clearPress()
-    press.current.dragging = false
-    press.current.swiped = false
-    press.current.dx = 0
-    press.current.dragTarget = null
-    setLifted(false)
-    setSwipeX(0)
-  }
+    row.addEventListener('touchstart', start, { passive: true })
+    row.addEventListener('touchmove', move, { passive: false })
+    row.addEventListener('touchend', end, { passive: true })
+    row.addEventListener('touchcancel', cancel, { passive: true })
+    return () => {
+      row.removeEventListener('touchstart', start)
+      row.removeEventListener('touchmove', move)
+      row.removeEventListener('touchend', end)
+      row.removeEventListener('touchcancel', cancel)
+    }
+  }, [])
 
   const selectionControl = selectedIds ? (
     <button
@@ -297,16 +353,13 @@ function TreeRow({
           <button type="button" className="danger" onClick={() => { onDelete?.(node); onActionsClose?.(id) }}>Удалить</button>
         </div>
         <div
+          ref={rowRef}
           className={`hierarchyToggle accountTreeRow ${hasChildren ? 'hasChildren' : ''}`}
           style={{ transform: `translateX(${actionsOpen ? -ACTION_REVEAL : swipeX}px)` }}
           onPointerDown={pointerDown}
           onPointerMove={pointerMove}
           onPointerUp={pointerUp}
           onPointerCancel={pointerCancel}
-          onTouchStart={touchStart}
-          onTouchMove={touchMove}
-          onTouchEnd={touchEnd}
-          onTouchCancel={touchCancel}
         >
           {selectionControl}
           {hasChildren ? (
