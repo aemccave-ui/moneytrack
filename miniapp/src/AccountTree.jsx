@@ -1,5 +1,4 @@
-import { useMemo, useState } from 'react'
-import { consumeLastAccountMoveResult } from './api.js'
+import { useEffect, useRef, useState } from 'react'
 
 const accountId = (account) => String(account.id ?? account.account_id)
 const accountParentId = (account) => account.parent_account_id
@@ -13,10 +12,6 @@ function subtreeIds(node) {
   return [accountId(node.account), ...node.children.flatMap(subtreeIds)]
 }
 
-function flattenNodes(nodes) {
-  return nodes.flatMap((node) => [node, ...flattenNodes(node.children)])
-}
-
 function selectionState(node, selectedIds) {
   if (!selectedIds) return 'none'
   const ids = subtreeIds(node)
@@ -26,51 +21,10 @@ function selectionState(node, selectedIds) {
   return 'partial'
 }
 
-function MoveAccountSheet({ node, hierarchy, onMoveAccount, onClose }) {
-  const id = accountId(node.account)
-  const blocked = useMemo(() => new Set(subtreeIds(node)), [node])
-  const options = useMemo(
-    () => flattenNodes(hierarchy).filter((candidate) => !blocked.has(accountId(candidate.account))),
-    [blocked, hierarchy],
-  )
-  const initialParent = accountParentId(node.account)
-  const [parentId, setParentId] = useState(initialParent == null ? '' : String(initialParent))
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-
-  const submit = async (event) => {
-    event.preventDefault()
-    if (saving) return
-    setSaving(true)
-    setError('')
-    consumeLastAccountMoveResult()
-    try {
-      await onMoveAccount(id, parentId || null)
-      const moveResult = consumeLastAccountMoveResult()
-      if (moveResult?.ok === false) {
-        setError(moveResult.message || 'Не удалось переместить счёт')
-        return
-      }
-      onClose()
-    } catch (reason) {
-      consumeLastAccountMoveResult()
-      setError(reason?.message || 'Не удалось переместить счёт')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="accountSheetBackdrop" role="presentation" onClick={(event) => event.target === event.currentTarget && onClose()}>
-      <form className="accountSheet" onSubmit={submit} role="dialog" aria-modal="true" aria-label={`Переместить счёт ${node.account.name}`}>
-        <header><strong>Переместить счёт</strong><button type="button" onClick={onClose}>×</button></header>
-        <p className="accountSheetHint">«{node.account.name}» станет дочерним для выбранной группы. Верхний уровень убирает родителя.</p>
-        <label><span>Родитель</span><select value={parentId} onChange={(event) => setParentId(event.target.value)}><option value="">Без родителя / верхний уровень</option>{options.map((candidate) => <option key={accountId(candidate.account)} value={accountId(candidate.account)}>{candidate.account.name}</option>)}</select></label>
-        {error && <div className="explorerInlineError" role="alert">{error}</div>}
-        <button className="accountSheetPrimary" type="submit" disabled={saving}>{saving ? 'Перемещение…' : 'Переместить'}</button>
-      </form>
-    </div>
-  )
+function SwipeActionIcon({ name }) {
+  if (name === 'edit') return <svg className="swipeActionIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l11-11-4-4L4 16v4ZM13.5 6.5l4 4" /></svg>
+  if (name === 'archive') return <svg className="swipeActionIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v13H4V7Zm-1-3h18v3H3V4Zm6 7h6" /></svg>
+  return <svg className="swipeActionIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4h6v3M8 10v7M12 10v7M16 10v7M6 7l1 13h10l1-13" /></svg>
 }
 
 function TreeRow({
@@ -86,13 +40,17 @@ function TreeRow({
   onNodeBody,
   isNodeBodyInteractive,
   resolveNodeAmount,
-  onMoveRequest,
-  onCopy,
   onEdit,
   onArchive,
   onDelete,
   renderAfterNode,
   renderChildren,
+  dragEnabled,
+  dragging,
+  dropTarget,
+  onLongPressStart,
+  onLongPressMove,
+  onLongPressEnd,
 }) {
   const id = accountId(node.account)
   const hasChildren = node.children.length > 0
@@ -109,6 +67,77 @@ function TreeRow({
   const displayedAmount = resolveNodeAmount
     ? resolveNodeAmount(node, { id, hasChildren, accountCurrency, defaultAmount, selectionState: state })
     : defaultAmount
+
+  const rowRef = useRef(null)
+  const gesture = useRef({ timer: null, startX: 0, startY: 0, dragging: false, suppressClick: false })
+
+  useEffect(() => {
+    const row = rowRef.current
+    if (!row || !dragEnabled) return undefined
+
+    const clearTimer = () => {
+      if (gesture.current.timer) window.clearTimeout(gesture.current.timer)
+      gesture.current.timer = null
+    }
+
+    const touchStart = (event) => {
+      if (event.touches.length !== 1) return
+      if (event.target.closest('.accountSelectionControl, .accountDisclosureControl')) return
+      const touch = event.touches[0]
+      clearTimer()
+      gesture.current.startX = touch.clientX
+      gesture.current.startY = touch.clientY
+      gesture.current.dragging = false
+      gesture.current.timer = window.setTimeout(() => {
+        gesture.current.dragging = true
+        gesture.current.suppressClick = true
+        row.closest('.accountSwipeShell')?.scrollTo({ left: 0, behavior: 'auto' })
+        window.Telegram?.WebApp?.HapticFeedback?.impactOccurred?.('light')
+        onLongPressStart?.(node)
+      }, 480)
+    }
+
+    const touchMove = (event) => {
+      const touch = event.touches[0]
+      if (!touch) return
+      const dx = touch.clientX - gesture.current.startX
+      const dy = touch.clientY - gesture.current.startY
+      if (!gesture.current.dragging) {
+        if (Math.abs(dx) > 8 || Math.abs(dy) > 8) clearTimer()
+        return
+      }
+      event.preventDefault()
+      onLongPressMove?.(touch.clientX, touch.clientY)
+    }
+
+    const finish = (event) => {
+      clearTimer()
+      if (!gesture.current.dragging) return
+      event.preventDefault()
+      gesture.current.dragging = false
+      onLongPressEnd?.()
+      window.setTimeout(() => { gesture.current.suppressClick = false }, 0)
+    }
+
+    const cancel = () => {
+      clearTimer()
+      if (gesture.current.dragging) onLongPressEnd?.(true)
+      gesture.current.dragging = false
+      window.setTimeout(() => { gesture.current.suppressClick = false }, 0)
+    }
+
+    row.addEventListener('touchstart', touchStart, { passive: true })
+    row.addEventListener('touchmove', touchMove, { passive: false })
+    row.addEventListener('touchend', finish, { passive: false })
+    row.addEventListener('touchcancel', cancel, { passive: true })
+    return () => {
+      clearTimer()
+      row.removeEventListener('touchstart', touchStart)
+      row.removeEventListener('touchmove', touchMove)
+      row.removeEventListener('touchend', finish)
+      row.removeEventListener('touchcancel', cancel)
+    }
+  }, [dragEnabled, node, onLongPressEnd, onLongPressMove, onLongPressStart])
 
   const selectionControl = selectedIds ? (
     <button
@@ -142,15 +171,15 @@ function TreeRow({
 
   return (
     <div
-      className={`accountTreeNode ${details ? 'hasDetails' : ''}`}
+      className={`accountTreeNode ${details ? 'hasDetails' : ''} ${dragging ? 'isDragSource' : ''} ${dropTarget ? 'isDropTarget' : ''}`}
       style={{ '--account-depth': depth }}
       data-depth={depth}
       data-account-id={id}
       data-account-role={hasChildren ? 'group' : 'operational'}
     >
-      <div className="accountSwipeShell" aria-label="Смахните строку влево для действий">
+      <div className="accountSwipeShell" aria-label="Смахните строку влево для действий; удерживайте для переноса">
         <div className="accountSwipeTrack">
-          <div className={`hierarchyToggle accountTreeRow ${hasChildren ? 'hasChildren groupingAccountRow' : 'operationalAccountRow'}`}>
+          <div ref={rowRef} className={`hierarchyToggle accountTreeRow ${hasChildren ? 'hasChildren groupingAccountRow' : 'operationalAccountRow'}`}>
             {selectionControl}
             {hasChildren ? (
               <button
@@ -164,16 +193,19 @@ function TreeRow({
               </button>
             ) : !selectionControl ? <span className="hierarchyChevron accountLeafMarker" aria-hidden="true">•</span> : null}
             {bodyInteractive ? (
-              <button type="button" className="homeAccountOpenTarget" onClick={() => onNodeBody?.(node, false)}>{identity}</button>
+              <button type="button" className="homeAccountOpenTarget" onClick={(event) => {
+                if (gesture.current.suppressClick) {
+                  event.preventDefault()
+                  return
+                }
+                onNodeBody?.(node, false)
+              }}>{identity}</button>
             ) : <div className="homeAccountOpenTarget">{identity}</div>}
-            {onMoveRequest && <button type="button" className="accountMoveShortcut" onClick={(event) => { event.stopPropagation(); onMoveRequest(node) }} aria-label={`Переместить счёт ${node.account.name}`}>⋯</button>}
           </div>
           <div className="accountSwipeActions">
-            <button type="button" onClick={() => onMoveRequest?.(node)}>Переместить</button>
-            <button type="button" onClick={() => onCopy?.(node)}>Копировать</button>
-            <button type="button" onClick={() => onEdit?.(node)}>Изменить</button>
-            <button type="button" onClick={() => onArchive?.(node)}>Архив</button>
-            <button type="button" className="danger" onClick={() => onDelete?.(node)}>Удалить</button>
+            <button type="button" className="swipeActionButton" onClick={() => onEdit?.(node)}><SwipeActionIcon name="edit" /><span>Изменить</span></button>
+            <button type="button" className="swipeActionButton" onClick={() => onArchive?.(node)}><SwipeActionIcon name="archive" /><span>Архив</span></button>
+            <button type="button" className="swipeActionButton danger" onClick={() => onDelete?.(node)}><SwipeActionIcon name="delete" /><span>Удалить</span></button>
           </div>
         </div>
       </div>
@@ -197,43 +229,83 @@ export function AccountTree({
   renderAfterNode,
   resolveNodeAmount,
   onMoveAccount,
-  onCopy,
   onEdit,
   onArchive,
   onDelete,
   className = '',
 }) {
-  const [moveNode, setMoveNode] = useState(null)
+  const dragRef = useRef({ sourceId: null, targetId: null, currentParentId: null, blocked: new Set() })
+  const [draggingId, setDraggingId] = useState(null)
+  const [dropTargetId, setDropTargetId] = useState(null)
 
-  const renderNodes = (nodes, depth = 0) => nodes.map((node) => (
-    <TreeRow
-      key={accountId(node.account)}
-      node={node}
-      depth={depth}
-      expanded={expanded}
-      baseCurrency={baseCurrency}
-      privacy={privacy}
-      money={money}
-      selectedIds={selectedIds}
-      onToggleParent={onToggleParent}
-      onToggleSelection={onToggleSelection}
-      onNodeBody={onNodeBody}
-      isNodeBodyInteractive={isNodeBodyInteractive}
-      renderAfterNode={renderAfterNode}
-      resolveNodeAmount={resolveNodeAmount}
-      onMoveRequest={onMoveAccount ? setMoveNode : null}
-      onCopy={onCopy}
-      onEdit={onEdit}
-      onArchive={onArchive}
-      onDelete={onDelete}
-      renderChildren={renderNodes}
-    />
-  ))
+  const beginDrag = (node) => {
+    const sourceId = accountId(node.account)
+    dragRef.current = {
+      sourceId,
+      targetId: null,
+      currentParentId: accountParentId(node.account) == null ? null : String(accountParentId(node.account)),
+      blocked: new Set(subtreeIds(node)),
+    }
+    setDraggingId(sourceId)
+    setDropTargetId(null)
+  }
 
-  return (
-    <>
-      <div className={`accountTree ${className}`.trim()}>{renderNodes(hierarchy)}</div>
-      {moveNode && onMoveAccount && <MoveAccountSheet node={moveNode} hierarchy={hierarchy} onMoveAccount={onMoveAccount} onClose={() => setMoveNode(null)} />}
-    </>
-  )
+  const moveDrag = (x, y) => {
+    if (!dragRef.current.sourceId) return
+    const element = document.elementFromPoint(x, y)
+    const candidate = element?.closest?.('[data-account-id]')
+    const candidateId = candidate?.dataset?.accountId || null
+    const valid = candidateId && !dragRef.current.blocked.has(String(candidateId))
+      ? String(candidateId)
+      : null
+    if (dragRef.current.targetId !== valid) {
+      dragRef.current.targetId = valid
+      setDropTargetId(valid)
+      if (valid) window.Telegram?.WebApp?.HapticFeedback?.selectionChanged?.()
+    }
+  }
+
+  const endDrag = async (cancelled = false) => {
+    const { sourceId, targetId, currentParentId } = dragRef.current
+    dragRef.current = { sourceId: null, targetId: null, currentParentId: null, blocked: new Set() }
+    setDraggingId(null)
+    setDropTargetId(null)
+    if (cancelled || !sourceId || !targetId || targetId === currentParentId) return
+    window.Telegram?.WebApp?.HapticFeedback?.impactOccurred?.('medium')
+    await onMoveAccount?.(sourceId, targetId)
+  }
+
+  const renderNodes = (nodes, depth = 0) => nodes.map((node) => {
+    const id = accountId(node.account)
+    return (
+      <TreeRow
+        key={id}
+        node={node}
+        depth={depth}
+        expanded={expanded}
+        baseCurrency={baseCurrency}
+        privacy={privacy}
+        money={money}
+        selectedIds={selectedIds}
+        onToggleParent={onToggleParent}
+        onToggleSelection={onToggleSelection}
+        onNodeBody={onNodeBody}
+        isNodeBodyInteractive={isNodeBodyInteractive}
+        renderAfterNode={renderAfterNode}
+        resolveNodeAmount={resolveNodeAmount}
+        onEdit={onEdit}
+        onArchive={onArchive}
+        onDelete={onDelete}
+        renderChildren={renderNodes}
+        dragEnabled={Boolean(onMoveAccount)}
+        dragging={draggingId === id}
+        dropTarget={dropTargetId === id}
+        onLongPressStart={beginDrag}
+        onLongPressMove={moveDrag}
+        onLongPressEnd={endDrag}
+      />
+    )
+  })
+
+  return <div className={`accountTree ${className}`.trim()}>{renderNodes(hierarchy)}</div>
 }
