@@ -31,7 +31,7 @@ require(
 )
 require(
     "legacy_parent_history_moves_to_same_currency_leaf",
-    "upper(child.currency_code) = v_parent.currency_code" in migration
+    "upper(child.currency_code) = v_parent.currency_upper" in migration
     and "not moneytrack.ux022_account_has_active_children_v1(child.user_id, child.id)" in migration
     and "set account_id = v_target_id" in migration
     and "set from_account_id = v_target_id" in migration
@@ -39,16 +39,20 @@ require(
 )
 require(
     "legacy_target_deterministic_when_multiple",
-    "order by child.sort_order nulls last, child.id" in migration
-    and "limit 1" in migration
-    and "ACCOUNT_GROUPING_MIGRATION_TARGET_AMBIGUOUS" not in migration,
+    "order by coalesce(child.sort_order, 2147483647), child.id" in migration
+    and "limit 1" in migration,
 )
 require(
     "legacy_target_skips_financial_conflicts",
-    "ACCOUNT_GROUPING_MIGRATION_SAFE_TARGET_MISSING" in migration
-    and "tr.from_account_id = v_parent.id and tr.to_account_id = child.id" in migration
-    and "src.transaction_type = 'openingbalance'" in migration
-    and "dst.transaction_type = 'openingbalance'" in migration,
+    "tr.from_account_id = v_parent.id and tr.to_account_id = child.id" in migration
+    and "t.transaction_type = 'openingbalance'" in migration,
+)
+require(
+    "legacy_fallback_child_when_no_safe_target",
+    "if v_target_id is null then" in migration
+    and "ux022_grouping_created_account_migration_backup" in migration
+    and "'r3_legacy_parent_' || v_parent.id::text" in migration
+    and "v_parent.name || ' — операции'" in migration,
 )
 require(
     "legacy_move_is_journaled",
@@ -59,11 +63,25 @@ require(
     and "original_to_account_id" in migration,
 )
 require(
+    "default_references_follow_operational_child",
+    "ux022_grouping_user_default_migration_backup" in migration
+    and "ux022_grouping_user_settings_migration_backup" in migration
+    and "update moneytrack.user_default_accounts" in migration
+    and "ACCOUNT_GROUPING_DEFAULT_REFERENCE_REMAINS" in migration,
+)
+require(
     "legacy_move_is_rollbackable",
     "ux022_grouping_transaction_migration_backup" in rollback
     and "set account_id = b.original_account_id" in rollback
     and "set from_account_id = b.original_from_account_id" in rollback
-    and "to_account_id = b.original_to_account_id" in rollback,
+    and "to_account_id = b.original_to_account_id" in rollback
+    and "ux022_grouping_created_account_migration_backup" in rollback
+    and "UX022R3_ROLLBACK_FALLBACK_ACCOUNT_HAS_NEW_REFERENCES" in rollback,
+)
+require(
+    "default_reference_move_is_rollbackable",
+    "ux022_grouping_user_default_migration_backup" in rollback
+    and "ux022_grouping_user_settings_migration_backup" in rollback,
 )
 require(
     "rollback_only_runtime_verification",
@@ -77,6 +95,11 @@ require(
     "ux022_account_has_direct_operations_v1" in migration
     and "ux022_accounts_parent_group_guard" in migration
     and "ACCOUNT_PARENT_HAS_OPERATIONS" in migration,
+)
+require(
+    "default_parent_forbidden_db",
+    "ACCOUNT_PARENT_IS_DEFAULT" in migration
+    and "ux022_account_is_default_v1(new.user_id, new.parent_id)" in migration,
 )
 require(
     "restore_child_rechecks_parent_invariant",
