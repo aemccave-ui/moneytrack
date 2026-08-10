@@ -38,15 +38,17 @@ require(
     and "set to_account_id = v_target_id" in migration,
 )
 require(
-    "legacy_target_is_unambiguous",
-    "ACCOUNT_GROUPING_MIGRATION_TARGET_MISSING" in migration
-    and "ACCOUNT_GROUPING_MIGRATION_TARGET_AMBIGUOUS" in migration
-    and "v_target_count > 1" in migration,
+    "legacy_target_deterministic_when_multiple",
+    "order by child.sort_order nulls last, child.id" in migration
+    and "limit 1" in migration
+    and "ACCOUNT_GROUPING_MIGRATION_TARGET_AMBIGUOUS" not in migration,
 )
 require(
-    "legacy_financial_conflicts_fail_closed",
-    "ACCOUNT_GROUPING_MIGRATION_WOULD_COLLAPSE_TRANSFER" in migration
-    and "ACCOUNT_GROUPING_MIGRATION_OPENING_BALANCE_CONFLICT" in migration,
+    "legacy_target_skips_financial_conflicts",
+    "ACCOUNT_GROUPING_MIGRATION_SAFE_TARGET_MISSING" in migration
+    and "tr.from_account_id = v_parent.id and tr.to_account_id = child.id" in migration
+    and "src.transaction_type = 'openingbalance'" in migration
+    and "dst.transaction_type = 'openingbalance'" in migration,
 )
 require(
     "legacy_move_is_journaled",
