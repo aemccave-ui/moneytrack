@@ -8,8 +8,8 @@ import './currency-layout.css'
 import './account-distribution.css'
 import './recent-operations.css'
 import './accounts-explorer.css'
-import './ux022r2-native.css'
 import './currency-summary.js'
+import './ux022r2-native.css'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
