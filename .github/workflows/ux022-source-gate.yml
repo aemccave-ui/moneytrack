@@ -1,9 +1,9 @@
 name: UX-022 Source Gate
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/ux-022-accounts-explorer
+      - main
     paths:
       - '.github/workflows/ux022-source-gate.yml'
       - 'miniapp/**'
