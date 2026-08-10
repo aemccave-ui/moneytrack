@@ -29,11 +29,24 @@ PREVIEW_MUTATED=0
   exit 1
 }
 
+for command_name in docker psql pg_dump curl rsync tar sha256sum python3 npm; do
+  command -v "$command_name" >/dev/null 2>&1 || {
+    echo "runtime_preflight=FAIL missing_command=$command_name" >&2
+    exit 1
+  }
+done
+
+docker inspect "$N8N_CONTAINER" >/dev/null 2>&1 || {
+  echo "runtime_preflight=FAIL n8n_container=$N8N_CONTAINER" >&2
+  exit 1
+}
+
 echo '# Phase'
 echo 'UX-022 preview delivery'
 echo '# Gate'
 echo 'source -> migration -> backup -> api -> smoke -> preview'
 echo 'preview_target_guard=PASS'
+echo 'runtime_preflight=PASS'
 
 cleanup_tmp() {
   rm -rf "$CANDIDATE_DIR" "$MIGRATION_FILE"
@@ -111,17 +124,11 @@ test -s "$BACKUP_DIR/preview.tgz"
 printf '%s\n' "$STAMP" > "$BACKUP_DIR/rollback-point.txt"
 echo "runtime_backup=PASS path=$BACKUP_DIR"
 
-# Prepare one atomic migration stream. Stored BEGIN/COMMIT markers are removed so
-# UX-022 schema changes commit together or not at all.
+# Prepare the persistent migration from the exact same rendered body that the
+# rollback-only migration gate validated. This prevents validate/apply drift.
 {
   echo 'begin;'
-  for file in \
-    "$ROOT/db/domain/UX-022/010_filter_presets.sql" \
-    "$ROOT/db/domain/UX-022/020_account_lifecycle.sql" \
-    "$ROOT/db/domain/UX-022/025_account_lifecycle_hardening.sql" \
-    "$ROOT/db/domain/UX-022/030_accounts_explorer_read_models.sql"; do
-    sed -E '/^[[:space:]]*(begin|commit);[[:space:]]*$/Id' "$file"
-  done
+  "$ROOT/scripts/ux022-render-migration.sh"
   echo 'commit;'
 } > "$MIGRATION_FILE"
 
