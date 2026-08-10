@@ -28,9 +28,11 @@ python3 -m py_compile \
   scripts/ux022-generate-api-workflows.py \
   scripts/ux022-merge-lifecycle-into-presets.py \
   scripts/ux022-runtime-smoke.py \
-  scripts/ux022-verify-source.py
+  scripts/ux022-verify-source.py \
+  scripts/ux022r2-verify-native.py
 
 python3 scripts/ux022-verify-source.py
+python3 scripts/ux022r2-verify-native.py
 
 cd miniapp
 npm ci
@@ -54,3 +56,4 @@ fi
 echo "build_artifact=$artifact"
 echo "build_artifact_sha256=$sha"
 echo 'source_static_lint_build=PASS'
+echo 'source_static_scope=NOT_RUNTIME_ACCEPTANCE'
