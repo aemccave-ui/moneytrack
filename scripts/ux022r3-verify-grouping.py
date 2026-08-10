@@ -28,10 +28,49 @@ require(
     and "MUST NOT have direct transactions/transfers" in contract,
 )
 require(
+    "legacy_parent_history_moves_to_same_currency_leaf",
+    "upper(child.currency_code) = v_parent.currency_code" in migration
+    and "not moneytrack.ux022_account_has_active_children_v1(child.user_id, child.id)" in migration
+    and "set account_id = v_target_id" in migration
+    and "set from_account_id = v_target_id" in migration
+    and "set to_account_id = v_target_id" in migration,
+)
+require(
+    "legacy_target_is_unambiguous",
+    "ACCOUNT_GROUPING_MIGRATION_TARGET_MISSING" in migration
+    and "ACCOUNT_GROUPING_MIGRATION_TARGET_AMBIGUOUS" in migration
+    and "v_target_count > 1" in migration,
+)
+require(
+    "legacy_financial_conflicts_fail_closed",
+    "ACCOUNT_GROUPING_MIGRATION_WOULD_COLLAPSE_TRANSFER" in migration
+    and "ACCOUNT_GROUPING_MIGRATION_OPENING_BALANCE_CONFLICT" in migration,
+)
+require(
+    "legacy_move_is_journaled",
+    "ux022_grouping_transaction_migration_backup" in migration
+    and "ux022_grouping_transfer_migration_backup" in migration
+    and "original_account_id" in migration
+    and "original_from_account_id" in migration
+    and "original_to_account_id" in migration,
+)
+require(
+    "legacy_move_is_rollbackable",
+    "ux022_grouping_transaction_migration_backup" in rollback
+    and "set account_id = b.original_account_id" in rollback
+    and "set from_account_id = b.original_from_account_id" in rollback
+    and "to_account_id = b.original_to_account_id" in rollback,
+)
+require(
     "parent_with_operations_forbidden_db",
     "ux022_account_has_direct_operations_v1" in migration
     and "ux022_accounts_parent_group_guard" in migration
     and "ACCOUNT_PARENT_HAS_OPERATIONS" in migration,
+)
+require(
+    "restore_child_rechecks_parent_invariant",
+    "update of parent_id, is_active" in migration
+    and "not coalesce(new.is_active, true)" in migration,
 )
 require(
     "group_posting_forbidden_transactions",
@@ -43,11 +82,6 @@ require(
     "group_posting_forbidden_transfers",
     "ux022_transfers_group_posting_guard" in migration
     and "ux022_guard_transfer_postable_accounts_v1" in migration,
-)
-require(
-    "legacy_violation_fail_closed",
-    "ACCOUNT_GROUPING_LEGACY_VIOLATION" in migration
-    and "ux022_account_has_active_children_v1" in migration,
 )
 require(
     "grouping_migration_rendered",
