@@ -55,11 +55,12 @@ R3 changes account-domain semantics only. It MUST NOT regress established fronte
 Canonical R3 frontend behavior:
 
 - Home renders in natural DOM order; CSS `order` MUST NOT move `Последние операции` above the balance header.
-- Home and Accounts operation rows use compact browser-native horizontal overflow for swipe actions; action buttons are `Повторить`, `Изменить`, `Удалить` and each has an icon.
-- Telegram vertical-swipe interception is disabled where supported so the embedded WebView is less likely to steal horizontal row gestures.
-- Account row swipe actions are exactly `Изменить`, `Архив`, `Удалить`; each has an icon.
-- Account move has no `⋯`, no move button and no move sheet. Move starts by long press on the account row, gives haptic + visual wiggle/lift feedback, then tracks the finger and highlights the current drop target.
-- Dropping on the source account or its descendants is forbidden; frontend cycle validation and the database/domain guards remain authoritative.
+- Operation rows use compact horizontal swipe actions with icons.
+- Account rows expose exactly `Изменить / Архив / Удалить`; icons and labels are laid out horizontally.
+- Any open operation/account swipe closes after 2 seconds and closes immediately when another swipe opens anywhere in the MiniApp view.
+- Account move has no `⋯` shortcut or Move sheet: long press activates haptic/wiggle, then the whole account card follows the finger; valid drop targets are highlighted.
+- The drag source/subtree cannot be used as its own target; final move still goes through the canonical `moveAccount` API/domain path.
+- An account excluded from the current selection remains visible but its card is visually muted; the old `Счёт исключён из текущей выборки` status text is not shown.
 - Hidden absolute action layers that create ghost vertical lines on account cards are forbidden.
 - Accounts uses the same global FAB pattern as Home with one `Счёт` action and the reliable account-create sheet.
 - Home/Accounts switching uses keyed screen containers and does not use `window.scrollTo` recovery hacks.
@@ -67,7 +68,7 @@ Canonical R3 frontend behavior:
 
 ## Runtime state
 
-The R3 database migration is already persistently applied and verified. Frontend interaction refinements are preview-only and MUST NOT reapply or roll back the R3 database migration.
+The R3 database migration is already persistently applied and verified. Frontend refinements after that migration are preview-only and MUST NOT reapply or rollback the R3 database migration.
 
 ## Split-account workflow
 
@@ -75,7 +76,7 @@ If an existing operational account must be split into several accounts:
 
 1. Create a new empty grouping account.
 2. Rename the existing operational account to the desired leaf name.
-3. Move the existing operational account under the new grouping account with long press + drag.
+3. Move the existing operational account under the new grouping account.
 4. Create/move additional leaf accounts under the grouping account.
 
 Normal hierarchy changes never silently move or rewrite transaction history. The only automatic history move is the explicit one-time UX-022R3 legacy normalization described above.
