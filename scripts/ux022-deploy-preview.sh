@@ -122,7 +122,7 @@ trap rollback ERR
 trap cleanup_tmp EXIT
 
 # 1-4. Source/static/lint/build. No runtime mutation before these pass.
-"$ROOT/scripts/ux022-source-gate.sh"
+bash "$ROOT/scripts/ux022-source-gate.sh"
 
 # Generate adapters before touching runtime.
 python3 "$ROOT/scripts/ux022-generate-api-workflows.py" --out-dir "$CANDIDATE_DIR"
@@ -132,7 +132,7 @@ python3 "$ROOT/scripts/ux022-merge-lifecycle-into-presets.py" \
   --output "$CANDIDATE_DIR/ux022-presets-lifecycle.candidate.json"
 
 # 5. Migration validation is rollback-only against the real schema.
-"$ROOT/scripts/ux022-migration-gate.sh"
+bash "$ROOT/scripts/ux022-migration-gate.sh"
 
 # 6. Runtime backup / rollback point. Each n8n workflow gets both its published
 # runtime version (used by automatic rollback) and its current draft (preserved for
@@ -153,7 +153,7 @@ echo "runtime_backup=PASS path=$BACKUP_DIR"
 # rollback-only migration gate validated. This prevents validate/apply drift.
 {
   echo 'begin;'
-  "$ROOT/scripts/ux022-render-migration.sh"
+  bash "$ROOT/scripts/ux022-render-migration.sh"
   echo 'commit;'
 } > "$MIGRATION_FILE"
 
