@@ -1,0 +1,148 @@
+/* UX-022R2: browser-native interaction layer. No custom touch/pointer gesture recognition. */
+
+html,
+body,
+#root {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body {
+  min-height: 0;
+}
+
+.app {
+  height: 100dvh;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Each screen is keyed in App.jsx. A newly mounted Home/Accounts viewport therefore starts at scrollTop=0. */
+
+.transactionCard {
+  overflow: hidden;
+}
+
+.transactionSwipeShell {
+  position: relative;
+  overflow-x: auto !important;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  touch-action: pan-x pan-y;
+}
+
+.transactionSwipeShell::-webkit-scrollbar,
+.accountSwipeShell::-webkit-scrollbar {
+  display: none;
+}
+
+.transactionSwipeTrack {
+  display: grid;
+  grid-template-columns: calc(100% - 176px) 176px;
+  width: calc(100% + 176px);
+  min-width: calc(100% + 176px);
+}
+
+.transactionRow {
+  width: 100%;
+  transform: none !important;
+  transition: none !important;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.transactionSwipeActions {
+  position: static !important;
+  inset: auto !important;
+  width: auto !important;
+  min-width: 176px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transform: none !important;
+  scroll-snap-align: end;
+  scroll-snap-stop: always;
+}
+
+.accountSwipeShell {
+  position: relative;
+  overflow-x: auto !important;
+  overflow-y: hidden;
+  border-radius: 17px;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  touch-action: pan-x pan-y;
+}
+
+.accountSwipeTrack {
+  display: grid;
+  grid-template-columns: calc(100% - 260px) 260px;
+  width: calc(100% + 260px);
+  min-width: calc(100% + 260px);
+}
+
+.accountTreeRow {
+  width: 100%;
+  transform: none !important;
+  transition: none !important;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.accountSwipeActions {
+  position: static !important;
+  inset: auto !important;
+  width: auto !important;
+  min-width: 260px;
+  display: grid;
+  grid-template-columns: repeat(5, 52px);
+  align-items: stretch;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transform: none !important;
+  background: #eff5f3;
+  scroll-snap-align: end;
+  scroll-snap-stop: always;
+}
+
+.accountSwipeActions button {
+  min-width: 0;
+  padding: 0 4px;
+  border: 0;
+  border-left: 1px solid rgba(29,85,89,.06);
+  background: transparent;
+  color: #3f605e;
+  font-size: 9px;
+  writing-mode: horizontal-tb;
+  transform: none;
+}
+
+.accountSwipeActions button.danger {
+  color: #a4434d;
+  background: #fff0f1;
+}
+
+.accountRootDropZone {
+  display: none !important;
+}
+
+/* Accounts uses exactly the same global FAB as Home. */
+.accountsPlusButton {
+  display: none !important;
+}
+
+/* Parent details are rendered before children in AccountTree.jsx. */
+.explorerAccountOperations {
+  position: relative;
+  z-index: 0;
+}
