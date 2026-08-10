@@ -9,6 +9,12 @@ const operationTypeLabel = (type) => ({
   transfer: 'Перевод',
 }[type] || type || 'Операция')
 
+function SwipeActionIcon({ name }) {
+  if (name === 'repeat') return <svg className="swipeActionIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6.1 9a7 7 0 0 1 11.7-2L20 9M4 15l2.2 2a7 7 0 0 0 11.7-2" /></svg>
+  if (name === 'edit') return <svg className="swipeActionIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l11-11-4-4L4 16v4ZM13.5 6.5l4 4" /></svg>
+  return <svg className="swipeActionIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4h6v3M8 10v7M12 10v7M16 10v7M6 7l1 13h10l1-13" /></svg>
+}
+
 function confirmAction(message) {
   if (window.Telegram?.WebApp?.showConfirm) {
     return new Promise((resolve) => window.Telegram.WebApp.showConfirm(message, resolve))
@@ -70,9 +76,9 @@ function TransactionRow({
             <strong className={`transactionAmount ${positive ? 'income' : 'expense'} sensitive`}>{privacy ? '••••' : money(amount, amountCurrency)}</strong>
           </button>
           <div className="transactionSwipeActions">
-            <button type="button" disabled={transfer} onClick={() => showInfo('Повтор операции будет подключён отдельным write-contract.')}>Повторить</button>
-            <button type="button" disabled={transfer} onClick={() => showInfo('Редактирование операции будет подключено отдельным write-contract.')}>Изменить</button>
-            <button type="button" className="danger" disabled={transfer} onClick={remove}>Удалить</button>
+            <button type="button" className="swipeActionButton" disabled={transfer} onClick={() => showInfo('Повтор операции будет подключён отдельным write-contract.')}><SwipeActionIcon name="repeat" /><span>Повторить</span></button>
+            <button type="button" className="swipeActionButton" disabled={transfer} onClick={() => showInfo('Редактирование операции будет подключено отдельным write-contract.')}><SwipeActionIcon name="edit" /><span>Изменить</span></button>
+            <button type="button" className="swipeActionButton danger" disabled={transfer} onClick={remove}><SwipeActionIcon name="delete" /><span>Удалить</span></button>
           </div>
         </div>
       </div>
