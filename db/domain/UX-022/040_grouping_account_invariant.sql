@@ -66,6 +66,24 @@ create table if not exists moneytrack.ux022_grouping_created_account_migration_b
     created_at timestamptz not null default now()
 );
 
+create table if not exists moneytrack.ux022_grouping_user_default_migration_backup (
+    user_id bigint not null,
+    currency_code text not null,
+    original_account_id bigint not null,
+    target_account_id bigint not null,
+    migrated_at timestamptz not null default now(),
+    primary key (user_id, currency_code)
+);
+
+create table if not exists moneytrack.ux022_grouping_user_settings_migration_backup (
+    user_id bigint not null,
+    column_name text not null,
+    original_account_id bigint not null,
+    target_account_id bigint not null,
+    migrated_at timestamptz not null default now(),
+    primary key (user_id, column_name)
+);
+
 -- One-time legacy normalization.
 -- Prefer an existing safe same-currency leaf child. When none is safe, create a
 -- dedicated same-currency leaf under the parent and move the parent's history there.
@@ -73,7 +91,8 @@ do $block$
 declare
     v_parent record;
     v_target_id bigint;
-    v_target_sort integer;
+    v_target_sort bigint;
+    v_col record;
 begin
     for v_parent in
         select
@@ -165,6 +184,64 @@ begin
             on conflict (account_id) do nothing;
         end if;
 
+        -- Preserve and redirect canonical per-currency defaults.
+        if to_regclass('moneytrack.user_default_accounts') is not null then
+            insert into moneytrack.ux022_grouping_user_default_migration_backup(
+                user_id, currency_code, original_account_id, target_account_id
+            )
+            select d.user_id, d.currency_code, d.account_id, v_target_id
+            from moneytrack.user_default_accounts d
+            where d.user_id = v_parent.user_id
+              and d.account_id = v_parent.id
+            on conflict (user_id, currency_code) do nothing;
+
+            update moneytrack.user_default_accounts d
+               set account_id = v_target_id
+             where d.user_id = v_parent.user_id
+               and d.account_id = v_parent.id;
+        end if;
+
+        -- user_settings may evolve with additional account-looking columns.
+        -- Migrate all numeric account references schema-tolerantly and journal each field.
+        for v_col in
+            select
+                a.attname as column_name,
+                format_type(a.atttypid, a.atttypmod) as type_name
+            from pg_attribute a
+            join pg_class c on c.oid = a.attrelid
+            join pg_namespace n on n.oid = c.relnamespace
+            where n.nspname = 'moneytrack'
+              and c.relname = 'user_settings'
+              and a.attnum > 0
+              and not a.attisdropped
+              and (
+                    a.attname = 'setdefaultaccount'
+                 or a.attname like '%account_id%'
+                 or lower(a.attname) like '%accountid%'
+              )
+            order by a.attnum
+        loop
+            execute format(
+                'insert into moneytrack.ux022_grouping_user_settings_migration_backup(user_id,column_name,original_account_id,target_account_id) '
+                || 'select user_id,%L,(%I)::text::bigint,$1 from moneytrack.user_settings '
+                || 'where user_id=$2 and (%I)::text=$3 '
+                || 'on conflict (user_id,column_name) do nothing',
+                v_col.column_name,
+                v_col.column_name,
+                v_col.column_name
+            )
+            using v_target_id, v_parent.user_id, v_parent.id::text;
+
+            execute format(
+                'update moneytrack.user_settings set %I = ($1::text)::%s '
+                || 'where user_id=$2 and (%I)::text=$3',
+                v_col.column_name,
+                v_col.type_name,
+                v_col.column_name
+            )
+            using v_target_id, v_parent.user_id, v_parent.id::text;
+        end loop;
+
         insert into moneytrack.ux022_grouping_transaction_migration_backup(
             transaction_id, user_id, original_account_id, target_account_id
         )
@@ -203,7 +280,8 @@ begin
 end;
 $block$;
 
--- After normalization there must be no active grouping account with direct history.
+-- After normalization there must be no active grouping account with direct history
+-- or default-account references.
 do $block$
 declare
     v_count bigint;
@@ -217,6 +295,18 @@ begin
 
     if v_count > 0 then
         raise exception 'ACCOUNT_GROUPING_LEGACY_VIOLATION: % parent account(s) still have direct operations', v_count
+            using errcode = '23514';
+    end if;
+
+    select count(*)
+      into v_count
+      from moneytrack.accounts a
+     where coalesce(a.is_active, true) = true
+       and moneytrack.ux022_account_has_active_children_v1(a.user_id, a.id)
+       and moneytrack.ux022_account_is_default_v1(a.user_id, a.id);
+
+    if v_count > 0 then
+        raise exception 'ACCOUNT_GROUPING_DEFAULT_REFERENCE_REMAINS: % grouping account(s)', v_count
             using errcode = '23514';
     end if;
 end;
@@ -246,6 +336,10 @@ begin
 
     if moneytrack.ux022_account_has_direct_operations_v1(new.user_id, new.parent_id) then
         raise exception 'ACCOUNT_PARENT_HAS_OPERATIONS' using errcode = '23514';
+    end if;
+
+    if moneytrack.ux022_account_is_default_v1(new.user_id, new.parent_id) then
+        raise exception 'ACCOUNT_PARENT_IS_DEFAULT' using errcode = '23514';
     end if;
 
     return new;
