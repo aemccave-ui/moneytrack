@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { announceSwipeOpen, nextSwipeScope, SWIPE_OPEN_EVENT } from './swipe-coordinator.js'
 
 const accountId = (account) => String(account.id ?? account.account_id)
 const accountParentId = (account) => account.parent_account_id
@@ -47,7 +48,11 @@ function TreeRow({
   renderChildren,
   dragEnabled,
   dragging,
+  dragOffset,
   dropTarget,
+  swipeOpen,
+  onSwipeOpen,
+  onSwipeClose,
   onLongPressStart,
   onLongPressMove,
   onLongPressEnd,
@@ -56,6 +61,7 @@ function TreeRow({
   const hasChildren = node.children.length > 0
   const isExpanded = expanded.has(id)
   const state = selectionState(node, selectedIds)
+  const selectionExcluded = Boolean(selectedIds && state === 'none')
   const accountCurrency = String(node.account.currency_code || baseCurrency).toUpperCase()
   const bodyInteractive = !hasChildren && (isNodeBodyInteractive
     ? Boolean(isNodeBodyInteractive(node, { id, hasChildren, isExpanded, selectionState: state }))
@@ -69,7 +75,14 @@ function TreeRow({
     : defaultAmount
 
   const rowRef = useRef(null)
+  const shellRef = useRef(null)
   const gesture = useRef({ timer: null, startX: 0, startY: 0, dragging: false, suppressClick: false })
+
+  useEffect(() => {
+    if (swipeOpen || dragging) return
+    const shell = shellRef.current
+    if (shell && shell.scrollLeft > 0) shell.scrollTo({ left: 0, behavior: 'smooth' })
+  }, [dragging, swipeOpen])
 
   useEffect(() => {
     const row = rowRef.current
@@ -83,6 +96,7 @@ function TreeRow({
     const touchStart = (event) => {
       if (event.touches.length !== 1) return
       if (event.target.closest('.accountSelectionControl, .accountDisclosureControl')) return
+      if ((shellRef.current?.scrollLeft || 0) > 4) return
       const touch = event.touches[0]
       clearTimer()
       gesture.current.startX = touch.clientX
@@ -91,9 +105,9 @@ function TreeRow({
       gesture.current.timer = window.setTimeout(() => {
         gesture.current.dragging = true
         gesture.current.suppressClick = true
-        row.closest('.accountSwipeShell')?.scrollTo({ left: 0, behavior: 'auto' })
+        shellRef.current?.scrollTo({ left: 0, behavior: 'auto' })
         window.Telegram?.WebApp?.HapticFeedback?.impactOccurred?.('light')
-        onLongPressStart?.(node)
+        onLongPressStart?.(node, gesture.current.startX, gesture.current.startY)
       }, 480)
     }
 
@@ -171,13 +185,24 @@ function TreeRow({
 
   return (
     <div
-      className={`accountTreeNode ${details ? 'hasDetails' : ''} ${dragging ? 'isDragSource' : ''} ${dropTarget ? 'isDropTarget' : ''}`}
+      className={`accountTreeNode ${details ? 'hasDetails' : ''} ${dragging ? 'isDragSource' : ''} ${dropTarget ? 'isDropTarget' : ''} ${selectionExcluded ? 'isSelectionExcluded' : ''}`}
       style={{ '--account-depth': depth }}
       data-depth={depth}
       data-account-id={id}
       data-account-role={hasChildren ? 'group' : 'operational'}
     >
-      <div className="accountSwipeShell" aria-label="Смахните строку влево для действий; удерживайте для переноса">
+      <div
+        ref={shellRef}
+        className="accountSwipeShell"
+        aria-label="Смахните строку влево для действий; удерживайте для переноса"
+        onScroll={() => {
+          if (dragging) return
+          const left = shellRef.current?.scrollLeft || 0
+          if (left > 18 && !swipeOpen) onSwipeOpen?.()
+          else if (left < 4 && swipeOpen) onSwipeClose?.()
+        }}
+        style={dragging ? { transform: `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0) scale(1.012)` } : undefined}
+      >
         <div className="accountSwipeTrack">
           <div ref={rowRef} className={`hierarchyToggle accountTreeRow ${hasChildren ? 'hasChildren groupingAccountRow' : 'operationalAccountRow'}`}>
             {selectionControl}
@@ -194,7 +219,7 @@ function TreeRow({
             ) : !selectionControl ? <span className="hierarchyChevron accountLeafMarker" aria-hidden="true">•</span> : null}
             {bodyInteractive ? (
               <button type="button" className="homeAccountOpenTarget" onClick={(event) => {
-                if (gesture.current.suppressClick) {
+                if (gesture.current.suppressClick || (shellRef.current?.scrollLeft || 0) > 4) {
                   event.preventDefault()
                   return
                 }
@@ -234,30 +259,59 @@ export function AccountTree({
   onDelete,
   className = '',
 }) {
-  const dragRef = useRef({ sourceId: null, targetId: null, currentParentId: null, blocked: new Set() })
+  const dragRef = useRef({ sourceId: null, targetId: null, currentParentId: null, blocked: new Set(), startX: 0, startY: 0 })
   const [draggingId, setDraggingId] = useState(null)
   const [dropTargetId, setDropTargetId] = useState(null)
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const [openSwipeId, setOpenSwipeId] = useState(null)
+  const [swipeScope] = useState(() => nextSwipeScope('accounts'))
 
-  const beginDrag = (node) => {
+  useEffect(() => {
+    if (openSwipeId == null) return undefined
+    const timer = window.setTimeout(() => setOpenSwipeId(null), 2000)
+    return () => window.clearTimeout(timer)
+  }, [openSwipeId])
+
+  useEffect(() => {
+    const onExternalSwipe = (event) => {
+      if (openSwipeId == null) return
+      const ownKey = `${swipeScope}:${openSwipeId}`
+      if (event.detail?.key !== ownKey) setOpenSwipeId(null)
+    }
+    window.addEventListener(SWIPE_OPEN_EVENT, onExternalSwipe)
+    return () => window.removeEventListener(SWIPE_OPEN_EVENT, onExternalSwipe)
+  }, [openSwipeId, swipeScope])
+
+  const openSwipe = (id) => {
+    setOpenSwipeId(id)
+    announceSwipeOpen(`${swipeScope}:${id}`)
+  }
+
+  const beginDrag = (node, startX, startY) => {
     const sourceId = accountId(node.account)
     dragRef.current = {
       sourceId,
       targetId: null,
       currentParentId: accountParentId(node.account) == null ? null : String(accountParentId(node.account)),
       blocked: new Set(subtreeIds(node)),
+      startX,
+      startY,
     }
+    setOpenSwipeId(null)
+    announceSwipeOpen(`${swipeScope}:drag:${sourceId}`)
     setDraggingId(sourceId)
     setDropTargetId(null)
+    setDragOffset({ x: 0, y: 0 })
   }
 
   const moveDrag = (x, y) => {
     if (!dragRef.current.sourceId) return
-    const element = document.elementFromPoint(x, y)
-    const candidate = element?.closest?.('[data-account-id]')
-    const candidateId = candidate?.dataset?.accountId || null
-    const valid = candidateId && !dragRef.current.blocked.has(String(candidateId))
-      ? String(candidateId)
-      : null
+    setDragOffset({ x: x - dragRef.current.startX, y: y - dragRef.current.startY })
+    const candidates = document.elementsFromPoint(x, y)
+      .map((element) => element.closest?.('[data-account-id]'))
+      .filter(Boolean)
+    const candidate = candidates.find((element) => !dragRef.current.blocked.has(String(element.dataset.accountId)))
+    const valid = candidate?.dataset?.accountId ? String(candidate.dataset.accountId) : null
     if (dragRef.current.targetId !== valid) {
       dragRef.current.targetId = valid
       setDropTargetId(valid)
@@ -267,9 +321,10 @@ export function AccountTree({
 
   const endDrag = async (cancelled = false) => {
     const { sourceId, targetId, currentParentId } = dragRef.current
-    dragRef.current = { sourceId: null, targetId: null, currentParentId: null, blocked: new Set() }
+    dragRef.current = { sourceId: null, targetId: null, currentParentId: null, blocked: new Set(), startX: 0, startY: 0 }
     setDraggingId(null)
     setDropTargetId(null)
+    setDragOffset({ x: 0, y: 0 })
     if (cancelled || !sourceId || !targetId || targetId === currentParentId) return
     window.Telegram?.WebApp?.HapticFeedback?.impactOccurred?.('medium')
     await onMoveAccount?.(sourceId, targetId)
@@ -299,7 +354,11 @@ export function AccountTree({
         renderChildren={renderNodes}
         dragEnabled={Boolean(onMoveAccount)}
         dragging={draggingId === id}
+        dragOffset={draggingId === id ? dragOffset : { x: 0, y: 0 }}
         dropTarget={dropTargetId === id}
+        swipeOpen={openSwipeId === id}
+        onSwipeOpen={() => openSwipe(id)}
+        onSwipeClose={() => setOpenSwipeId((current) => current === id ? null : current)}
         onLongPressStart={beginDrag}
         onLongPressMove={moveDrag}
         onLongPressEnd={endDrag}
