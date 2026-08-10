@@ -6,6 +6,8 @@ import './styles.css'
 import './polish.css'
 import './currency-layout.css'
 import './account-distribution.css'
+import './recent-operations.css'
+import './accounts-explorer.css'
 import './currency-summary.js'
 
 createRoot(document.getElementById('root')).render(
