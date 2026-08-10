@@ -14,7 +14,7 @@ trap 'rm -f "$tmp"' EXIT
 
 {
   echo 'begin;'
-  "$ROOT/scripts/ux022-render-migration.sh"
+  bash "$ROOT/scripts/ux022-render-migration.sh"
   for verify in "${verifiers[@]}"; do
     cat "$verify"
   done
