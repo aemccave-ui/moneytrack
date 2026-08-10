@@ -23,12 +23,23 @@ create_sheet = read("miniapp/src/AccountCreateSheet.jsx")
 
 require(
     "home_screen_scroll_reset",
-    "[activeScreen]" in app and "window.scrollTo({ top: 0, left: 0, behavior: 'auto' })" in app,
+    "function forceScrollTop()" in app
+    and "window.history.scrollRestoration = 'manual'" in app
+    and "document.scrollingElement.scrollTop = 0" in app
+    and "[activeScreen, dashboardReady]" in app
+    and "window.setTimeout(forceScrollTop, 260)" in app,
 )
 require(
-    "operation_swipe_pointer_capture",
+    "operation_swipe_pointer_fallback",
     "setPointerCapture?.(event.pointerId)" in recent
     and "transactionSwipeShell ${actionsOpen ? 'actionsOpen' : ''} ${dragX < 0 ? 'isSwiping' : ''}" in recent,
+)
+require(
+    "operation_swipe_touch_path",
+    "onTouchStart={touchStart}" in recent
+    and "onTouchMove={touchMove}" in recent
+    and "onTouchEnd={touchEnd}" in recent
+    and "event.pointerType === 'touch'" in recent,
 )
 require(
     "operation_swipe_touch_action",
@@ -43,15 +54,32 @@ require(
     and "opacity:0;pointer-events:none" in accounts_css,
 )
 require(
-    "account_swipe_pointer_capture",
+    "account_swipe_pointer_fallback",
     "setPointerCapture?.(event.pointerId)" in account_tree
     and "ACTION_REVEAL = 220" in account_tree,
+)
+require(
+    "account_swipe_touch_path",
+    "onTouchStart={touchStart}" in account_tree
+    and "onTouchMove={touchMove}" in account_tree
+    and "onTouchEnd={touchEnd}" in account_tree
+    and "event.pointerType === 'touch'" in account_tree,
+)
+require(
+    "account_drag_target_ref_safe",
+    "dragTarget: null" in account_tree
+    and "press.current.dragTarget = target" in account_tree
+    and "const target = press.current.dragTarget" in account_tree,
 )
 require(
     "account_move_explicit_sheet",
     "function MoveAccountSheet" in account_tree
     and ">Переместить</button>" in account_tree
     and "Без родителя / верхний уровень" in account_tree,
+)
+require(
+    "parent_operations_before_children",
+    account_tree.find("      {details}\n      {hasChildren && isExpanded") >= 0,
 )
 require(
     "accounts_plus_matches_global_fab",
