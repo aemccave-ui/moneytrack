@@ -20,8 +20,22 @@ recent = read("miniapp/src/RecentOperations.jsx")
 account_tree = read("miniapp/src/AccountTree.jsx")
 api = read("miniapp/src/api.js")
 css = read("miniapp/src/ux022r2-native.css")
+currency_layout = read("miniapp/src/currency-layout.css")
 create_sheet = read("miniapp/src/AccountCreateSheet.jsx")
 
+require(
+    "home_uses_dom_order_not_flex_order",
+    "display: block" in currency_layout
+    and "order:" not in currency_layout,
+)
+require(
+    "home_dom_sequence",
+    app.find('className="balanceHeader"')
+    < app.find("<BalanceHero")
+    < app.find("balanceBreakdownSection")
+    < app.find("accountsSection compactSectionStart")
+    < app.find("<RecentOperations"),
+)
 require(
     "no_custom_operation_gesture_engine",
     "onPointerDown=" not in recent
