@@ -23,7 +23,20 @@ require(
     'account_swipe_icons_horizontal',
     '.accountSwipeActions .swipeActionButton' in css
     and 'flex-direction: row;' in css
-    and 'writing-mode: horizontal-tb;' in css,
+    and 'writing-mode: horizontal-tb !important;' in css
+    and 'transform: none !important;' in css
+    and 'rotate: none !important;' in css,
+)
+
+require(
+    'operation_swipe_deterministic_settle',
+    'TRANSACTION_ACTIONS_WIDTH = 156' in recent
+    and 'TRANSACTION_OPEN_THRESHOLD = 34' in recent
+    and "addEventListener('touchend', settle" in recent
+    and "shell.scrollTo({ left: TRANSACTION_ACTIONS_WIDTH, behavior: 'smooth' })" in recent
+    and "shell.scrollTo({ left: 0, behavior: 'smooth' })" in recent
+    and 'scroll-snap-type: none !important;' in css
+    and 'onScroll={handleScroll}' not in recent,
 )
 
 require(
@@ -43,6 +56,16 @@ require(
     and 'translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0)' in tree
     and 'document.elementsFromPoint' in tree
     and 'isDropTarget' in tree,
+)
+
+require(
+    'account_drag_can_drop_to_root',
+    "ROOT_DROP_TARGET = '__root__'" in tree
+    and 'data-account-root-drop="true"' in tree
+    and "targetId === ROOT_DROP_TARGET ? null : targetId" in tree
+    and 'await onMoveAccount?.(sourceId, nextParentId)' in tree
+    and '.accountRootDropZone.isDragRootZone' in css
+    and 'В верхний уровень' in tree,
 )
 
 require(
