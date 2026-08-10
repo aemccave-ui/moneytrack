@@ -41,6 +41,18 @@ docker inspect "$N8N_CONTAINER" >/dev/null 2>&1 || {
   exit 1
 }
 
+# n8n import deactivates imported workflows by default. UX-022 therefore requires
+# a CLI generation that can export the actually published runtime version and can
+# publish the imported draft again before the controlled restart.
+if ! docker exec "$N8N_CONTAINER" n8n export:workflow --help 2>&1 | grep -Fq -- '--published'; then
+  echo 'runtime_preflight=FAIL n8n_export_published_unsupported' >&2
+  exit 1
+fi
+if ! docker exec "$N8N_CONTAINER" n8n publish:workflow --help >/dev/null 2>&1; then
+  echo 'runtime_preflight=FAIL n8n_publish_workflow_unsupported' >&2
+  exit 1
+fi
+
 echo '# Phase'
 echo 'UX-022 preview delivery'
 echo '# Gate'
@@ -54,11 +66,22 @@ cleanup_tmp() {
 
 export_workflow() {
   local id="$1"
-  local name="$2"
-  docker exec "$N8N_CONTAINER" rm -f "/tmp/$name"
-  docker exec "$N8N_CONTAINER" n8n export:workflow --id="$id" --output="/tmp/$name"
-  docker cp "$N8N_CONTAINER:/tmp/$name" "$BACKUP_DIR/$name" >/dev/null
-  test -s "$BACKUP_DIR/$name"
+  local published_name="$2"
+  local draft_name="${published_name%.json}.draft.json"
+
+  docker exec "$N8N_CONTAINER" rm -f "/tmp/$published_name" "/tmp/$draft_name"
+
+  # Runtime rollback must restore what is actually published, not a potentially
+  # different unpublished draft. Preserve the draft separately as recovery evidence.
+  docker exec "$N8N_CONTAINER" n8n export:workflow \
+    --id="$id" --published --output="/tmp/$published_name"
+  docker exec "$N8N_CONTAINER" n8n export:workflow \
+    --id="$id" --output="/tmp/$draft_name"
+
+  docker cp "$N8N_CONTAINER:/tmp/$published_name" "$BACKUP_DIR/$published_name" >/dev/null
+  docker cp "$N8N_CONTAINER:/tmp/$draft_name" "$BACKUP_DIR/$draft_name" >/dev/null
+  test -s "$BACKUP_DIR/$published_name"
+  test -s "$BACKUP_DIR/$draft_name"
 }
 
 import_publish() {
@@ -111,7 +134,9 @@ python3 "$ROOT/scripts/ux022-merge-lifecycle-into-presets.py" \
 # 5. Migration validation is rollback-only against the real schema.
 "$ROOT/scripts/ux022-migration-gate.sh"
 
-# 6. Runtime backup / rollback point.
+# 6. Runtime backup / rollback point. Each n8n workflow gets both its published
+# runtime version (used by automatic rollback) and its current draft (preserved for
+# manual recovery/audit if it differed from the published runtime).
 mkdir -p "$BACKUP_DIR"
 pg_dump "$DATABASE_URL" --schema=moneytrack --format=custom --file="$BACKUP_DIR/moneytrack.before.dump"
 test -s "$BACKUP_DIR/moneytrack.before.dump"
