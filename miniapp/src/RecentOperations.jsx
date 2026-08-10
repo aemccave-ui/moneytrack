@@ -50,10 +50,7 @@ function TransactionRow({
   const amount = positive ? Math.abs(rawAmount) : -Math.abs(rawAmount)
 
   useEffect(() => {
-    if (!actionsOpen) {
-      setDragX(0)
-      return undefined
-    }
+    if (!actionsOpen) return undefined
     const timer = window.setTimeout(onActionsClose, 2000)
     return () => window.clearTimeout(timer)
   }, [actionsOpen, onActionsClose])
@@ -71,7 +68,7 @@ function TransactionRow({
 
   const pointerUp = () => {
     if (dragX < -SWIPE_THRESHOLD) {
-      setDragX(-ACTION_REVEAL)
+      setDragX(0)
       onActionsOpen()
     } else {
       setDragX(0)
