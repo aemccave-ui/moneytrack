@@ -40,7 +40,7 @@ function TransactionRow({
   onActionsClose,
   onDeleted,
 }) {
-  const pointer = useRef({ startX: 0, startY: 0, dx: 0, pointerId: null, swiped: false })
+  const gesture = useRef({ startX: 0, startY: 0, dx: 0, pointerId: null, swiped: false })
   const [dragX, setDragX] = useState(0)
   const transfer = tx.transaction_type === 'transfer'
   const incoming = transfer && tx.transfer_direction === 'incoming'
@@ -55,51 +55,88 @@ function TransactionRow({
     return () => window.clearTimeout(timer)
   }, [actionsOpen, onActionsClose])
 
-  const pointerDown = (event) => {
-    if (event.button != null && event.button !== 0) return
-    pointer.current.startX = event.clientX
-    pointer.current.startY = event.clientY
-    pointer.current.dx = 0
-    pointer.current.pointerId = event.pointerId
-    pointer.current.swiped = false
-    event.currentTarget.setPointerCapture?.(event.pointerId)
+  const beginGesture = (clientX, clientY) => {
+    gesture.current.startX = clientX
+    gesture.current.startY = clientY
+    gesture.current.dx = 0
+    gesture.current.swiped = false
   }
 
-  const pointerMove = (event) => {
-    const dx = event.clientX - pointer.current.startX
-    const dy = event.clientY - pointer.current.startY
-    pointer.current.dx = dx
+  const moveGesture = (clientX, clientY, preventDefault) => {
+    const dx = clientX - gesture.current.startX
+    const dy = clientY - gesture.current.startY
+    gesture.current.dx = dx
     if (Math.abs(dx) > Math.abs(dy) && dx < 0) {
-      event.preventDefault()
-      if (Math.abs(dx) > 8) pointer.current.swiped = true
+      preventDefault?.()
+      if (Math.abs(dx) > 8) gesture.current.swiped = true
       setDragX(Math.max(-ACTION_REVEAL, dx))
     }
   }
 
-  const releasePointer = (event) => {
-    if (pointer.current.pointerId != null && event.currentTarget.hasPointerCapture?.(pointer.current.pointerId)) {
-      event.currentTarget.releasePointerCapture(pointer.current.pointerId)
-    }
-    pointer.current.pointerId = null
-  }
-
-  const pointerUp = (event) => {
-    const dx = pointer.current.dx
-    releasePointer(event)
+  const finishGesture = () => {
+    const dx = gesture.current.dx
     if (dx < -SWIPE_THRESHOLD) {
-      pointer.current.swiped = true
+      gesture.current.swiped = true
       setDragX(0)
       onActionsOpen()
     } else {
       setDragX(0)
       if (actionsOpen) onActionsClose()
     }
+    gesture.current.dx = 0
+  }
+
+  const pointerDown = (event) => {
+    if (event.pointerType === 'touch') return
+    if (event.button != null && event.button !== 0) return
+    beginGesture(event.clientX, event.clientY)
+    gesture.current.pointerId = event.pointerId
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+  }
+
+  const pointerMove = (event) => {
+    if (event.pointerType === 'touch') return
+    moveGesture(event.clientX, event.clientY, () => event.preventDefault())
+  }
+
+  const releasePointer = (event) => {
+    if (gesture.current.pointerId != null && event.currentTarget.hasPointerCapture?.(gesture.current.pointerId)) {
+      event.currentTarget.releasePointerCapture(gesture.current.pointerId)
+    }
+    gesture.current.pointerId = null
+  }
+
+  const pointerUp = (event) => {
+    if (event.pointerType === 'touch') return
+    releasePointer(event)
+    finishGesture()
   }
 
   const pointerCancel = (event) => {
+    if (event.pointerType === 'touch') return
     releasePointer(event)
-    pointer.current.dx = 0
-    pointer.current.swiped = false
+    gesture.current.dx = 0
+    gesture.current.swiped = false
+    setDragX(0)
+  }
+
+  const touchStart = (event) => {
+    const touch = event.touches[0]
+    if (!touch) return
+    beginGesture(touch.clientX, touch.clientY)
+  }
+
+  const touchMove = (event) => {
+    const touch = event.touches[0]
+    if (!touch) return
+    moveGesture(touch.clientX, touch.clientY, () => event.preventDefault())
+  }
+
+  const touchEnd = () => finishGesture()
+
+  const touchCancel = () => {
+    gesture.current.dx = 0
+    gesture.current.swiped = false
     setDragX(0)
   }
 
@@ -134,10 +171,14 @@ function TransactionRow({
           onPointerMove={pointerMove}
           onPointerUp={pointerUp}
           onPointerCancel={pointerCancel}
+          onTouchStart={touchStart}
+          onTouchMove={touchMove}
+          onTouchEnd={touchEnd}
+          onTouchCancel={touchCancel}
           onClick={(event) => {
-            if (pointer.current.swiped) {
+            if (gesture.current.swiped) {
               event.preventDefault()
-              pointer.current.swiped = false
+              gesture.current.swiped = false
               return
             }
             if (!actionsOpen) onExpand()
