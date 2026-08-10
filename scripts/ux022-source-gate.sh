@@ -16,7 +16,8 @@ for shell_script in \
   scripts/ux022-render-migration.sh \
   scripts/ux022-migration-gate.sh \
   scripts/ux022-deploy-preview.sh \
-  scripts/ux022r3-apply-preview.sh
+  scripts/ux022r3-apply-preview.sh \
+  scripts/ux022r3-frontend-preview.sh
 do
   bash -n "$shell_script"
 done
