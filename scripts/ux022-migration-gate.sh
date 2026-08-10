@@ -10,7 +10,10 @@ files=(
   "$ROOT/db/domain/UX-022/025_account_lifecycle_hardening.sql"
   "$ROOT/db/domain/UX-022/030_accounts_explorer_read_models.sql"
 )
-verify="$ROOT/db/domain/UX-022/900_verify_contract.sql"
+verifiers=(
+  "$ROOT/db/domain/UX-022/900_verify_contract.sql"
+  "$ROOT/db/domain/UX-022/905_reference_inventory.sql"
+)
 
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
@@ -23,7 +26,9 @@ trap 'rm -f "$tmp"' EXIT
     # execute against the real schema and then be rolled back without persistence.
     sed -E '/^[[:space:]]*(begin|commit);[[:space:]]*$/Id' "$file"
   done
-  cat "$verify"
+  for verify in "${verifiers[@]}"; do
+    cat "$verify"
+  done
   echo 'rollback;'
 } > "$tmp"
 
