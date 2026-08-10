@@ -118,6 +118,7 @@ body {
   scrollbar-width: none;
   touch-action: pan-x pan-y;
   scroll-snap-type: x proximity;
+  transition: transform .14s ease, box-shadow .14s ease;
 }
 
 .accountSwipeTrack {
@@ -130,7 +131,7 @@ body {
 .accountTreeRow {
   width: 100%;
   transform: none !important;
-  transition: none !important;
+  transition: opacity .16s ease, filter .16s ease;
   scroll-snap-align: start;
   -webkit-touch-callout: none;
   user-select: none;
@@ -152,18 +153,38 @@ body {
 }
 
 .accountSwipeActions .swipeActionButton {
-  font-size: 8px;
+  flex-direction: row;
+  gap: 4px;
+  padding: 4px 3px;
+  font-size: 7px;
+  white-space: nowrap;
+  writing-mode: horizontal-tb;
+}
+
+.accountSwipeActions .swipeActionIcon {
+  width: 14px;
+  height: 14px;
+}
+
+.accountTreeNode.isSelectionExcluded .accountTreeRow {
+  opacity: .46;
+  filter: saturate(.55);
 }
 
 .accountTreeNode.isDragSource {
   position: relative;
-  z-index: 20;
+  z-index: 30;
 }
 
 .accountTreeNode.isDragSource > .accountSwipeShell {
+  overflow: visible !important;
+  transition: none;
+  box-shadow: 0 10px 26px rgba(29,85,89,.22);
+  will-change: transform;
+}
+
+.accountTreeNode.isDragSource .accountTreeRow {
   animation: accountLongPressWiggle .24s ease-out;
-  transform: scale(1.012);
-  box-shadow: 0 8px 22px rgba(29,85,89,.18);
 }
 
 .accountTreeNode.isDropTarget > .accountSwipeShell {
@@ -173,11 +194,11 @@ body {
 }
 
 @keyframes accountLongPressWiggle {
-  0% { transform: rotate(0deg) scale(1); }
-  22% { transform: rotate(-.8deg) scale(1.012); }
-  45% { transform: rotate(.8deg) scale(1.012); }
-  68% { transform: rotate(-.45deg) scale(1.012); }
-  100% { transform: rotate(0deg) scale(1.012); }
+  0% { rotate: 0deg; }
+  22% { rotate: -.8deg; }
+  45% { rotate: .8deg; }
+  68% { rotate: -.45deg; }
+  100% { rotate: 0deg; }
 }
 
 .accountRootDropZone,
