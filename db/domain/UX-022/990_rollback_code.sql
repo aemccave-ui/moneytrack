@@ -17,6 +17,7 @@ drop function if exists moneytrack.account_move_v1(bigint,bigint,bigint);
 drop function if exists moneytrack.account_edit_v1(bigint,bigint,text,text);
 drop function if exists moneytrack.account_copy_v1(bigint,bigint);
 drop function if exists moneytrack.account_create_v1(bigint,text,text,text,bigint,text);
+drop function if exists moneytrack.ux022_account_is_default_v1(bigint,bigint);
 drop function if exists moneytrack.ux022_account_own_balance_original_v1(bigint,bigint,timestamptz);
 
 drop function if exists moneytrack.filter_preset_delete_v1(bigint,bigint);
