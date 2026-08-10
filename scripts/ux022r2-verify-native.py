@@ -44,10 +44,10 @@ require(
     and "addEventListener('touch" not in recent,
 )
 require(
-    "operation_browser_native_scroll_snap",
+    "operation_browser_native_free_scroll",
     "transactionSwipeTrack" in recent
     and "overflow-x: auto !important" in css
-    and "scroll-snap-type: x mandatory" in css
+    and "scroll-snap-type:" not in css
     and ".transactionSwipeActions" in css
     and "position: static !important" in css,
 )
@@ -60,11 +60,12 @@ require(
     and "setPointerCapture" not in account_tree,
 )
 require(
-    "account_browser_native_scroll_snap",
+    "account_browser_native_free_scroll",
     "accountSwipeTrack" in account_tree
     and ".accountSwipeShell" in css
     and ".accountSwipeTrack" in css
-    and "grid-template-columns: calc(100% - 260px) 260px" in css,
+    and "grid-template-columns: calc(100% - 220px) 220px" in css
+    and "scroll-snap-stop" not in css,
 )
 require(
     "screen_scroll_isolation",
