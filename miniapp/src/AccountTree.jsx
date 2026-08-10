@@ -61,8 +61,6 @@ function TreeRow({
   const [dragTarget, setDragTarget] = useState(null)
   const [lifted, setLifted] = useState(false)
   const [swipeX, setSwipeX] = useState(0)
-  const rowRef = useRef(null)
-
   const actionsOpen = openActionsId === id
 
   useEffect(() => {
@@ -100,14 +98,16 @@ function TreeRow({
     if (press.current.dragging) {
       event.preventDefault()
       const element = document.elementFromPoint(event.clientX, event.clientY)
+      if (element?.closest?.('[data-account-root-drop="true"]')) {
+        setDragTarget('__ROOT__')
+        return
+      }
       const candidate = element?.closest?.('[data-account-id]')?.dataset?.accountId || null
       setDragTarget(candidate && candidate !== id ? candidate : null)
       return
     }
     if (Math.abs(dx) > 8 || Math.abs(dy) > 8) clearPress()
-    if (Math.abs(dx) > Math.abs(dy) && dx < 0) {
-      setSwipeX(Math.max(-176, dx))
-    }
+    if (Math.abs(dx) > Math.abs(dy) && dx < 0) setSwipeX(Math.max(-176, dx))
   }
 
   const pointerUp = async (event) => {
@@ -118,7 +118,8 @@ function TreeRow({
       press.current.dragging = false
       setLifted(false)
       setDragTarget(null)
-      if (target && target !== id) await onMoveAccount?.(id, target)
+      if (target === '__ROOT__') await onMoveAccount?.(id, null)
+      else if (target && target !== id) await onMoveAccount?.(id, target)
       return
     }
     if (swipeX < -46) {
@@ -141,19 +142,14 @@ function TreeRow({
       aria-label={state === 'all' ? 'Исключить счёт и дочерние счета' : 'Включить счёт и дочерние счета'}
       aria-pressed={state === 'all'}
       data-selection-state={state}
-    >
-      <span aria-hidden="true" />
-    </button>
+    ><span aria-hidden="true" /></button>
   ) : null
 
   const identity = (
     <>
       <span className="accountTreeIdentity">
         <strong>{node.account.name}</strong>
-        <span>
-          {node.account.account_type || 'Счёт'}
-          {hasChildren ? ` · ${node.children.length}` : ` · ${accountCurrency}`}
-        </span>
+        <span>{node.account.account_type || 'Счёт'}{hasChildren ? ` · ${node.children.length}` : ` · ${accountCurrency}`}</span>
       </span>
       <span className="accountTreeAmounts">
         {hasChildren && ownAmount != null && Number(ownAmount.value) !== 0 && (
@@ -164,16 +160,11 @@ function TreeRow({
     </>
   )
 
-  const details = renderAfterNode?.(node, {
-    id,
-    hasChildren,
-    isExpanded,
-    selectionState: state,
-  })
+  const details = renderAfterNode?.(node, { id, hasChildren, isExpanded, selectionState: state })
 
   return (
     <div
-      className={`accountTreeNode ${lifted ? 'isLifted' : ''} ${dragTarget === id ? 'isDropTarget' : ''} ${details ? 'hasDetails' : ''}`}
+      className={`accountTreeNode ${lifted ? 'isLifted' : ''} ${details ? 'hasDetails' : ''}`}
       style={{ '--account-depth': depth }}
       data-depth={depth}
       data-account-id={id}
@@ -186,13 +177,12 @@ function TreeRow({
           <button type="button" className="danger" onClick={() => { onDelete?.(node); onActionsClose?.(id) }}>Удалить</button>
         </div>
         <div
-          ref={rowRef}
           className={`hierarchyToggle accountTreeRow ${hasChildren ? 'hasChildren' : ''}`}
           style={{ transform: `translateX(${actionsOpen ? -176 : swipeX}px)` }}
           onPointerDown={pointerDown}
           onPointerMove={pointerMove}
           onPointerUp={pointerUp}
-          onPointerCancel={() => { clearPress(); setLifted(false); setSwipeX(0) }}
+          onPointerCancel={() => { clearPress(); setLifted(false); setSwipeX(0); setDragTarget(null) }}
         >
           {selectionControl}
           {hasChildren ? (
@@ -206,20 +196,14 @@ function TreeRow({
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
           ) : !selectionControl ? <span className="hierarchyChevron accountLeafMarker" aria-hidden="true">•</span> : null}
-
           {bodyInteractive ? (
-            <button
-              type="button"
-              className="homeAccountOpenTarget"
-              onClick={() => {
-                if (press.current.dragging || Math.abs(swipeX) > 8) return
-                onNodeBody?.(node, hasChildren)
-              }}
-            >{identity}</button>
+            <button type="button" className="homeAccountOpenTarget" onClick={() => {
+              if (press.current.dragging || Math.abs(swipeX) > 8) return
+              onNodeBody?.(node, hasChildren)
+            }}>{identity}</button>
           ) : <div className="homeAccountOpenTarget">{identity}</div>}
         </div>
       </div>
-
       {hasChildren && isExpanded && <div className="accountTreeChildren">{renderChildren(node.children, depth + 1)}</div>}
       {details}
     </div>
@@ -241,7 +225,6 @@ export function AccountTree({
   resolveNodeAmount,
   resolveOwnAmount,
   onMoveAccount,
-  onDetachRoot,
   onCopy,
   onEdit,
   onArchive,
@@ -282,14 +265,7 @@ export function AccountTree({
 
   return (
     <div className={`accountTree ${className}`.trim()}>
-      {onMoveAccount && (
-        <button
-          type="button"
-          className="accountRootDropZone"
-          onClick={() => onDetachRoot?.()}
-          aria-label="Переместить выбранный счёт на верхний уровень"
-        >Без родителя / верхний уровень</button>
-      )}
+      {onMoveAccount && <div className="accountRootDropZone" data-account-root-drop="true">Без родителя / верхний уровень</div>}
       {renderNodes(hierarchy)}
     </div>
   )
