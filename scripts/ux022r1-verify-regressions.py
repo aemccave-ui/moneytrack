@@ -20,6 +20,7 @@ recent_css = read("miniapp/src/recent-operations.css")
 account_tree = read("miniapp/src/AccountTree.jsx")
 accounts_css = read("miniapp/src/accounts-explorer.css")
 create_sheet = read("miniapp/src/AccountCreateSheet.jsx")
+explorer = read("miniapp/src/AccountsExplorer.jsx")
 
 require(
     "home_screen_scroll_reset",
@@ -75,7 +76,8 @@ require(
     "account_move_explicit_sheet",
     "function MoveAccountSheet" in account_tree
     and ">Переместить</button>" in account_tree
-    and "Без родителя / верхний уровень" in account_tree,
+    and "Без родителя / верхний уровень" in account_tree
+    and "onMoveAccount={handleMove}" in explorer,
 )
 require(
     "parent_operations_before_children",
