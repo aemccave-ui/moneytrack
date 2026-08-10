@@ -28,7 +28,6 @@ function TreeRow({
   onNodeBody,
   isNodeBodyInteractive,
   resolveNodeAmount,
-  resolveOwnAmount,
   onMoveAccount,
   openActionsId,
   onActionsOpen,
@@ -45,9 +44,11 @@ function TreeRow({
   const isExpanded = expanded.has(id)
   const state = selectionState(node, selectedIds)
   const accountCurrency = String(node.account.currency_code || baseCurrency).toUpperCase()
-  const bodyInteractive = isNodeBodyInteractive
+  // UX-022R3 invariant: parent/grouping accounts only expand children.
+  // Only leaf/operational accounts may open an operations panel.
+  const bodyInteractive = !hasChildren && (isNodeBodyInteractive
     ? Boolean(isNodeBodyInteractive(node, { id, hasChildren, isExpanded, selectionState: state }))
-    : Boolean(onNodeBody)
+    : Boolean(onNodeBody))
   const defaultAmount = money(
     node.account.balance_original ?? node.account.balance_base ?? 0,
     accountCurrency,
@@ -55,7 +56,6 @@ function TreeRow({
   const displayedAmount = resolveNodeAmount
     ? resolveNodeAmount(node, { id, hasChildren, accountCurrency, defaultAmount, selectionState: state })
     : defaultAmount
-  const ownAmount = resolveOwnAmount?.(node, { id, hasChildren, accountCurrency })
 
   const press = useRef({ timer: null, x: 0, y: 0, dragging: false })
   const [dragTarget, setDragTarget] = useState(null)
@@ -146,18 +146,17 @@ function TreeRow({
     <>
       <span className="accountTreeIdentity">
         <strong>{node.account.name}</strong>
-        <span>{node.account.account_type || 'Счёт'}{hasChildren ? ` · ${node.children.length}` : ` · ${accountCurrency}`}</span>
+        <span>{hasChildren ? `Группа · ${node.children.length}` : `${node.account.account_type || 'Счёт'} · ${accountCurrency}`}</span>
       </span>
       <span className="accountTreeAmounts">
-        {hasChildren && ownAmount != null && Number(ownAmount.value) !== 0 && (
-          <small className="accountOwnAmount sensitive">{privacy ? '••••' : ownAmount.label}</small>
-        )}
         <strong className="accountTreeAmount sensitive">{privacy ? '••••••' : displayedAmount}</strong>
       </span>
     </>
   )
 
-  const details = renderAfterNode?.(node, { id, hasChildren, isExpanded, selectionState: state })
+  const details = !hasChildren
+    ? renderAfterNode?.(node, { id, hasChildren, isExpanded, selectionState: state })
+    : null
 
   return (
     <div
@@ -165,6 +164,7 @@ function TreeRow({
       style={{ '--account-depth': depth }}
       data-depth={depth}
       data-account-id={id}
+      data-account-role={hasChildren ? 'group' : 'operational'}
     >
       <div className={`accountSwipeShell ${actionsOpen ? 'actionsOpen' : ''}`}>
         <div className="accountSwipeActions" aria-hidden={!actionsOpen}>
@@ -174,7 +174,7 @@ function TreeRow({
           <button type="button" className="danger" onClick={() => { onDelete?.(node); onActionsClose?.(id) }}>Удалить</button>
         </div>
         <div
-          className={`hierarchyToggle accountTreeRow ${hasChildren ? 'hasChildren' : ''}`}
+          className={`hierarchyToggle accountTreeRow ${hasChildren ? 'hasChildren groupingAccountRow' : 'operationalAccountRow'}`}
           style={{ transform: `translateX(${actionsOpen ? -176 : swipeX}px)` }}
           onPointerDown={pointerDown}
           onPointerMove={pointerMove}
@@ -187,7 +187,7 @@ function TreeRow({
               type="button"
               className={`accountDisclosureControl ${isExpanded ? 'expanded' : ''}`}
               onClick={(event) => { event.stopPropagation(); onToggleParent(id, node) }}
-              aria-label={isExpanded ? 'Свернуть счёт' : 'Раскрыть счёт'}
+              aria-label={isExpanded ? 'Свернуть группу счетов' : 'Раскрыть группу счетов'}
               aria-expanded={isExpanded}
             >
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -196,7 +196,7 @@ function TreeRow({
           {bodyInteractive ? (
             <button type="button" className="homeAccountOpenTarget" onClick={() => {
               if (press.current.dragging || Math.abs(swipeX) > 8) return
-              onNodeBody?.(node, hasChildren)
+              onNodeBody?.(node, false)
             }}>{identity}</button>
           ) : <div className="homeAccountOpenTarget">{identity}</div>}
         </div>
@@ -220,7 +220,6 @@ export function AccountTree({
   isNodeBodyInteractive,
   renderAfterNode,
   resolveNodeAmount,
-  resolveOwnAmount,
   onMoveAccount,
   onCopy,
   onEdit,
@@ -247,7 +246,6 @@ export function AccountTree({
       isNodeBodyInteractive={isNodeBodyInteractive}
       renderAfterNode={renderAfterNode}
       resolveNodeAmount={resolveNodeAmount}
-      resolveOwnAmount={resolveOwnAmount}
       onMoveAccount={onMoveAccount}
       openActionsId={openActionsId}
       onActionsOpen={onActionsOpen}
