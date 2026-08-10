@@ -2,7 +2,14 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-: "${DATABASE_URL:?DATABASE_URL is required}"
+# shellcheck source=/dev/null
+source "$ROOT/scripts/ux022-db-runtime.sh"
+ux022_db_init
+
+echo "db_runtime_mode=$UX022_DB_MODE"
+if [[ "$UX022_DB_MODE" == "container" ]]; then
+  echo "db_runtime_container=$UX022_DB_CONTAINER"
+fi
 
 verifiers=(
   "$ROOT/db/domain/UX-022/900_verify_contract.sql"
@@ -21,5 +28,5 @@ trap 'rm -f "$tmp"' EXIT
   echo 'rollback;'
 } > "$tmp"
 
-psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$tmp"
+ux022_db_psql_file "$tmp"
 echo 'migration_validation_gate=PASS'
