@@ -14,6 +14,7 @@ fi
 verifiers=(
   "$ROOT/db/domain/UX-022/900_verify_contract.sql"
   "$ROOT/db/domain/UX-022/905_reference_inventory.sql"
+  "$ROOT/db/domain/UX-022/910_verify_grouping_invariant.sql"
 )
 
 tmp="$(mktemp)"
