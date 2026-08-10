@@ -85,6 +85,13 @@ require(
     and ">Переместить</button>" in account_tree,
 )
 require(
+    "account_move_result_propagation",
+    "consumeLastAccountMoveResult" in api
+    and "lastAccountMoveResult = { ok: false" in api
+    and "consumeLastAccountMoveResult" in account_tree
+    and "moveResult?.ok === false" in account_tree,
+)
+require(
     "parent_operations_before_children",
     account_tree.find("      {details}\n      {hasChildren && isExpanded") >= 0,
 )
