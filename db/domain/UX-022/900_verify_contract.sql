@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 
--- Run only after loading 010/020/030 inside the caller's validation transaction.
+-- Run only after loading 010/020/025/030 inside the caller's validation transaction.
 
 do $verify$
 declare
@@ -21,6 +21,9 @@ begin
     end if;
     if to_regprocedure('moneytrack.account_delete_v1(bigint,bigint)') is null then
         v_missing := array_append(v_missing, 'account_delete_v1');
+    end if;
+    if to_regprocedure('moneytrack.ux022_account_is_default_v1(bigint,bigint)') is null then
+        v_missing := array_append(v_missing, 'ux022_account_is_default_v1');
     end if;
     if to_regprocedure('moneytrack.filter_preset_create_v1(bigint,text,bigint[],bigint[],bigint[])') is null then
         v_missing := array_append(v_missing, 'filter_preset_create_v1');
@@ -58,6 +61,26 @@ begin
         'moneytrack.account_archive_v1(bigint,bigint)'::regprocedure
     )) = 0 then
         raise exception 'UX022_ARCHIVE_BALANCE_GUARD_MISSING';
+    end if;
+
+    if position('ux022_account_is_default_v1' in pg_get_functiondef(
+        'moneytrack.account_archive_v1(bigint,bigint)'::regprocedure
+    )) = 0 then
+        raise exception 'UX022_ARCHIVE_DEFAULT_ACCOUNT_GUARD_MISSING';
+    end if;
+
+    if position('ux022_account_is_default_v1' in pg_get_functiondef(
+        'moneytrack.account_delete_v1(bigint,bigint)'::regprocedure
+    )) = 0 then
+        raise exception 'UX022_DELETE_DEFAULT_ACCOUNT_GUARD_MISSING';
+    end if;
+
+    if position('jsonb_each_text' in pg_get_functiondef(
+        'moneytrack.ux022_account_is_default_v1(bigint,bigint)'::regprocedure
+    )) = 0 or position('user_default_accounts' in pg_get_functiondef(
+        'moneytrack.ux022_account_is_default_v1(bigint,bigint)'::regprocedure
+    )) = 0 then
+        raise exception 'UX022_DEFAULT_ACCOUNT_SCHEMA_TOLERANCE_MISSING';
     end if;
 end;
 $verify$;
