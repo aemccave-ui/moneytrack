@@ -4,9 +4,41 @@
 
 begin;
 
+-- Disable R3 guards before restoring journaled legacy ownership.
 drop trigger if exists ux022_transfers_group_posting_guard on moneytrack.transfers;
 drop trigger if exists ux022_transactions_group_posting_guard on moneytrack.transactions;
 drop trigger if exists ux022_accounts_parent_group_guard on moneytrack.accounts;
+
+-- Reverse the one-time grouping normalization when its journal exists.
+do $block$
+begin
+    if to_regclass('moneytrack.ux022_grouping_transaction_migration_backup') is not null then
+        execute $sql$
+            update moneytrack.transactions t
+               set account_id = b.original_account_id
+              from moneytrack.ux022_grouping_transaction_migration_backup b
+             where t.id = b.transaction_id
+               and t.user_id = b.user_id
+               and t.account_id = b.target_account_id
+        $sql$;
+    end if;
+
+    if to_regclass('moneytrack.ux022_grouping_transfer_migration_backup') is not null then
+        execute $sql$
+            update moneytrack.transfers tr
+               set from_account_id = b.original_from_account_id,
+                   to_account_id = b.original_to_account_id
+              from moneytrack.ux022_grouping_transfer_migration_backup b
+             where tr.id = b.transfer_id
+               and tr.user_id = b.user_id
+        $sql$;
+    end if;
+end;
+$block$;
+
+drop table if exists moneytrack.ux022_grouping_transfer_migration_backup;
+drop table if exists moneytrack.ux022_grouping_transaction_migration_backup;
+
 drop function if exists moneytrack.ux022_guard_transfer_postable_accounts_v1();
 drop function if exists moneytrack.ux022_guard_transaction_postable_account_v1();
 drop function if exists moneytrack.ux022_guard_parent_account_v1();
