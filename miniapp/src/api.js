@@ -1,5 +1,7 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://n8n.moneytrackapp.xyz/webhook'
 
+let lastAccountMoveResult = null
+
 function telegramInitData() {
   return window.Telegram?.WebApp?.initData || ''
 }
@@ -89,8 +91,6 @@ export function getTransactions({
   accountId,
   dateFrom,
   dateTo,
-  includeDescendants = true,
-  selectedAccountIds = null,
   incomeCategoryIds = null,
   expenseCategoryIds = null,
 }, signal) {
@@ -98,9 +98,9 @@ export function getTransactions({
     account_id: String(accountId),
     date_from: dateFrom,
     date_to: dateTo,
-    include_descendants: String(includeDescendants),
+    include_descendants: 'false',
   })
-  setOptionalIdFilter(params, 'selected_account_ids', selectedAccountIds)
+  setOptionalIdFilter(params, 'selected_account_ids', [accountId])
   setOptionalIdFilter(params, 'income_category_ids', incomeCategoryIds)
   setOptionalIdFilter(params, 'expense_category_ids', expenseCategoryIds)
   return request(`api/v1/transactions?${params.toString()}`, signal)
@@ -160,8 +160,22 @@ export function editAccount({ accountId, name, accountType }, signal) {
   return request('api/v1/accounts', signal, { method: 'PATCH', body: { account_id: Number(accountId), name, account_type: accountType } })
 }
 
-export function moveAccount(accountId, parentId, signal) {
-  return request('api/v1/accounts/move', signal, { method: 'POST', body: { account_id: Number(accountId), parent_id: parentId == null ? null : Number(parentId) } })
+export function consumeLastAccountMoveResult() {
+  const result = lastAccountMoveResult
+  lastAccountMoveResult = null
+  return result
+}
+
+export async function moveAccount(accountId, parentId, signal) {
+  lastAccountMoveResult = null
+  try {
+    const result = await request('api/v1/accounts/move', signal, { method: 'POST', body: { account_id: Number(accountId), parent_id: parentId == null ? null : Number(parentId) } })
+    lastAccountMoveResult = { ok: true }
+    return result
+  } catch (error) {
+    lastAccountMoveResult = { ok: false, message: error?.message || 'Не удалось переместить счёт' }
+    throw error
+  }
 }
 
 export function archiveAccount(accountId, signal) {

@@ -1,0 +1,162 @@
+/* UX-022R2: browser-native interaction layer. No custom touch/pointer gesture recognition. */
+
+html,
+body,
+#root {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body {
+  min-height: 0;
+}
+
+body::after {
+  content: "R2.1";
+  position: fixed;
+  z-index: 9999;
+  top: 2px;
+  right: 4px;
+  pointer-events: none;
+  color: rgba(22,63,67,.42);
+  font-size: 8px;
+  line-height: 1;
+}
+
+.app {
+  height: 100dvh;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.transactionCard {
+  overflow: hidden;
+}
+
+.transactionSwipeShell {
+  position: relative;
+  overflow-x: auto !important;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  touch-action: pan-x pan-y;
+}
+
+.transactionSwipeShell::-webkit-scrollbar,
+.accountSwipeShell::-webkit-scrollbar {
+  display: none;
+}
+
+.transactionSwipeTrack {
+  display: grid;
+  grid-template-columns: calc(100% - 176px) 176px;
+  width: calc(100% + 176px);
+  min-width: calc(100% + 176px);
+}
+
+.transactionRow {
+  width: 100%;
+  transform: none !important;
+  transition: none !important;
+}
+
+.transactionSwipeActions {
+  position: static !important;
+  inset: auto !important;
+  width: auto !important;
+  min-width: 176px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transform: none !important;
+}
+
+.accountSwipeShell {
+  position: relative;
+  overflow-x: auto !important;
+  overflow-y: hidden;
+  border-radius: 17px;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  touch-action: pan-x pan-y;
+}
+
+.accountSwipeTrack {
+  display: grid;
+  grid-template-columns: calc(100% - 220px) 220px;
+  width: calc(100% + 220px);
+  min-width: calc(100% + 220px);
+}
+
+.accountTreeRow {
+  width: 100%;
+  transform: none !important;
+  transition: none !important;
+}
+
+.accountMoveShortcut {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  margin-left: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 11px;
+  background: rgba(29,85,89,.09);
+  color: #315f5d;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.accountSwipeActions {
+  position: static !important;
+  inset: auto !important;
+  width: auto !important;
+  min-width: 220px;
+  display: grid;
+  grid-template-columns: repeat(5, 44px);
+  align-items: stretch;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transform: none !important;
+  background: #eff5f3;
+}
+
+.accountSwipeActions button {
+  min-width: 0;
+  padding: 0 2px;
+  border: 0;
+  border-left: 1px solid rgba(29,85,89,.06);
+  background: transparent;
+  color: #3f605e;
+  font-size: 8px;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+  writing-mode: horizontal-tb;
+  transform: none;
+}
+
+.accountSwipeActions button.danger {
+  color: #a4434d;
+  background: #fff0f1;
+}
+
+.accountRootDropZone {
+  display: none !important;
+}
+
+.accountsPlusButton {
+  display: none !important;
+}
+
+.explorerAccountOperations {
+  position: relative;
+  z-index: 0;
+}

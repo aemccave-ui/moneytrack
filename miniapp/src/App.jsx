@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { LabBottomNavigation } from '../packages/lab-design-system/navigation.jsx'
 import { getAccounts, getDashboard } from './api.js'
+import AccountCreateSheet from './AccountCreateSheet.jsx'
 import AccountsExplorer from './AccountsExplorer.jsx'
 import { BalanceHero } from './BalanceHero.jsx'
 import { RecentOperations } from './RecentOperations.jsx'
@@ -98,6 +99,7 @@ function App() {
   const [explorerAccountId, setExplorerAccountId] = useState(null)
   const [privacy, setPrivacy] = useState(false)
   const [actionsOpen, setActionsOpen] = useState(false)
+  const [accountCreateOpen, setAccountCreateOpen] = useState(false)
   const [currencyBreakdownOpen, setCurrencyBreakdownOpen] = useState(false)
   const [accountBreakdownOpen, setAccountBreakdownOpen] = useState(false)
   const [accountCaptionOverflow, setAccountCaptionOverflow] = useState(false)
@@ -236,9 +238,16 @@ function App() {
   })
 
   const openExplorer = (id = null) => {
+    setActionsOpen(false)
+    setAccountCreateOpen(false)
     setExplorerAccountId(id)
     setActiveScreen('accounts')
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const openHome = () => {
+    setActionsOpen(false)
+    setAccountCreateOpen(false)
+    setActiveScreen('home')
   }
 
   const navigation = navigationItems.map((item) => ({
@@ -246,17 +255,17 @@ function App() {
     onClick: item.id === 'accounts'
       ? () => openExplorer()
       : item.id === 'home'
-        ? () => setActiveScreen('home')
+        ? openHome
         : undefined,
   }))
 
   if (!dashboard && !error) {
-    return <main className="app loadingState" aria-busy="true"><div className="skeleton topSkeleton"/><div className="skeleton heroSkeleton"/><div className="skeleton cardSkeleton"/></main>
+    return <main key="loading" className="app loadingState" aria-busy="true"><div className="skeleton topSkeleton"/><div className="skeleton heroSkeleton"/><div className="skeleton cardSkeleton"/></main>
   }
 
   if (activeScreen === 'accounts') {
     return (
-      <main className={`app ${privacy ? 'privacy' : ''}`}>
+      <main key="accounts" className={`app ${privacy ? 'privacy' : ''}`}>
         <AccountsExplorer
           accounts={accounts}
           baseCurrency={baseCurrency}
@@ -265,13 +274,20 @@ function App() {
           initialAccountId={explorerAccountId}
           onAccountsChanged={reloadAccounts}
         />
+        <div className={`fabMenu ${actionsOpen ? 'open' : ''}`}>
+          <div className="fabActions" aria-hidden={!actionsOpen}>
+            <button type="button" className="fabAction" onClick={() => { setActionsOpen(false); setAccountCreateOpen(true) }}><span>Счёт</span><b className="glyph" aria-hidden="true">▤</b></button>
+          </div>
+          <button type="button" className="fab" onClick={() => setActionsOpen((value) => !value)} aria-label={actionsOpen ? 'Закрыть добавление счёта' : 'Открыть добавление счёта'} aria-expanded={actionsOpen}><span aria-hidden="true">{actionsOpen ? '×' : '+'}</span></button>
+        </div>
+        {accountCreateOpen && <AccountCreateSheet accounts={accounts} baseCurrency={baseCurrency} onClose={() => setAccountCreateOpen(false)} onSaved={reloadAccounts} />}
         <LabBottomNavigation items={navigation} activeId="accounts" />
       </main>
     )
   }
 
   return (
-    <main className={`app ${privacy ? 'privacy' : ''}`}>
+    <main key="home" className={`app ${privacy ? 'privacy' : ''}`}>
       <section className="balanceHeader" aria-labelledby="balance-title"><div><div className="todayLabel">{todayLabel()}</div><div className="balanceLabel" id="balance-title">Общий баланс</div><strong className="balanceValue sensitive">{hidden(summary.net_worth)}</strong></div><button className={`iconButton privacyButton ${privacy ? 'selected' : ''}`} onClick={() => setPrivacy((value) => !value)} aria-label={privacy ? 'Показать суммы' : 'Скрыть суммы'} aria-pressed={privacy}>◎</button></section>
       {error && <div className="notice" role="alert">{error}</div>}
 

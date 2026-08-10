@@ -1,8 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { deleteTransaction } from './api.js'
-
-const ACTION_REVEAL = 176
-const SWIPE_THRESHOLD = 46
 
 const operationTypeLabel = (type) => ({
   income: 'Доход',
@@ -34,47 +31,15 @@ function TransactionRow({
   baseCurrency,
   money,
   expanded,
-  actionsOpen,
   onExpand,
-  onActionsOpen,
-  onActionsClose,
   onDeleted,
 }) {
-  const pointer = useRef({ startX: 0, startY: 0 })
-  const [dragX, setDragX] = useState(0)
   const transfer = tx.transaction_type === 'transfer'
   const incoming = transfer && tx.transfer_direction === 'incoming'
   const positive = tx.transaction_type === 'income' || incoming
   const amountCurrency = tx.currency_original || tx.currency || baseCurrency
   const rawAmount = Number(tx.amount_original ?? tx.amount ?? 0)
   const amount = positive ? Math.abs(rawAmount) : -Math.abs(rawAmount)
-
-  useEffect(() => {
-    if (!actionsOpen) return undefined
-    const timer = window.setTimeout(onActionsClose, 2000)
-    return () => window.clearTimeout(timer)
-  }, [actionsOpen, onActionsClose])
-
-  const pointerDown = (event) => {
-    pointer.current.startX = event.clientX
-    pointer.current.startY = event.clientY
-  }
-
-  const pointerMove = (event) => {
-    const dx = event.clientX - pointer.current.startX
-    const dy = event.clientY - pointer.current.startY
-    if (Math.abs(dx) > Math.abs(dy) && dx < 0) setDragX(Math.max(-ACTION_REVEAL, dx))
-  }
-
-  const pointerUp = () => {
-    if (dragX < -SWIPE_THRESHOLD) {
-      setDragX(0)
-      onActionsOpen()
-    } else {
-      setDragX(0)
-      if (actionsOpen) onActionsClose()
-    }
-  }
 
   const remove = async () => {
     if (transfer) {
@@ -84,7 +49,6 @@ function TransactionRow({
     if (!(await confirmAction('Удалить эту операцию?'))) return
     try {
       await deleteTransaction(tx.id)
-      onActionsClose()
       await onDeleted?.(tx)
     } catch (error) {
       showInfo(error?.message || 'Не удалось удалить операцию')
@@ -93,27 +57,24 @@ function TransactionRow({
 
   return (
     <article className={`transactionCard ${expanded ? 'expanded' : ''}`}>
-      <div className="transactionSwipeShell">
-        <div className="transactionSwipeActions" aria-hidden={!actionsOpen}>
-          <button type="button" disabled={transfer} onClick={() => showInfo('Повтор операции будет подключён отдельным write-contract.')}>Повторить</button>
-          <button type="button" disabled={transfer} onClick={() => showInfo('Редактирование операции будет подключено отдельным write-contract.')}>Изменить</button>
-          <button type="button" className="danger" disabled={transfer} onClick={remove}>Удалить</button>
+      <div className="transactionSwipeShell" aria-label="Смахните строку влево для действий">
+        <div className="transactionSwipeTrack">
+          <button
+            type="button"
+            className="transactionRow"
+            onClick={onExpand}
+            aria-expanded={expanded}
+          >
+            <span className={`transactionTypeMark ${positive ? 'income' : 'expense'}`} aria-hidden="true">{positive ? '↑' : '↓'}</span>
+            <span className="transactionIdentity"><strong>{tx.description || operationTypeLabel(tx.transaction_type)}</strong><small>{tx.account_name || tx.category_name || operationTypeLabel(tx.transaction_type)}</small></span>
+            <strong className={`transactionAmount ${positive ? 'income' : 'expense'} sensitive`}>{privacy ? '••••' : money(amount, amountCurrency)}</strong>
+          </button>
+          <div className="transactionSwipeActions">
+            <button type="button" disabled={transfer} onClick={() => showInfo('Повтор операции будет подключён отдельным write-contract.')}>Повторить</button>
+            <button type="button" disabled={transfer} onClick={() => showInfo('Редактирование операции будет подключено отдельным write-contract.')}>Изменить</button>
+            <button type="button" className="danger" disabled={transfer} onClick={remove}>Удалить</button>
+          </div>
         </div>
-        <button
-          type="button"
-          className="transactionRow"
-          style={{ transform: `translateX(${actionsOpen ? -ACTION_REVEAL : dragX}px)` }}
-          onPointerDown={pointerDown}
-          onPointerMove={pointerMove}
-          onPointerUp={pointerUp}
-          onPointerCancel={() => setDragX(0)}
-          onClick={() => { if (Math.abs(dragX) < 8 && !actionsOpen) onExpand() }}
-          aria-expanded={expanded}
-        >
-          <span className={`transactionTypeMark ${positive ? 'income' : 'expense'}`} aria-hidden="true">{positive ? '↑' : '↓'}</span>
-          <span className="transactionIdentity"><strong>{tx.description || operationTypeLabel(tx.transaction_type)}</strong><small>{tx.account_name || tx.category_name || operationTypeLabel(tx.transaction_type)}</small></span>
-          <strong className={`transactionAmount ${positive ? 'income' : 'expense'} sensitive`}>{privacy ? '••••' : money(amount, amountCurrency)}</strong>
-        </button>
       </div>
       {expanded && (
         <div className="transactionDetails">
@@ -141,7 +102,6 @@ export function RecentOperations({
   emptyLabel = 'Операций пока нет',
 }) {
   const [expandedId, setExpandedId] = useState(null)
-  const [openActionsId, setOpenActionsId] = useState(null)
   const groupList = groups || (() => {
     const byDate = new Map()
     ;(transactions || []).forEach((tx) => {
@@ -171,10 +131,7 @@ export function RecentOperations({
                     baseCurrency={baseCurrency}
                     money={money}
                     expanded={expandedId === id}
-                    actionsOpen={openActionsId === id}
                     onExpand={() => setExpandedId((current) => current === id ? null : id)}
-                    onActionsOpen={() => setOpenActionsId(id)}
-                    onActionsClose={() => setOpenActionsId((current) => current === id ? null : current)}
                     onDeleted={onDeleted}
                   />
                 )
