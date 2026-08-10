@@ -171,13 +171,16 @@ body {
   filter: saturate(.55);
 }
 
+.accountTreeNode.isSelectionExcluded .explorerTransactionsLoading {
+  display: none;
+}
+
 .accountTreeNode.isDragSource {
   position: relative;
   z-index: 30;
 }
 
 .accountTreeNode.isDragSource > .accountSwipeShell {
-  overflow: visible !important;
   transition: none;
   box-shadow: 0 10px 26px rgba(29,85,89,.22);
   will-change: transform;
