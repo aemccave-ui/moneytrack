@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { deleteTransaction } from './api.js'
 import { announceSwipeOpen, nextSwipeScope, SWIPE_OPEN_EVENT } from './swipe-coordinator.js'
 
+const TRANSACTION_ACTIONS_WIDTH = 156
+const TRANSACTION_OPEN_THRESHOLD = 34
+
 const operationTypeLabel = (type) => ({
   income: 'Доход',
   expense: 'Расход',
@@ -45,6 +48,7 @@ function TransactionRow({
   onDeleted,
 }) {
   const shellRef = useRef(null)
+  const swipeGesture = useRef({ startX: 0, startY: 0 })
   const transfer = tx.transaction_type === 'transfer'
   const incoming = transfer && tx.transfer_direction === 'incoming'
   const positive = tx.transaction_type === 'income' || incoming
@@ -53,17 +57,56 @@ function TransactionRow({
   const amount = positive ? Math.abs(rawAmount) : -Math.abs(rawAmount)
 
   useEffect(() => {
-    if (swipeOpen) return
-    const shell = shellRef.current
-    if (shell && shell.scrollLeft > 0) shell.scrollLeft = 0
-  }, [swipeOpen])
-
-  const handleScroll = () => {
     const shell = shellRef.current
     if (!shell) return
-    if (shell.scrollLeft > 18 && !swipeOpen) onSwipeOpen?.()
-    else if (shell.scrollLeft < 4 && swipeOpen) onSwipeClose?.()
-  }
+    const target = swipeOpen ? TRANSACTION_ACTIONS_WIDTH : 0
+    if (Math.abs(shell.scrollLeft - target) > 1) {
+      shell.scrollTo({ left: target, behavior: 'smooth' })
+    }
+  }, [swipeOpen])
+
+  useEffect(() => {
+    const shell = shellRef.current
+    if (!shell) return undefined
+
+    const touchStart = (event) => {
+      const touch = event.touches[0]
+      if (!touch) return
+      swipeGesture.current.startX = touch.clientX
+      swipeGesture.current.startY = touch.clientY
+    }
+
+    const settle = (event) => {
+      const touch = event.changedTouches?.[0]
+      const dx = touch ? touch.clientX - swipeGesture.current.startX : 0
+      const dy = touch ? touch.clientY - swipeGesture.current.startY : 0
+      const horizontal = Math.abs(dx) > Math.abs(dy) * 1.05
+      const explicitOpen = horizontal && dx < -24
+      const explicitClose = horizontal && dx > 18
+      const shouldOpen = !explicitClose && (explicitOpen || shell.scrollLeft >= TRANSACTION_OPEN_THRESHOLD)
+      if (shouldOpen) {
+        onSwipeOpen?.()
+        shell.scrollTo({ left: TRANSACTION_ACTIONS_WIDTH, behavior: 'smooth' })
+      } else {
+        onSwipeClose?.()
+        shell.scrollTo({ left: 0, behavior: 'smooth' })
+      }
+    }
+
+    const cancel = () => {
+      onSwipeClose?.()
+      shell.scrollTo({ left: 0, behavior: 'smooth' })
+    }
+
+    shell.addEventListener('touchstart', touchStart, { passive: true })
+    shell.addEventListener('touchend', settle, { passive: true })
+    shell.addEventListener('touchcancel', cancel, { passive: true })
+    return () => {
+      shell.removeEventListener('touchstart', touchStart)
+      shell.removeEventListener('touchend', settle)
+      shell.removeEventListener('touchcancel', cancel)
+    }
+  }, [onSwipeClose, onSwipeOpen])
 
   const remove = async () => {
     if (transfer) {
@@ -81,7 +124,7 @@ function TransactionRow({
 
   return (
     <article className={`transactionCard ${expanded ? 'expanded' : ''}`}>
-      <div ref={shellRef} className="transactionSwipeShell" aria-label="Смахните строку влево для действий" onScroll={handleScroll}>
+      <div ref={shellRef} className="transactionSwipeShell" aria-label="Смахните строку влево для действий">
         <div className="transactionSwipeTrack">
           <button
             type="button"
