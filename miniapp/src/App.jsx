@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { LabBottomNavigation } from '../packages/lab-design-system/navigation.jsx'
 import { getAccounts, getDashboard } from './api.js'
+import AccountCreateSheet from './AccountCreateSheet.jsx'
 import AccountsExplorer from './AccountsExplorer.jsx'
 import { BalanceHero } from './BalanceHero.jsx'
 import { RecentOperations } from './RecentOperations.jsx'
@@ -33,6 +34,13 @@ const parentAccountId = (account) => account.parent_account_id
   ?? null
 const accountId = (account) => String(account.id ?? account.account_id)
 const segmentColors = ['#1d5559', '#4f9fa3', '#79b7b9', '#a4cccd', '#c6dddd', '#799397']
+
+function forceScrollTop() {
+  window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+  if (document.scrollingElement) document.scrollingElement.scrollTop = 0
+  document.documentElement.scrollTop = 0
+  if (document.body) document.body.scrollTop = 0
+}
 
 function flattenAccounts(accounts) {
   const result = []
@@ -98,6 +106,7 @@ function App() {
   const [explorerAccountId, setExplorerAccountId] = useState(null)
   const [privacy, setPrivacy] = useState(false)
   const [actionsOpen, setActionsOpen] = useState(false)
+  const [accountCreateOpen, setAccountCreateOpen] = useState(false)
   const [currencyBreakdownOpen, setCurrencyBreakdownOpen] = useState(false)
   const [accountBreakdownOpen, setAccountBreakdownOpen] = useState(false)
   const [accountCaptionOverflow, setAccountCaptionOverflow] = useState(false)
@@ -106,6 +115,7 @@ function App() {
   const [expandedCurrencies, setExpandedCurrencies] = useState(() => new Set())
   const [expandedAccounts, setExpandedAccounts] = useState(() => new Set())
   const [error, setError] = useState('')
+  const dashboardReady = Boolean(dashboard)
 
   const applyAccountData = (accountData) => {
     setAccounts(accountData?.accounts || accountData?.items || [])
@@ -113,6 +123,7 @@ function App() {
   }
 
   useEffect(() => {
+    if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual'
     window.Telegram?.WebApp?.ready?.()
     window.Telegram?.WebApp?.expand?.()
     const controller = new AbortController()
@@ -124,6 +135,23 @@ function App() {
       .catch((reason) => setError(reason.message || 'Не удалось загрузить данные'))
     return () => controller.abort()
   }, [])
+
+  useEffect(() => {
+    forceScrollTop()
+    let secondFrame = 0
+    const firstFrame = window.requestAnimationFrame(() => {
+      forceScrollTop()
+      secondFrame = window.requestAnimationFrame(forceScrollTop)
+    })
+    const shortTimer = window.setTimeout(forceScrollTop, 60)
+    const restorationTimer = window.setTimeout(forceScrollTop, 260)
+    return () => {
+      window.cancelAnimationFrame(firstFrame)
+      if (secondFrame) window.cancelAnimationFrame(secondFrame)
+      window.clearTimeout(shortTimer)
+      window.clearTimeout(restorationTimer)
+    }
+  }, [activeScreen, dashboardReady])
 
   const reloadAccounts = async () => {
     const accountData = await getAccounts()
@@ -236,9 +264,20 @@ function App() {
   })
 
   const openExplorer = (id = null) => {
+    forceScrollTop()
+    setActionsOpen(false)
+    setAccountCreateOpen(false)
     setExplorerAccountId(id)
     setActiveScreen('accounts')
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    window.requestAnimationFrame(forceScrollTop)
+  }
+
+  const openHome = () => {
+    forceScrollTop()
+    setActionsOpen(false)
+    setAccountCreateOpen(false)
+    setActiveScreen('home')
+    window.requestAnimationFrame(forceScrollTop)
   }
 
   const navigation = navigationItems.map((item) => ({
@@ -246,7 +285,7 @@ function App() {
     onClick: item.id === 'accounts'
       ? () => openExplorer()
       : item.id === 'home'
-        ? () => setActiveScreen('home')
+        ? openHome
         : undefined,
   }))
 
@@ -265,6 +304,13 @@ function App() {
           initialAccountId={explorerAccountId}
           onAccountsChanged={reloadAccounts}
         />
+        <div className={`fabMenu ${actionsOpen ? 'open' : ''}`}>
+          <div className="fabActions" aria-hidden={!actionsOpen}>
+            <button type="button" className="fabAction" onClick={() => { setActionsOpen(false); setAccountCreateOpen(true) }}><span>Счёт</span><b className="glyph" aria-hidden="true">▤</b></button>
+          </div>
+          <button type="button" className="fab" onClick={() => setActionsOpen((value) => !value)} aria-label={actionsOpen ? 'Закрыть добавление счёта' : 'Открыть добавление счёта'} aria-expanded={actionsOpen}><span aria-hidden="true">{actionsOpen ? '×' : '+'}</span></button>
+        </div>
+        {accountCreateOpen && <AccountCreateSheet accounts={accounts} baseCurrency={baseCurrency} onClose={() => setAccountCreateOpen(false)} onSaved={reloadAccounts} />}
         <LabBottomNavigation items={navigation} activeId="accounts" />
       </main>
     )
