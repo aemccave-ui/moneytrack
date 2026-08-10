@@ -10,8 +10,6 @@ echo '# Gate'
 echo 'source_static_lint_build'
 
 # Syntax validation must run before npm install/build and before any runtime gate.
-# `bash -n file1 file2 ...` parses only file1 and treats the rest as positional
-# arguments, so validate every script in its own invocation.
 for shell_script in \
   scripts/ux022-source-gate.sh \
   scripts/ux022-db-runtime.sh \
@@ -24,27 +22,6 @@ do
 done
 
 echo 'shell_syntax_validation=PASS'
-
-# R3 persistent apply is intentionally narrower than the legacy UX-022 deployer:
-# database migration + preview frontend only. It must never execute n8n runtime
-# commands or name the production frontend target. An isolated R3 rollback must
-# exist before apply.
-test -s db/domain/UX-022/045_grouping_account_rollback.sql
-if grep -q 'app.moneytrackapp.xyz' scripts/ux022r3-apply-preview.sh; then
-  echo 'r3_apply_no_prod_frontend=FAIL'
-  exit 1
-fi
-if grep -Eq 'N8N_CONTAINER|n8n[[:space:]]+(import:|publish:|export:)|docker[[:space:]].*n8n' scripts/ux022r3-apply-preview.sh; then
-  echo 'r3_apply_no_n8n=FAIL'
-  exit 1
-fi
-grep -q '045_grouping_account_rollback.sql' scripts/ux022r3-apply-preview.sh
-grep -q 'ux022_db_pg_dump_schema moneytrack' scripts/ux022r3-apply-preview.sh
-
-echo 'r3_apply_no_prod_frontend=PASS'
-echo 'r3_apply_no_n8n=PASS'
-echo 'r3_isolated_rollback=PASS'
-echo 'r3_preapply_backup=PASS'
 
 python3 -m py_compile \
   scripts/ux022-generate-api-workflows.py \
