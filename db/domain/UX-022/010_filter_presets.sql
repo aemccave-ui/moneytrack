@@ -15,6 +15,83 @@ create table if not exists moneytrack.filter_presets (
     constraint filter_presets_name_length check (char_length(name) <= 80)
 );
 
+-- UX-022 existed before the production-hardening baseline. If that earlier table
+-- is already present, CREATE TABLE IF NOT EXISTS alone would silently preserve a
+-- partial legacy shape. Add the immutable payload columns idempotently and then
+-- validate the canonical types before any function is installed.
+alter table moneytrack.filter_presets
+    add column if not exists account_ids bigint[] default '{}'::bigint[];
+alter table moneytrack.filter_presets
+    add column if not exists income_category_ids bigint[] default '{}'::bigint[];
+alter table moneytrack.filter_presets
+    add column if not exists expense_category_ids bigint[] default '{}'::bigint[];
+alter table moneytrack.filter_presets
+    add column if not exists created_at timestamptz default now();
+
+update moneytrack.filter_presets
+   set account_ids = coalesce(account_ids, '{}'::bigint[]),
+       income_category_ids = coalesce(income_category_ids, '{}'::bigint[]),
+       expense_category_ids = coalesce(expense_category_ids, '{}'::bigint[]),
+       created_at = coalesce(created_at, now())
+ where account_ids is null
+    or income_category_ids is null
+    or expense_category_ids is null
+    or created_at is null;
+
+alter table moneytrack.filter_presets alter column account_ids set default '{}'::bigint[];
+alter table moneytrack.filter_presets alter column account_ids set not null;
+alter table moneytrack.filter_presets alter column income_category_ids set default '{}'::bigint[];
+alter table moneytrack.filter_presets alter column income_category_ids set not null;
+alter table moneytrack.filter_presets alter column expense_category_ids set default '{}'::bigint[];
+alter table moneytrack.filter_presets alter column expense_category_ids set not null;
+alter table moneytrack.filter_presets alter column created_at set default now();
+alter table moneytrack.filter_presets alter column created_at set not null;
+
+do $preset_shape$
+declare
+    v_bad text[] := '{}'::text[];
+begin
+    if to_regclass('moneytrack.filter_presets') is null then
+        raise exception 'UX022_FILTER_PRESETS_TABLE_MISSING';
+    end if;
+
+    if not exists (
+        select 1 from information_schema.columns
+        where table_schema='moneytrack' and table_name='filter_presets'
+          and column_name='id' and data_type='bigint'
+    ) then v_bad := array_append(v_bad, 'id'); end if;
+    if not exists (
+        select 1 from information_schema.columns
+        where table_schema='moneytrack' and table_name='filter_presets'
+          and column_name='user_id' and data_type='bigint'
+    ) then v_bad := array_append(v_bad, 'user_id'); end if;
+    if not exists (
+        select 1 from information_schema.columns
+        where table_schema='moneytrack' and table_name='filter_presets'
+          and column_name='name' and data_type='text'
+    ) then v_bad := array_append(v_bad, 'name'); end if;
+    if not exists (
+        select 1 from information_schema.columns
+        where table_schema='moneytrack' and table_name='filter_presets'
+          and column_name='account_ids' and udt_name='_int8'
+    ) then v_bad := array_append(v_bad, 'account_ids'); end if;
+    if not exists (
+        select 1 from information_schema.columns
+        where table_schema='moneytrack' and table_name='filter_presets'
+          and column_name='income_category_ids' and udt_name='_int8'
+    ) then v_bad := array_append(v_bad, 'income_category_ids'); end if;
+    if not exists (
+        select 1 from information_schema.columns
+        where table_schema='moneytrack' and table_name='filter_presets'
+          and column_name='expense_category_ids' and udt_name='_int8'
+    ) then v_bad := array_append(v_bad, 'expense_category_ids'); end if;
+
+    if cardinality(v_bad) > 0 then
+        raise exception 'UX022_FILTER_PRESETS_LEGACY_SHAPE_INCOMPATIBLE: %', array_to_string(v_bad, ',');
+    end if;
+end;
+$preset_shape$;
+
 create index if not exists ix_filter_presets_user_created
     on moneytrack.filter_presets(user_id, created_at, id);
 
