@@ -12,6 +12,7 @@ echo 'source_static_lint_build'
 # Syntax validation must run before npm install/build and before any runtime gate.
 bash -n \
   scripts/ux022-source-gate.sh \
+  scripts/ux022-db-runtime.sh \
   scripts/ux022-render-migration.sh \
   scripts/ux022-migration-gate.sh \
   scripts/ux022-deploy-preview.sh
