@@ -18,6 +18,8 @@ contract = read("docs/architecture/UX-022-grouping-accounts-contract.md")
 migration = read("db/domain/UX-022/040_grouping_account_invariant.sql")
 rollback = read("db/domain/UX-022/990_rollback_code.sql")
 renderer = read("scripts/ux022-render-migration.sh")
+migration_gate = read("scripts/ux022-migration-gate.sh")
+runtime_verify = read("db/domain/UX-022/910_verify_grouping_invariant.sql")
 tree = read("miniapp/src/AccountTree.jsx")
 
 require(
@@ -60,6 +62,13 @@ require(
     and "set account_id = b.original_account_id" in rollback
     and "set from_account_id = b.original_from_account_id" in rollback
     and "to_account_id = b.original_to_account_id" in rollback,
+)
+require(
+    "rollback_only_runtime_verification",
+    "910_verify_grouping_invariant.sql" in migration_gate
+    and "UX022R3_GROUPING_RUNTIME_VERIFY=PASS" in runtime_verify
+    and "migrated_transactions" in runtime_verify
+    and "migrated_transfers" in runtime_verify,
 )
 require(
     "parent_with_operations_forbidden_db",
