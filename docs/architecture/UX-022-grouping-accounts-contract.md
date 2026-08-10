@@ -48,6 +48,20 @@ Every rewritten transaction, transfer and default reference is journaled. A chil
 - Parent row never opens an operations accordion.
 - Operations are available only on leaf/operational accounts.
 
+## Frontend continuity rule
+
+R3 changes account-domain semantics only. It MUST NOT regress established frontend interaction behavior.
+
+Canonical R3 frontend behavior:
+
+- Home renders in natural DOM order; CSS `order` MUST NOT move `Последние операции` above the balance header.
+- Home and Accounts operation rows use browser-native horizontal overflow for swipe actions; custom pointer/touch gesture recognizers are not canonical.
+- Account rows use browser-native horizontal overflow for actions and expose an explicit `⋯` move shortcut.
+- Hidden absolute action layers that create ghost vertical lines on account cards are forbidden.
+- Accounts uses the same global FAB pattern as Home with one `Счёт` action and the reliable account-create sheet.
+- Home/Accounts switching uses keyed screen containers and does not use `window.scrollTo` recovery hacks.
+- These rules coexist with R3 grouping semantics: group rows never open operations and never show a separate own-parent amount.
+
 ## Split-account workflow
 
 If an existing operational account must be split into several accounts:
