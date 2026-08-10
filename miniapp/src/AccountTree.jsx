@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { consumeLastAccountMoveResult } from './api.js'
 
 const accountId = (account) => String(account.id ?? account.account_id)
 const accountParentId = (account) => account.parent_account_id
@@ -42,10 +43,17 @@ function MoveAccountSheet({ node, hierarchy, onMoveAccount, onClose }) {
     if (saving) return
     setSaving(true)
     setError('')
+    consumeLastAccountMoveResult()
     try {
       await onMoveAccount(id, parentId || null)
+      const moveResult = consumeLastAccountMoveResult()
+      if (moveResult?.ok === false) {
+        setError(moveResult.message || 'Не удалось переместить счёт')
+        return
+      }
       onClose()
     } catch (reason) {
+      consumeLastAccountMoveResult()
       setError(reason?.message || 'Не удалось переместить счёт')
     } finally {
       setSaving(false)
