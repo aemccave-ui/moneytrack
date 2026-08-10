@@ -45,6 +45,7 @@ require(
 require(
     "operation_swipe_touch_action",
     "touch-action:pan-y" in recent_css
+    and "overscroll-behavior-x:contain" in recent_css
     and ".transactionSwipeShell.actionsOpen .transactionSwipeActions" in recent_css
     and "opacity:0;pointer-events:none" in recent_css,
 )
@@ -64,7 +65,8 @@ require(
     "onTouchStart={touchStart}" in account_tree
     and "onTouchMove={touchMove}" in account_tree
     and "onTouchEnd={touchEnd}" in account_tree
-    and "event.pointerType === 'touch'" in account_tree,
+    and "event.pointerType === 'touch'" in account_tree
+    and "overscroll-behavior-x:contain" in accounts_css,
 )
 require(
     "account_drag_target_ref_safe",
