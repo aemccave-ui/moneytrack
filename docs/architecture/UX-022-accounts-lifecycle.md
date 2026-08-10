@@ -29,7 +29,8 @@ The pre-sync UX branch head is preserved at `backup/ux-022-pre-main-sync-2026081
 - archive requires zero own balance and cannot hide active descendants;
 - archive/delete must protect default-account references without compiling against optional legacy column names; unknown legacy reference shapes fail closed at migration validation;
 - hard delete is allowed only for a truly empty account and never cascades financial history;
-- rollback-only migration validation and persistent migration apply consume the same rendered migration body, preventing validate/apply drift.
+- rollback-only migration validation and persistent migration apply consume the same rendered migration body, preventing validate/apply drift;
+- n8n rollback artifacts must include the actually published runtime version of each replaced workflow; current drafts are preserved separately for recovery/audit, and unsupported publish/export CLI capabilities stop the pipeline before mutation.
 
 ## Delivery gates
 
