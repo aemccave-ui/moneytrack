@@ -42,10 +42,12 @@ function TransactionRow({
 }) {
   const pointer = useRef({ startX: 0, startY: 0 })
   const [dragX, setDragX] = useState(0)
-  const income = tx.transaction_type === 'income'
+  const transfer = tx.transaction_type === 'transfer'
+  const incoming = transfer && tx.transfer_direction === 'incoming'
+  const positive = tx.transaction_type === 'income' || incoming
   const amountCurrency = tx.currency_original || tx.currency || baseCurrency
   const rawAmount = Number(tx.amount_original ?? tx.amount ?? 0)
-  const amount = income ? Math.abs(rawAmount) : -Math.abs(rawAmount)
+  const amount = positive ? Math.abs(rawAmount) : -Math.abs(rawAmount)
 
   useEffect(() => {
     if (!actionsOpen) {
@@ -78,6 +80,10 @@ function TransactionRow({
   }
 
   const remove = async () => {
+    if (transfer) {
+      showInfo('Перевод не удаляется через endpoint обычной операции.')
+      return
+    }
     if (!(await confirmAction('Удалить эту операцию?'))) return
     try {
       await deleteTransaction(tx.id)
@@ -92,9 +98,9 @@ function TransactionRow({
     <article className={`transactionCard ${expanded ? 'expanded' : ''}`}>
       <div className="transactionSwipeShell">
         <div className="transactionSwipeActions" aria-hidden={!actionsOpen}>
-          <button type="button" onClick={() => showInfo('Повтор операции будет подключён отдельным write-contract.')}>Повторить</button>
-          <button type="button" onClick={() => showInfo('Редактирование операции будет подключено отдельным write-contract.')}>Изменить</button>
-          <button type="button" className="danger" onClick={remove}>Удалить</button>
+          <button type="button" disabled={transfer} onClick={() => showInfo('Повтор операции будет подключён отдельным write-contract.')}>Повторить</button>
+          <button type="button" disabled={transfer} onClick={() => showInfo('Редактирование операции будет подключено отдельным write-contract.')}>Изменить</button>
+          <button type="button" className="danger" disabled={transfer} onClick={remove}>Удалить</button>
         </div>
         <button
           type="button"
@@ -107,16 +113,16 @@ function TransactionRow({
           onClick={() => { if (Math.abs(dragX) < 8 && !actionsOpen) onExpand() }}
           aria-expanded={expanded}
         >
-          <span className={`transactionTypeMark ${income ? 'income' : 'expense'}`} aria-hidden="true">{income ? '↑' : '↓'}</span>
+          <span className={`transactionTypeMark ${positive ? 'income' : 'expense'}`} aria-hidden="true">{positive ? '↑' : '↓'}</span>
           <span className="transactionIdentity"><strong>{tx.description || operationTypeLabel(tx.transaction_type)}</strong><small>{tx.account_name || tx.category_name || operationTypeLabel(tx.transaction_type)}</small></span>
-          <strong className={`transactionAmount ${income ? 'income' : 'expense'} sensitive`}>{privacy ? '••••' : money(amount, amountCurrency)}</strong>
+          <strong className={`transactionAmount ${positive ? 'income' : 'expense'} sensitive`}>{privacy ? '••••' : money(amount, amountCurrency)}</strong>
         </button>
       </div>
       {expanded && (
         <div className="transactionDetails">
-          <DetailRow label="Тип" value={operationTypeLabel(tx.transaction_type)} />
+          <DetailRow label="Тип" value={transfer ? (incoming ? 'Входящий перевод' : 'Исходящий перевод') : operationTypeLabel(tx.transaction_type)} />
           <DetailRow label="Счёт" value={tx.account_name || tx.account_id} />
-          <DetailRow label="Категория" value={tx.category_name || tx.category_id} />
+          {!transfer && <DetailRow label="Категория" value={tx.category_name || tx.category_id} />}
           <DetailRow label="Валюта" value={amountCurrency} />
           <DetailRow label="Дата" value={String(tx.transaction_date || '').replace('T', ' ').slice(0, 16)} />
           <DetailRow label="Описание" value={tx.description} />
