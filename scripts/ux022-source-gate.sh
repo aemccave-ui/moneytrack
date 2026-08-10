@@ -17,12 +17,33 @@ for shell_script in \
   scripts/ux022-db-runtime.sh \
   scripts/ux022-render-migration.sh \
   scripts/ux022-migration-gate.sh \
-  scripts/ux022-deploy-preview.sh
+  scripts/ux022-deploy-preview.sh \
+  scripts/ux022r3-apply-preview.sh
 do
   bash -n "$shell_script"
 done
 
 echo 'shell_syntax_validation=PASS'
+
+# R3 persistent apply is intentionally narrower than the legacy UX-022 deployer:
+# database migration + preview frontend only. It must never mutate n8n or name the
+# production frontend target. An isolated R3 rollback must exist before apply.
+test -s db/domain/UX-022/045_grouping_account_rollback.sql
+if grep -q 'app.moneytrackapp.xyz' scripts/ux022r3-apply-preview.sh; then
+  echo 'r3_apply_no_prod_frontend=FAIL'
+  exit 1
+fi
+if grep -Eq '(^|[^[:alnum:]_])n8n([^[:alnum:]_]|$)' scripts/ux022r3-apply-preview.sh; then
+  echo 'r3_apply_no_n8n=FAIL'
+  exit 1
+fi
+grep -q '045_grouping_account_rollback.sql' scripts/ux022r3-apply-preview.sh
+grep -q 'ux022_db_pg_dump_schema moneytrack' scripts/ux022r3-apply-preview.sh
+
+echo 'r3_apply_no_prod_frontend=PASS'
+echo 'r3_apply_no_n8n=PASS'
+echo 'r3_isolated_rollback=PASS'
+echo 'r3_preapply_backup=PASS'
 
 python3 -m py_compile \
   scripts/ux022-generate-api-workflows.py \
