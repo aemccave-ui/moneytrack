@@ -16,6 +16,7 @@ def require(name: str, condition: bool) -> None:
 
 app = read("miniapp/src/App.jsx")
 main = read("miniapp/src/main.jsx")
+index_html = read("miniapp/index.html")
 recent = read("miniapp/src/RecentOperations.jsx")
 account_tree = read("miniapp/src/AccountTree.jsx")
 api = read("miniapp/src/api.js")
@@ -101,6 +102,12 @@ require(
     and "onSaved?.()" in create_sheet
     and ".accountsPlusButton" in css
     and "display: none !important" in css,
+)
+require(
+    "preview_build_identity_marker",
+    'content="UX022R2.1"' in index_html
+    and 'content: "R2.1"' in css
+    and 'http-equiv="Cache-Control"' in index_html,
 )
 require(
     "native_override_loaded_last",
