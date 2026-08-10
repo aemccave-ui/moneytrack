@@ -69,7 +69,7 @@ export async function getAccounts(signal) {
 }
 
 export async function getArchivedAccounts(signal) {
-  const payload = await request('api/v1/accounts?status=archived', signal, { allowEmpty: true })
+  const payload = await request('api/v1/accounts/archived', signal, { allowEmpty: true })
   return payload ?? { accounts: [] }
 }
 
@@ -113,10 +113,7 @@ export function getAccountsExplorerSummary({
   incomeCategoryIds = null,
   expenseCategoryIds = null,
 }, signal) {
-  const params = new URLSearchParams({
-    date_from: dateFrom,
-    date_to: dateTo,
-  })
+  const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo })
   setOptionalIdFilter(params, 'selected_account_ids', selectedAccountIds)
   setOptionalIdFilter(params, 'income_category_ids', incomeCategoryIds)
   setOptionalIdFilter(params, 'expense_category_ids', expenseCategoryIds)
@@ -141,84 +138,48 @@ export function createFilterPreset({ name, accountIds, incomeCategoryIds, expens
 }
 
 export function renameFilterPreset(id, name, signal) {
-  return request('api/v1/filter-presets', signal, {
-    method: 'PATCH',
-    body: { id: Number(id), name },
-  })
+  return request('api/v1/filter-presets', signal, { method: 'PATCH', body: { id: Number(id), name } })
 }
 
 export function deleteFilterPreset(id, signal) {
-  return request(`api/v1/filter-presets?id=${encodeURIComponent(id)}`, signal, {
-    method: 'DELETE',
-    allowEmpty: true,
-  })
+  return request(`api/v1/filter-presets?id=${encodeURIComponent(id)}`, signal, { method: 'DELETE', allowEmpty: true })
 }
 
 export function createAccount({ name, code, accountType, currencyCode, parentId = null }, signal) {
   return request('api/v1/accounts', signal, {
     method: 'POST',
-    body: {
-      name,
-      code,
-      account_type: accountType,
-      currency_code: currencyCode,
-      parent_id: parentId == null ? null : Number(parentId),
-    },
+    body: { name, code, account_type: accountType, currency_code: currencyCode, parent_id: parentId == null ? null : Number(parentId) },
   })
 }
 
 export function copyAccount(accountId, signal) {
-  return request('api/v1/accounts/copy', signal, {
-    method: 'POST',
-    body: { account_id: Number(accountId) },
-  })
+  return request('api/v1/accounts/copy', signal, { method: 'POST', body: { account_id: Number(accountId) } })
 }
 
 export function editAccount({ accountId, name, accountType }, signal) {
-  return request('api/v1/accounts', signal, {
-    method: 'PATCH',
-    body: { account_id: Number(accountId), name, account_type: accountType },
-  })
+  return request('api/v1/accounts', signal, { method: 'PATCH', body: { account_id: Number(accountId), name, account_type: accountType } })
 }
 
 export function moveAccount(accountId, parentId, signal) {
-  return request('api/v1/accounts/move', signal, {
-    method: 'POST',
-    body: { account_id: Number(accountId), parent_id: parentId == null ? null : Number(parentId) },
-  })
+  return request('api/v1/accounts/move', signal, { method: 'POST', body: { account_id: Number(accountId), parent_id: parentId == null ? null : Number(parentId) } })
 }
 
 export function archiveAccount(accountId, signal) {
-  return request('api/v1/accounts/archive', signal, {
-    method: 'POST',
-    body: { account_id: Number(accountId) },
-  })
+  return request('api/v1/accounts/archive', signal, { method: 'POST', body: { account_id: Number(accountId) } })
 }
 
 export function restoreAccount(accountId, signal) {
-  return request('api/v1/accounts/restore', signal, {
-    method: 'POST',
-    body: { account_id: Number(accountId) },
-  })
+  return request('api/v1/accounts/restore', signal, { method: 'POST', body: { account_id: Number(accountId) } })
 }
 
 export function previewMoveAccountOperations(sourceAccountId, targetAccountId, signal) {
-  return request('api/v1/accounts/move-operations/preview', signal, {
-    method: 'POST',
-    body: { source_account_id: Number(sourceAccountId), target_account_id: Number(targetAccountId) },
-  })
+  return request('api/v1/accounts/move-operations/preview', signal, { method: 'POST', body: { source_account_id: Number(sourceAccountId), target_account_id: Number(targetAccountId) } })
 }
 
 export function moveAccountOperations(sourceAccountId, targetAccountId, signal) {
-  return request('api/v1/accounts/move-operations', signal, {
-    method: 'POST',
-    body: { source_account_id: Number(sourceAccountId), target_account_id: Number(targetAccountId) },
-  })
+  return request('api/v1/accounts/move-operations', signal, { method: 'POST', body: { source_account_id: Number(sourceAccountId), target_account_id: Number(targetAccountId) } })
 }
 
 export function deleteAccount(accountId, signal) {
-  return request(`api/v1/accounts?id=${encodeURIComponent(accountId)}`, signal, {
-    method: 'DELETE',
-    allowEmpty: true,
-  })
+  return request(`api/v1/accounts?id=${encodeURIComponent(accountId)}`, signal, { method: 'DELETE', allowEmpty: true })
 }
