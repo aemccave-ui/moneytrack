@@ -20,11 +20,16 @@ def require(name: str, condition: bool) -> None:
         raise SystemExit(f"SOURCE_GATE=FAIL check={name}")
 
 
+app = read("miniapp/src/App.jsx")
+main = read("miniapp/src/main.jsx")
 explorer = read("miniapp/src/AccountsExplorer.jsx")
 tree = read("miniapp/src/AccountTree.jsx")
 filters = read("miniapp/src/AccountsFilters.jsx")
 recent = read("miniapp/src/RecentOperations.jsx")
 api = read("miniapp/src/api.js")
+create_sheet = read("miniapp/src/AccountCreateSheet.jsx")
+currency_layout = read("miniapp/src/currency-layout.css")
+frontend_css = read("miniapp/src/ux022r3-frontend.css")
 presets_sql = read("db/domain/UX-022/010_filter_presets.sql")
 lifecycle_sql = read("db/domain/UX-022/020_account_lifecycle.sql")
 lifecycle_hardening_sql = read("db/domain/UX-022/025_account_lifecycle_hardening.sql")
@@ -54,11 +59,54 @@ require(
 )
 require("category_circle_semantics", "categoryCircle" in filters and "isOn" in filters)
 require("system_preset_all", "Системный пресет" in filters and ">Все<" in filters)
-require("drag_long_press_600ms", "setTimeout(() =>" in tree and "}, 600)" in tree)
+require(
+    "home_dom_order_restored",
+    ".app {\n  display: block;" in currency_layout
+    and "order:" not in currency_layout
+    and "window.scrollTo" not in app
+    and 'key="home"' in app
+    and 'key="accounts"' in app,
+)
+require(
+    "native_operation_swipe",
+    "transactionSwipeTrack" in recent
+    and "onPointer" not in recent
+    and "onTouch" not in recent
+    and "overflow-x: auto !important" in frontend_css
+    and "transactionSwipeActions" in frontend_css
+    and "position: static !important" in frontend_css,
+)
+require(
+    "native_account_swipe_and_move",
+    "accountSwipeTrack" in tree
+    and "MoveAccountSheet" in tree
+    and "accountMoveShortcut" in tree
+    and "onPointer" not in tree
+    and "onTouch" not in tree
+    and "accountSwipeActions" in frontend_css
+    and "grid-template-columns: repeat(5, 44px)" in frontend_css,
+)
 require("drag_cycle_front_guard", "ACCOUNT_HIERARCHY_CYCLE" in explorer)
-require("swipe_autoclose_accounts_2000", "setTimeout(() => onActionsClose?.(id), 2000)" in tree)
-require("swipe_autoclose_home_2000", "setTimeout(onActionsClose, 2000)" in recent)
-require("accounts_plus", "accountsPlusButton" in explorer and "Добавить новый счёт" in explorer)
+require(
+    "accounts_global_fab",
+    "AccountCreateSheet" in app
+    and "accountCreateOpen" in app
+    and "<span>Счёт</span>" in app
+    and ".accountsPlusButton" in frontend_css
+    and "display: none !important" in frontend_css,
+)
+require(
+    "account_create_sheet_reliable",
+    "createAccount" in create_sheet
+    and "await onSaved?.()" in create_sheet
+    and "setError" in create_sheet,
+)
+require(
+    "expanded_account_operations_own_only",
+    "include_descendants: 'false'" in api
+    and "setOptionalIdFilter(params, 'selected_account_ids', [accountId])" in api,
+)
+require("frontend_override_loaded_last", main.index("./ux022r3-frontend.css") > main.index("./accounts-explorer.css"))
 require("archive_restore_ui", "ArchivedAccountsSheet" in explorer and "restoreAccount" in explorer)
 require("move_preview_ui", "previewMoveAccountOperations" in explorer and "Будет перенесено" in explorer)
 require("immutable_preset_frontend", "createFilterPreset" in filters and "renameFilterPreset" in filters and "date_from" not in filters and "date_to" not in filters)
@@ -108,7 +156,7 @@ require("history_move_currency_guard", "ACCOUNT_CURRENCY_INCOMPATIBLE" in lifecy
 require("delete_no_transaction_cascade", "delete from moneytrack.transactions" not in lifecycle_sql.lower() and "delete from moneytrack.transfers" not in lifecycle_sql.lower())
 require("archive_zero_balance", "ACCOUNT_BALANCE_NOT_ZERO" in lifecycle_sql and "account_archive_v1" in lifecycle_sql)
 require("canonical_auth_contract", "api3b-v1" in auth and "api-3-telegram-initdata-verifier.fragment.js" in generator)
-require("frontend_preview_does_not_name_prod", "app.moneytrackapp.xyz" not in api + explorer + tree + filters + recent)
+require("frontend_preview_does_not_name_prod", "app.moneytrackapp.xyz" not in api + app + explorer + tree + filters + recent)
 require("preview_deployer_no_prod_target", "app.moneytrackapp.xyz" not in deployer)
 require("runtime_uses_three_restorable_workflows", "UX022AccountLifecycle202608" not in deployer and deployer.count("export_workflow UX022") == 3)
 require(
