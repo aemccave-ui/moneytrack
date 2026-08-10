@@ -9,6 +9,7 @@ files=(
   "$ROOT/db/domain/UX-022/025_account_lifecycle_hardening.sql"
   "$ROOT/db/domain/UX-022/030_accounts_explorer_read_models.sql"
   "$ROOT/db/domain/UX-022/035_accounts_explorer_read_model_hardening.sql"
+  "$ROOT/db/domain/UX-022/040_grouping_account_invariant.sql"
 )
 
 for file in "${files[@]}"; do
