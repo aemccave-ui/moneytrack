@@ -7,6 +7,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 files=(
   "$ROOT/db/domain/UX-022/010_filter_presets.sql"
   "$ROOT/db/domain/UX-022/020_account_lifecycle.sql"
+  "$ROOT/db/domain/UX-022/025_account_lifecycle_hardening.sql"
   "$ROOT/db/domain/UX-022/030_accounts_explorer_read_models.sql"
 )
 verify="$ROOT/db/domain/UX-022/900_verify_contract.sql"
