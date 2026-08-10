@@ -1,0 +1,35 @@
+name: UX-022 Source Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/ux022-source-gate.yml'
+      - 'miniapp/**'
+      - 'scripts/ux022-*'
+      - 'db/domain/UX-022/**'
+
+permissions:
+  contents: read
+
+jobs:
+  source-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: miniapp/package-lock.json
+
+      - name: Run UX-022 source gate
+        shell: bash
+        run: |
+          chmod +x scripts/ux022-source-gate.sh scripts/ux022-migration-gate.sh scripts/ux022-deploy-preview.sh
+          ./scripts/ux022-source-gate.sh
