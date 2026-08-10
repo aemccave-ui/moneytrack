@@ -105,6 +105,29 @@ require(
     and '"$ROOT/scripts/ux022-render-migration.sh"' in deployer,
 )
 require("runtime_preflight_before_mutation", "runtime_preflight=PASS" in deployer and deployer.index("runtime_preflight=PASS") < deployer.index("ux022-source-gate.sh"))
+require(
+    "n8n_cli_capability_preflight",
+    "n8n_export_published_unsupported" in deployer
+    and "n8n_publish_workflow_unsupported" in deployer
+    and deployer.index("n8n_export_published_unsupported") < deployer.index("runtime_preflight=PASS"),
+)
+require(
+    "rollback_uses_published_runtime_backup",
+    '--id="$id" --published --output="/tmp/$published_name"' in deployer
+    and 'import_publish "$BACKUP_DIR/transactions.before.json"' in deployer
+    and 'import_publish "$BACKUP_DIR/summary.before.json"' in deployer
+    and 'import_publish "$BACKUP_DIR/presets.before.json"' in deployer,
+)
+require(
+    "draft_backup_preserved_separately",
+    'draft_name="${published_name%.json}.draft.json"' in deployer
+    and 'docker cp "$N8N_CONTAINER:/tmp/$draft_name" "$BACKUP_DIR/$draft_name"' in deployer,
+)
+require(
+    "import_then_publish_then_restart",
+    deployer.index('n8n import:workflow --input="/tmp/$name"') < deployer.index('n8n publish:workflow --id="$id"')
+    and deployer.index('n8n publish:workflow --id="$id"') < deployer.index('docker restart "$N8N_CONTAINER"'),
+)
 
 with tempfile.TemporaryDirectory(prefix="ux022-source-") as tmp:
     out = Path(tmp)
