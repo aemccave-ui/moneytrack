@@ -7,6 +7,7 @@ function applyTelegramGesturePolicy() {
 }
 
 applyTelegramGesturePolicy()
+window.addEventListener('load', applyTelegramGesturePolicy, { once: true })
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) applyTelegramGesturePolicy()
 })
