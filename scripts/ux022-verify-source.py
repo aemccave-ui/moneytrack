@@ -36,7 +36,12 @@ auth = read("scripts/api-3-telegram-initdata-verifier.fragment.js")
 require("collapsed_default", "useState(() => new Set())" in explorer and "accountsExplorer.expanded" not in explorer)
 require("date_before_filters", explorer.index("period === 'range'") < explorer.index("<AccountsFilters"))
 require("parent_own_display", "resolveOwnAmount" in explorer and "fullSubtreeTotal" in explorer)
-require("tri_state_selection", "is-partial" in tree and "selectionState" in tree)
+require(
+    "tri_state_selection",
+    "return 'partial'" in tree
+    and "className={`accountSelectionControl is-${state}`}" in tree
+    and "data-selection-state={state}" in tree,
+)
 require("category_circle_semantics", "categoryCircle" in filters and "isOn" in filters)
 require("system_preset_all", "Системный пресет" in filters and ">Все<" in filters)
 require("drag_long_press_600ms", "setTimeout(() =>" in tree and "}, 600)" in tree)
