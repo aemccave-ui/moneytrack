@@ -160,6 +160,7 @@ function TreeRow({
             {bodyInteractive ? (
               <button type="button" className="homeAccountOpenTarget" onClick={() => onNodeBody?.(node, hasChildren)}>{identity}</button>
             ) : <div className="homeAccountOpenTarget">{identity}</div>}
+            {onMoveRequest && <button type="button" className="accountMoveShortcut" onClick={(event) => { event.stopPropagation(); onMoveRequest(node) }} aria-label={`Переместить счёт ${node.account.name}`}>⋯</button>}
           </div>
           <div className="accountSwipeActions">
             <button type="button" onClick={() => onMoveRequest?.(node)}>Переместить</button>
