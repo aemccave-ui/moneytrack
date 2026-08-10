@@ -62,6 +62,10 @@ Canonical R3 frontend behavior:
 - Home/Accounts switching uses keyed screen containers and does not use `window.scrollTo` recovery hacks.
 - These rules coexist with R3 grouping semantics: group rows never open operations and never show a separate own-parent amount.
 
+## Runtime state
+
+The R3 database migration is already persistently applied and verified. A frontend regression was found after the first R3 preview deployment because the R3 branch had been reset from `main`, reintroducing obsolete frontend files. The database migration MUST NOT be reapplied or rolled back for that frontend-only regression. The corrected frontend restoration is pending source/build/preview verification and Telegram acceptance.
+
 ## Split-account workflow
 
 If an existing operational account must be split into several accounts:
