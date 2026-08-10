@@ -55,8 +55,11 @@ R3 changes account-domain semantics only. It MUST NOT regress established fronte
 Canonical R3 frontend behavior:
 
 - Home renders in natural DOM order; CSS `order` MUST NOT move `Последние операции` above the balance header.
-- Home and Accounts operation rows use browser-native horizontal overflow for swipe actions; custom pointer/touch gesture recognizers are not canonical.
-- Account rows use browser-native horizontal overflow for actions and expose an explicit `⋯` move shortcut.
+- Home and Accounts operation rows use compact browser-native horizontal overflow for swipe actions; action buttons are `Повторить`, `Изменить`, `Удалить` and each has an icon.
+- Telegram vertical-swipe interception is disabled where supported so the embedded WebView is less likely to steal horizontal row gestures.
+- Account row swipe actions are exactly `Изменить`, `Архив`, `Удалить`; each has an icon.
+- Account move has no `⋯`, no move button and no move sheet. Move starts by long press on the account row, gives haptic + visual wiggle/lift feedback, then tracks the finger and highlights the current drop target.
+- Dropping on the source account or its descendants is forbidden; frontend cycle validation and the database/domain guards remain authoritative.
 - Hidden absolute action layers that create ghost vertical lines on account cards are forbidden.
 - Accounts uses the same global FAB pattern as Home with one `Счёт` action and the reliable account-create sheet.
 - Home/Accounts switching uses keyed screen containers and does not use `window.scrollTo` recovery hacks.
@@ -64,7 +67,7 @@ Canonical R3 frontend behavior:
 
 ## Runtime state
 
-The R3 database migration is already persistently applied and verified. A frontend regression was found after the first R3 preview deployment because the R3 branch had been reset from `main`, reintroducing obsolete frontend files. The database migration MUST NOT be reapplied or rolled back for that frontend-only regression. The corrected frontend restoration is pending source/build/preview verification and Telegram acceptance.
+The R3 database migration is already persistently applied and verified. Frontend interaction refinements are preview-only and MUST NOT reapply or roll back the R3 database migration.
 
 ## Split-account workflow
 
@@ -72,7 +75,7 @@ If an existing operational account must be split into several accounts:
 
 1. Create a new empty grouping account.
 2. Rename the existing operational account to the desired leaf name.
-3. Move the existing operational account under the new grouping account.
+3. Move the existing operational account under the new grouping account with long press + drag.
 4. Create/move additional leaf accounts under the grouping account.
 
 Normal hierarchy changes never silently move or rewrite transaction history. The only automatic history move is the explicit one-time UX-022R3 legacy normalization described above.
