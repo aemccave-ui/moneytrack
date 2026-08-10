@@ -41,7 +41,6 @@ function TransactionRow({
   onDeleted,
 }) {
   const rowRef = useRef(null)
-  const nativeTouchHandlers = useRef({})
   const gesture = useRef({ startX: 0, startY: 0, dx: 0, dy: 0, axis: null, active: false, pointerId: null, swiped: false })
   const [dragX, setDragX] = useState(0)
   const transfer = tx.transaction_type === 'transfer'
@@ -146,32 +145,22 @@ function TransactionRow({
     cancelGesture()
   }
 
-  nativeTouchHandlers.current = {
-    start(event) {
-      if (event.touches.length !== 1) return
-      const touch = event.touches[0]
-      beginGesture(touch.clientX, touch.clientY)
-    },
-    move(event) {
-      const touch = event.touches[0]
-      if (!touch) return
-      moveGesture(touch.clientX, touch.clientY, () => event.preventDefault())
-    },
-    end() {
-      finishGesture()
-    },
-    cancel() {
-      cancelGesture()
-    },
-  }
-
   useEffect(() => {
     const row = rowRef.current
     if (!row) return undefined
-    const start = (event) => nativeTouchHandlers.current.start(event)
-    const move = (event) => nativeTouchHandlers.current.move(event)
-    const end = () => nativeTouchHandlers.current.end()
-    const cancel = () => nativeTouchHandlers.current.cancel()
+
+    const start = (event) => {
+      if (event.touches.length !== 1) return
+      const touch = event.touches[0]
+      beginGesture(touch.clientX, touch.clientY)
+    }
+    const move = (event) => {
+      const touch = event.touches[0]
+      if (!touch) return
+      moveGesture(touch.clientX, touch.clientY, () => event.preventDefault())
+    }
+    const end = () => finishGesture()
+    const cancel = () => cancelGesture()
 
     row.addEventListener('touchstart', start, { passive: true })
     row.addEventListener('touchmove', move, { passive: false })
@@ -183,7 +172,7 @@ function TransactionRow({
       row.removeEventListener('touchend', end)
       row.removeEventListener('touchcancel', cancel)
     }
-  }, [])
+  })
 
   const remove = async () => {
     if (transfer) {
