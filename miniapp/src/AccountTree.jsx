@@ -307,7 +307,10 @@ export function AccountTree({
   const moveDrag = (x, y) => {
     if (!dragRef.current.sourceId) return
     setDragOffset({ x: x - dragRef.current.startX, y: y - dragRef.current.startY })
-    const candidates = document.elementsFromPoint(x, y)
+    const hitElements = typeof document.elementsFromPoint === 'function'
+      ? document.elementsFromPoint(x, y)
+      : [document.elementFromPoint(x, y)].filter(Boolean)
+    const candidates = hitElements
       .map((element) => element.closest?.('[data-account-id]'))
       .filter(Boolean)
     const candidate = candidates.find((element) => !dragRef.current.blocked.has(String(element.dataset.accountId)))
