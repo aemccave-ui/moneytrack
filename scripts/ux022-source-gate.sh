@@ -19,6 +19,7 @@ for shell_script in \
   scripts/ux022r3-apply-preview.sh \
   scripts/ux022r3-frontend-preview.sh \
   scripts/ux022r3-functional-gate.sh \
+  scripts/ux022r3-functional-preview-apply.sh \
   scripts/ux022r3-quick-input-forensic.sh \
   scripts/ux022r3-media-ingress-forensic.sh \
   scripts/ux022r3-media-binary-contract-forensic.sh \
