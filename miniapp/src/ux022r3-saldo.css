@@ -1,0 +1,4 @@
+/* Keep account-period saldo readable on the light summary card. */
+.accountPeriodSummary .resultMetric strong {
+  color: #163f43;
+}
