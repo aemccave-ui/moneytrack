@@ -184,9 +184,10 @@ DB_MUTATED=1
 echo 'db_transaction_editor_apply=PASS'
 
 # 2. Add two new thin n8n adapters and publish them.
+# Arm rollback before the first import/publish so a partial n8n mutation cannot escape cleanup.
+N8N_MUTATED=1
 import_publish "$WORK/tx-write.json" UX022TxWrite202608
 import_publish "$WORK/quick-input.json" UX022QuickInput202608
-N8N_MUTATED=1
 docker restart "$N8N_CONTAINER" >/dev/null
 echo 'n8n_new_adapters_publish=PASS'
 
