@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { LabBottomNavigation } from '../packages/lab-design-system/navigation.jsx'
-import { getAccounts, getDashboard } from './api.js'
+import { getAccounts, getAccountsExplorerSummary, getDashboard } from './api.js'
 import AccountCreateSheet from './AccountCreateSheet.jsx'
 import AccountsExplorer from './AccountsExplorer.jsx'
 import { BalanceHero } from './BalanceHero.jsx'
@@ -17,6 +17,13 @@ const todayLabel = () => new Intl.DateTimeFormat('ru-RU', {
 
 const dayLabel = (date) => new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' })
   .format(new Date(`${String(date).slice(0, 10)}T12:00:00`))
+
+const localDateKey = (date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 
 const navigationItems = [
   { id: 'home', icon: 'home', label: 'Главная' },
@@ -68,7 +75,10 @@ function buildHierarchy(accounts, baseCurrency) {
     const totalBase = children.length
       ? children.reduce((sum, child) => sum + child.totalBase, 0)
       : ownBase
-    return { account: node.account, children, totalBase }
+    const leafCount = children.length
+      ? children.reduce((sum, child) => sum + child.leafCount, 0)
+      : 1
+    return { account: node.account, children, totalBase, leafCount }
   }
   return roots.map(normalize)
     .sort((a, b) => Math.abs(b.totalBase) - Math.abs(a.totalBase))
@@ -84,7 +94,13 @@ function HomeAccountTree({ hierarchy, expanded, onToggle, baseCurrency, hidden }
       <div className="accountTreeNode" key={id} style={{ '--account-depth': depth }}>
         <button type="button" className={`hierarchyToggle accountTreeRow ${hasChildren ? 'hasChildren' : ''}`} onClick={() => hasChildren && onToggle(id)} aria-expanded={hasChildren ? isExpanded : undefined}>
           <span className={`hierarchyChevron ${isExpanded ? 'expanded' : ''}`} aria-hidden="true">{hasChildren ? '›' : '•'}</span>
-          <span className="accountTreeIdentity"><strong>{node.account.name}</strong><span>{node.account.account_type || 'Счёт'}{hasChildren ? ` · ${node.children.length}` : ` · ${currency}`}</span></span>
+          <span className="accountTreeIdentity">
+            <span className="homeAggregateTitleRow">
+              <strong>{node.account.name}</strong>
+              {hasChildren && <span className="homeCountBadge" aria-label={`Счетов: ${node.leafCount}`} title={`Счетов: ${node.leafCount}`}>{node.leafCount}</span>}
+            </span>
+            {!hasChildren && <span className="accountTreeMeta">{node.account.account_type || 'Счёт'} · {currency}</span>}
+          </span>
           <strong className="accountTreeAmount sensitive">{hasChildren ? hidden(node.totalBase, baseCurrency) : hidden(node.account.balance_original ?? node.account.balance_base, currency)}</strong>
         </button>
         {hasChildren && isExpanded && <div className="accountTreeChildren">{node.children.map((child) => renderNode(child, depth + 1))}</div>}
@@ -98,6 +114,9 @@ function App() {
   const [dashboard, setDashboard] = useState(null)
   const [accounts, setAccounts] = useState([])
   const [defaultAccount, setDefaultAccount] = useState(null)
+  const [homeSnapshot, setHomeSnapshot] = useState(null)
+  const [homeSnapshotError, setHomeSnapshotError] = useState('')
+  const [homeSnapshotRefresh, setHomeSnapshotRefresh] = useState(0)
   const [activeScreen, setActiveScreen] = useState('home')
   const [explorerAccountId, setExplorerAccountId] = useState(null)
   const [privacy, setPrivacy] = useState(false)
@@ -105,9 +124,6 @@ function App() {
   const [accountCreateOpen, setAccountCreateOpen] = useState(false)
   const [currencyBreakdownOpen, setCurrencyBreakdownOpen] = useState(false)
   const [accountBreakdownOpen, setAccountBreakdownOpen] = useState(false)
-  const [accountCaptionOverflow, setAccountCaptionOverflow] = useState(false)
-  const accountCaptionMetaRef = useRef(null)
-  const accountCaptionRef = useRef(null)
   const [expandedCurrencies, setExpandedCurrencies] = useState(() => new Set())
   const [expandedAccounts, setExpandedAccounts] = useState(() => new Set())
   const [error, setError] = useState('')
@@ -133,11 +149,13 @@ function App() {
   const reloadAccounts = async () => {
     const accountData = await getAccounts()
     applyAccountData(accountData)
+    setHomeSnapshotRefresh((value) => value + 1)
   }
 
   const reloadDashboard = async () => {
     const dash = await getDashboard()
     setDashboard(dash)
+    setHomeSnapshotRefresh((value) => value + 1)
   }
 
   const summary = dashboard?.summary || {}
@@ -150,6 +168,11 @@ function App() {
     ?? summary.currency
     ?? dashboard?.base_currency
     ?? 'EUR',
+  ).toUpperCase()
+  const reportCurrency = String(
+    summary.report_currency
+    ?? dashboard?.report_currency
+    ?? baseCurrency,
   ).toUpperCase()
   const configuredDefaultAccount = defaultAccount
     ?? settings.setdefaultaccount
@@ -166,7 +189,7 @@ function App() {
   const transactions = useMemo(() => dashboard?.latest_operations || [], [dashboard?.latest_operations])
   const hidden = (value, valueCurrency = baseCurrency) => privacy ? '••••••' : money(value, valueCurrency)
   const accountItems = useMemo(() => flattenAccounts(accounts), [accounts])
-  const operationalAccountItems = useMemo(() => {
+  const structuralLeafItems = useMemo(() => {
     const parentIds = new Set(
       accountItems
         .map((account) => parentAccountId(account))
@@ -175,13 +198,70 @@ function App() {
     )
     return accountItems.filter((account) => !parentIds.has(accountId(account)))
   }, [accountItems])
-  const accountHierarchy = useMemo(() => buildHierarchy(accountItems, baseCurrency), [accountItems, baseCurrency])
+
+  useEffect(() => {
+    if (!dashboard || !structuralLeafItems.length) {
+      setHomeSnapshot(null)
+      setHomeSnapshotError('')
+      return undefined
+    }
+
+    const controller = new AbortController()
+    const today = localDateKey(new Date())
+    const dateFrom = String(dashboard?.period?.date_from || `${today.slice(0, 7)}-01`).slice(0, 10)
+    const selectedAccountIds = structuralLeafItems.map(accountId).sort((a, b) => Number(a) - Number(b))
+
+    setHomeSnapshot(null)
+    setHomeSnapshotError('')
+    getAccountsExplorerSummary({
+      selectedAccountIds,
+      dateFrom,
+      dateTo: today,
+    }, controller.signal)
+      .then((result) => setHomeSnapshot(result))
+      .catch((reason) => {
+        if (reason?.name !== 'AbortError') {
+          setHomeSnapshotError(reason?.message || 'Не удалось загрузить остатки')
+        }
+      })
+    return () => controller.abort()
+  }, [dashboard, structuralLeafItems, homeSnapshotRefresh])
+
+  const homeSnapshotById = useMemo(() => new Map(
+    (homeSnapshot?.account_balances || []).map((item) => [String(item.account_id), item]),
+  ), [homeSnapshot])
+  const homeSnapshotComplete = Boolean(homeSnapshot)
+    && structuralLeafItems.every((account) => homeSnapshotById.has(accountId(account)))
+
+  const canonicalAccountItems = useMemo(() => {
+    if (!homeSnapshotComplete) return []
+    return accountItems.map((account) => {
+      const snapshot = homeSnapshotById.get(accountId(account))
+      if (!snapshot) return account
+      return {
+        ...account,
+        balance_original: Number(snapshot.balance_original ?? 0),
+        balance_base: Number(snapshot.balance_base ?? 0),
+      }
+    })
+  }, [accountItems, homeSnapshotById, homeSnapshotComplete])
+
+  const operationalAccountItems = useMemo(() => {
+    if (!homeSnapshotComplete) return []
+    const leafIds = new Set(structuralLeafItems.map(accountId))
+    return canonicalAccountItems.filter((account) => leafIds.has(accountId(account)))
+  }, [canonicalAccountItems, structuralLeafItems, homeSnapshotComplete])
+
+  const accountHierarchy = useMemo(
+    () => buildHierarchy(canonicalAccountItems, baseCurrency),
+    [canonicalAccountItems, baseCurrency],
+  )
 
   const currencyGroups = useMemo(() => {
     const groups = new Map()
     operationalAccountItems.forEach((account) => {
       const code = String(account.currency_code || baseCurrency).toUpperCase()
-      const originalBalance = Number(account.balance_original ?? account.balance_base ?? 0)
+      const originalBalance = Number(account.balance_original ?? 0)
       const baseBalance = Number(account.balance_base ?? (code === baseCurrency ? originalBalance : 0))
       const group = groups.get(code) || { currency: code, total: 0, totalBase: 0, accounts: [] }
       group.total += originalBalance
@@ -212,25 +292,26 @@ function App() {
     )) ?? operationalAccountItems.find((item) => item.setdefaultaccount === true || item.is_default === true || item.is_default_account === true)
     if (!account) return null
     const currency = String(account.currency_code || baseCurrency).toUpperCase()
-    const original = Number(account.balance_original ?? account.balance ?? 0)
+    const original = Number(account.balance_original ?? 0)
     return { account, amountBase: Number(account.balance_base ?? (currency === baseCurrency ? original : 0)) }
   }, [operationalAccountItems, baseCurrency, configuredDefaultAccount])
+
+  const canonicalLeafTotal = operationalAccountItems.reduce(
+    (sum, account) => sum + Number(account.balance_base ?? 0),
+    0,
+  )
+  const canonicalNetWorth = Number(summary.net_worth ?? 0)
+  const comparableCurrency = String(homeSnapshot?.base_currency || baseCurrency).toUpperCase()
+  const homeTotalsMismatch = homeSnapshotComplete
+    && comparableCurrency === reportCurrency
+    && Number.isFinite(canonicalNetWorth)
+    && Math.abs(canonicalLeafTotal - canonicalNetWorth) > 0.02
+  const homeBreakdownReady = homeSnapshotComplete && !homeTotalsMismatch
 
   const accountDistributionTotal = accountHierarchy.reduce((sum, node) => sum + Math.abs(node.totalBase), 0)
   const currencyDistributionTotal = currencyGroups.reduce((sum, group) => sum + Math.abs(group.totalBase), 0)
   const currencyCaption = currencyGroups.map((group) => group.currency).join(' · ')
   const accountCaption = accountHierarchy.map((node) => node.account.name).join(' · ')
-
-  useEffect(() => {
-    const meta = accountCaptionMetaRef.current
-    const label = accountCaptionRef.current
-    if (!meta || !label) return undefined
-    const updateOverflow = () => setAccountCaptionOverflow(label.scrollWidth > meta.clientWidth)
-    const frame = requestAnimationFrame(updateOverflow)
-    const observer = new ResizeObserver(updateOverflow)
-    observer.observe(meta)
-    return () => { cancelAnimationFrame(frame); observer.disconnect() }
-  }, [accountCaption])
 
   const transactionGroups = useMemo(() => {
     const groups = new Map()
@@ -298,34 +379,42 @@ function App() {
     )
   }
 
+  const homeBreakdownFallback = homeSnapshotError
+    ? <div className="emptyCard" role="alert">Не удалось загрузить актуальные остатки</div>
+    : homeTotalsMismatch
+      ? <div className="emptyCard" role="alert">Остатки не согласованы с общим балансом</div>
+      : <div className="emptyCard">Загрузка остатков…</div>
+
   return (
     <main key="home" className={`app ${privacy ? 'privacy' : ''}`}>
-      <section className="balanceHeader" aria-labelledby="balance-title"><div><div className="todayLabel">{todayLabel()}</div><div className="balanceLabel" id="balance-title">Общий баланс</div><strong className="balanceValue sensitive">{hidden(summary.net_worth)}</strong></div><button className={`iconButton privacyButton ${privacy ? 'selected' : ''}`} onClick={() => setPrivacy((value) => !value)} aria-label={privacy ? 'Показать суммы' : 'Скрыть суммы'} aria-pressed={privacy}>◎</button></section>
+      <section className="balanceHeader" aria-labelledby="balance-title"><div><div className="todayLabel">{todayLabel()}</div><div className="balanceLabel" id="balance-title">Общий баланс</div><strong className="balanceValue sensitive">{hidden(summary.net_worth, reportCurrency)}</strong></div><button className={`iconButton privacyButton ${privacy ? 'selected' : ''}`} onClick={() => setPrivacy((value) => !value)} aria-label={privacy ? 'Показать суммы' : 'Скрыть суммы'} aria-pressed={privacy}>◎</button></section>
       {error && <div className="notice" role="alert">{error}</div>}
 
       <BalanceHero label={formatMonthLabel(dashboard?.period?.date_from)} result={summary.result_month} income={summary.income_month} expense={summary.expenses_month} privacy={privacy} baseCurrency={baseCurrency} money={money} />
 
       <section className="section balanceBreakdownSection noSectionTitle">
         <div className="sectionHeader currencyBalancesHeader"><h2>Баланс по валютам</h2></div>
-        {currencyGroups.length ? <div className="currencyDistribution">
+        {homeBreakdownReady ? (currencyGroups.length ? <div className="currencyDistribution">
           <button type="button" className="currencyStackButton compactStackButton" onClick={() => setCurrencyBreakdownOpen((value) => !value)} aria-expanded={currencyBreakdownOpen} aria-controls="currency-breakdown">
             <span className={`hierarchyChevron ${currencyBreakdownOpen ? 'expanded' : ''}`} aria-hidden="true">›</span>
-            <span className="currencyStackContent"><span className="currencyStackBar" aria-label="Распределение баланса по валютам">{currencyGroups.map((group, index) => { const width = currencyDistributionTotal > 0 ? Math.abs(group.totalBase) / currencyDistributionTotal * 100 : 100 / currencyGroups.length; return <i key={group.currency} className="currencyStackSegment" style={{ width: `${width}%`, background: segmentColors[index % segmentColors.length] }} /> })}</span><span className="stackCaption" title={currencyCaption}>{currencyCaption}<span className="stackCount"> ({currencyGroups.length})</span></span></span>
+            <span className="currencyStackContent"><span className="currencyStackBar" aria-label="Распределение баланса по валютам">{currencyGroups.map((group, index) => { const width = currencyDistributionTotal > 0 ? Math.abs(group.totalBase) / currencyDistributionTotal * 100 : 100 / currencyGroups.length; return <i key={group.currency} className="currencyStackSegment" style={{ width: `${width}%`, background: segmentColors[index % segmentColors.length] }} /> })}</span><span className="stackCaption" title={currencyCaption}>{currencyCaption}</span></span>
           </button>
-          {currencyBreakdownOpen && <div className="currencyHierarchy" id="currency-breakdown">{currencyGroups.map((group) => { const expanded = expandedCurrencies.has(group.currency); return <section className="currencyGroup" key={group.currency}><button type="button" className="hierarchyToggle currencyGroupHeader" onClick={() => toggleSetItem(setExpandedCurrencies, group.currency)} aria-expanded={expanded}><span className={`hierarchyChevron ${expanded ? 'expanded' : ''}`} aria-hidden="true">›</span><span className="currencyBadge">{group.currency}</span><span className="hierarchyCount">{group.accounts.length} сч.</span><strong className="sensitive">{hidden(group.total, group.currency)}</strong></button>{expanded && <div className="currencyGroupChildren">{group.accounts.map((account) => <article className="currencyAccountRow" key={accountId(account)}><span className="hierarchyChevron currencyAccountMarker" aria-hidden="true">•</span><span className="accountTreeIdentity"><strong>{account.name}</strong><span>{account.account_type || 'Счёт'} · {group.currency}</span></span><strong className="sensitive">{hidden(account.balance_original ?? account.balance_base, group.currency)}</strong></article>)}</div>}</section> })}</div>}
-        </div> : <div className="emptyCard">Нет ненулевых валютных остатков</div>}
+          {currencyBreakdownOpen && <div className="currencyHierarchy" id="currency-breakdown">{currencyGroups.map((group) => { const expanded = expandedCurrencies.has(group.currency); return <section className="currencyGroup" key={group.currency}><button type="button" className="hierarchyToggle currencyGroupHeader" onClick={() => toggleSetItem(setExpandedCurrencies, group.currency)} aria-expanded={expanded}><span className={`hierarchyChevron ${expanded ? 'expanded' : ''}`} aria-hidden="true">›</span><span className="homeNamedAggregate"><span className="currencyBadge">{group.currency}</span><span className="homeCountBadge" aria-label={`Счетов: ${group.accounts.length}`} title={`Счетов: ${group.accounts.length}`}>{group.accounts.length}</span></span><strong className="sensitive">{hidden(group.total, group.currency)}</strong></button>{expanded && <div className="currencyGroupChildren">{group.accounts.map((account) => <article className="currencyAccountRow" key={accountId(account)}><span className="hierarchyChevron currencyAccountMarker" aria-hidden="true">•</span><span className="accountTreeIdentity"><strong>{account.name}</strong><span>{account.account_type || 'Счёт'} · {group.currency}</span></span><strong className="sensitive">{hidden(account.balance_original ?? 0, group.currency)}</strong></article>)}</div>}</section> })}</div>}
+        </div> : <div className="emptyCard">Нет ненулевых валютных остатков</div>) : homeBreakdownFallback}
       </section>
 
       <section className="section accountsSection compactSectionStart">
         <div className="sectionHeader accountsSectionHeader"><h2>Баланс по счетам</h2></div>
-        {primaryAccount && <article className="primaryAccountCard"><div><span>Основной счёт · {baseCurrency}</span><strong>{primaryAccount.account.name}</strong></div><strong className="sensitive">{hidden(primaryAccount.amountBase, baseCurrency)}</strong></article>}
-        {accountHierarchy.length ? <div className="accountDistribution">
-          <button type="button" className="accountStackButton compactStackButton" onClick={() => setAccountBreakdownOpen((value) => !value)} aria-expanded={accountBreakdownOpen} aria-controls="account-breakdown">
-            <span className={`hierarchyChevron ${accountBreakdownOpen ? 'expanded' : ''}`} aria-hidden="true">›</span>
-            <span className="accountStackContent"><span className="accountStackBar" aria-label="Распределение баланса по счетам">{accountHierarchy.map((node, index) => { const width = accountDistributionTotal > 0 ? Math.abs(node.totalBase) / accountDistributionTotal * 100 : 100 / accountHierarchy.length; return <i key={accountId(node.account)} className="accountStackSegment" style={{ width: `${width}%`, background: segmentColors[index % segmentColors.length] }} /> })}</span><span ref={accountCaptionMetaRef} className="accountStackMeta" title={accountCaption}><span ref={accountCaptionRef} className="accountStackNames">{accountCaption}</span>{accountCaptionOverflow && <span className="stackCount">({accountHierarchy.length})</span>}</span></span>
-          </button>
-          {accountBreakdownOpen && <HomeAccountTree hierarchy={accountHierarchy} expanded={expandedAccounts} onToggle={(id) => toggleSetItem(setExpandedAccounts, id)} baseCurrency={baseCurrency} hidden={hidden} />}
-        </div> : <div className="emptyCard">Счета пока не созданы</div>}
+        {homeBreakdownReady ? <>
+          {primaryAccount && <article className="primaryAccountCard"><div><span>Основной счёт · {baseCurrency}</span><strong>{primaryAccount.account.name}</strong></div><strong className="sensitive">{hidden(primaryAccount.amountBase, baseCurrency)}</strong></article>}
+          {accountHierarchy.length ? <div className="accountDistribution">
+            <button type="button" className="accountStackButton compactStackButton" onClick={() => setAccountBreakdownOpen((value) => !value)} aria-expanded={accountBreakdownOpen} aria-controls="account-breakdown">
+              <span className={`hierarchyChevron ${accountBreakdownOpen ? 'expanded' : ''}`} aria-hidden="true">›</span>
+              <span className="accountStackContent"><span className="accountStackBar" aria-label="Распределение баланса по счетам">{accountHierarchy.map((node, index) => { const width = accountDistributionTotal > 0 ? Math.abs(node.totalBase) / accountDistributionTotal * 100 : 100 / accountHierarchy.length; return <i key={accountId(node.account)} className="accountStackSegment" style={{ width: `${width}%`, background: segmentColors[index % segmentColors.length] }} /> })}</span><span className="accountStackMeta" title={accountCaption}><span className="accountStackNames">{accountCaption}</span></span></span>
+            </button>
+            {accountBreakdownOpen && <HomeAccountTree hierarchy={accountHierarchy} expanded={expandedAccounts} onToggle={(id) => toggleSetItem(setExpandedAccounts, id)} baseCurrency={baseCurrency} hidden={hidden} />}
+          </div> : <div className="emptyCard">Счета пока не созданы</div>}
+        </> : homeBreakdownFallback}
       </section>
 
       <RecentOperations groups={transactionGroups} transactions={transactions} privacy={privacy} baseCurrency={baseCurrency} money={money} dayLabel={dayLabel} onDeleted={reloadDashboard} />
