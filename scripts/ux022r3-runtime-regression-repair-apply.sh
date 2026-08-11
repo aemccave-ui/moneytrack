@@ -43,12 +43,15 @@ import_publish() {
   container_tmp_rm "$remote"
 }
 
-drop_dashboard_v2() {
-  local f="$WORK/drop-dashboard-v2.sql"
-  cat > "$f" <<'SQL'
-drop function if exists moneytrack.finance_dashboard_read_model_v2(bigint, date);
-SQL
-  ux022_db_psql_file "$f" >/dev/null
+restore_dashboard_db() {
+  local restore="$WORK/restore-dashboard-db.sql"
+  {
+    echo 'begin;'
+    cat "$BACKUP_DIR/dashboard-v1.before.sql"
+    echo 'drop function if exists moneytrack.finance_dashboard_read_model_v2(bigint, date);'
+    echo 'commit;'
+  } > "$restore"
+  ux022_db_psql_file "$restore" >/dev/null
 }
 
 rollback() {
@@ -58,12 +61,12 @@ rollback() {
   if (( N8N_MUTATED )); then
     import_publish "$BACKUP_DIR/quick.before.json" "$QUICK_ID" && echo 'rollback_quick=PASS' >&2 || echo 'rollback_quick=FAIL' >&2
     import_publish "$BACKUP_DIR/photo.before.json" "$PHOTO_ID" && echo 'rollback_photo=PASS' >&2 || echo 'rollback_photo=FAIL' >&2
-    import_publish "$BACKUP_DIR/dashboard.before.json" "$DASHBOARD_ID" && echo 'rollback_dashboard=PASS' >&2 || echo 'rollback_dashboard=FAIL' >&2
     docker restart "$N8N_CONTAINER" >/dev/null && echo 'rollback_n8n_restart=PASS' >&2 || echo 'rollback_n8n_restart=FAIL' >&2
   fi
   if (( DB_MUTATED )); then
-    drop_dashboard_v2 && echo 'rollback_dashboard_v2=PASS' >&2 || echo 'rollback_dashboard_v2=FAIL' >&2
+    restore_dashboard_db && echo 'rollback_dashboard_db=PASS' >&2 || echo 'rollback_dashboard_db=FAIL' >&2
   fi
+  echo 'rollback_dashboard_workflow=NOT_TOUCHED' >&2
   echo "rollback_point=$BACKUP_DIR" >&2
   cleanup
   exit "$status"
@@ -93,6 +96,7 @@ echo '# Gate'
 echo 'CONTROLLED_DB_AND_N8N_MUTATION_ONLY'
 echo "HEAD=$(git rev-parse HEAD)"
 echo "db_runtime_mode=$UX022_DB_MODE"
+echo 'DASHBOARD_WORKFLOW_MUTATION=NONE'
 echo 'PRODUCTION_FRONTEND_MUTATION=NONE'
 echo 'PREVIEW_FRONTEND_MUTATION=NONE'
 
@@ -105,29 +109,58 @@ ux022_db_pg_dump_schema moneytrack "$BACKUP_DIR/moneytrack-schema-before.dump"
 export_one "$QUICK_ID" "$BACKUP_DIR/quick.before.json"
 export_one "$PHOTO_ID" "$BACKUP_DIR/photo.before.json"
 export_one "$DASHBOARD_ID" "$BACKUP_DIR/dashboard.before.json"
+
+cat > "$WORK/capture-dashboard-v1.sql" <<'SQL'
+\set QUIET 1
+\pset tuples_only on
+\pset format unaligned
+select pg_get_functiondef('moneytrack.finance_dashboard_read_model_v1(bigint,date)'::regprocedure) || E';';
+SQL
+ux022_db_psql_file "$WORK/capture-dashboard-v1.sql" > "$BACKUP_DIR/dashboard-v1.before.sql"
+grep -qi 'create or replace function moneytrack.finance_dashboard_read_model_v1' "$BACKUP_DIR/dashboard-v1.before.sql"
+
 echo "runtime_backup=PASS path=$BACKUP_DIR"
+echo 'dashboard_v1_definition_backup=PASS'
+echo 'dashboard_workflow_draft_backup=PASS'
 
 python3 "$ROOT/scripts/ux022r3-patch-runtime-regressions.py" \
   --quick-before "$BACKUP_DIR/quick.before.json" \
   --photo-before "$BACKUP_DIR/photo.before.json" \
-  --dashboard-before "$BACKUP_DIR/dashboard.before.json" \
   --quick-after "$WORK/quick.after.json" \
-  --photo-after "$WORK/photo.after.json" \
-  --dashboard-after "$WORK/dashboard.after.json"
+  --photo-after "$WORK/photo.after.json"
 
 ux022_db_psql_file "$ROOT/db/domain/UX-022/060_runtime_regression_repair.sql" >/dev/null
 DB_MUTATED=1
-echo 'dashboard_v2_apply=PASS'
+echo 'dashboard_db_switch_apply=PASS'
+
+cat > "$WORK/dashboard-db-verify.sql" <<'SQL'
+\set QUIET 1
+\pset tuples_only on
+\pset format unaligned
+select 'dashboard_v2_function=' || case when to_regprocedure('moneytrack.finance_dashboard_read_model_v2(bigint,date)') is null then 'ABSENT' else 'PRESENT' end;
+select 'dashboard_v1_wrapper=' || case when position('finance_dashboard_read_model_v2' in pg_get_functiondef('moneytrack.finance_dashboard_read_model_v1(bigint,date)'::regprocedure)) > 0 then 'PASS' else 'FAIL' end;
+select 'dashboard_v1_user1_net_worth=' || coalesce(net_worth::text,'NULL') from moneytrack.finance_dashboard_read_model_v1(1,current_date);
+select 'dashboard_v2_user1_net_worth=' || coalesce(net_worth::text,'NULL') from moneytrack.finance_dashboard_read_model_v2(1,current_date);
+SQL
+DB_VERIFY="$(ux022_db_psql_file "$WORK/dashboard-db-verify.sql")"
+printf '%s\n' "$DB_VERIFY"
+grep -q '^dashboard_v2_function=PRESENT$' <<<"$DB_VERIFY"
+grep -q '^dashboard_v1_wrapper=PASS$' <<<"$DB_VERIFY"
+V1_NET="$(sed -n 's/^dashboard_v1_user1_net_worth=//p' <<<"$DB_VERIFY")"
+V2_NET="$(sed -n 's/^dashboard_v2_user1_net_worth=//p' <<<"$DB_VERIFY")"
+[[ -n "$V1_NET" && "$V1_NET" == "$V2_NET" ]] || { echo 'dashboard_v1_v2_net_worth_match=FAIL' >&2; false; }
+echo 'dashboard_v1_v2_net_worth_match=PASS'
 
 N8N_MUTATED=1
 import_publish "$WORK/quick.after.json" "$QUICK_ID"
 import_publish "$WORK/photo.after.json" "$PHOTO_ID"
-import_publish "$WORK/dashboard.after.json" "$DASHBOARD_ID"
 docker restart "$N8N_CONTAINER" >/dev/null
-echo 'n8n_publish_restart=PASS'
+echo 'n8n_quick_photo_publish_restart=PASS'
 
 ready_photo=0
 ready_dashboard=0
+photo_code=''
+dash_code=''
 for _ in $(seq 1 30); do
   photo_code="$(curl -sS -X POST -o "$WORK/photo-ready.json" -w '%{http_code}' "$API_BASE/api/v1/transaction/photo" || true)"
   dash_code="$(curl -sS -o "$WORK/dashboard-ready.json" -w '%{http_code}' "$API_BASE/api/v1/dashboard" || true)"
@@ -144,8 +177,8 @@ echo 'dashboard_readiness=PASS http=401'
 export_one "$QUICK_ID" "$WORK/quick.runtime.json"
 export_one "$PHOTO_ID" "$WORK/photo.runtime.json"
 export_one "$DASHBOARD_ID" "$WORK/dashboard.runtime.json"
-python3 - "$WORK/quick.runtime.json" "$WORK/photo.runtime.json" "$WORK/dashboard.runtime.json" <<'PY'
-import json,sys
+python3 - "$WORK/quick.runtime.json" "$WORK/photo.runtime.json" "$BACKUP_DIR/dashboard.before.json" "$WORK/dashboard.runtime.json" <<'PY'
+import hashlib,json,sys
 from pathlib import Path
 
 def one(p):
@@ -156,8 +189,12 @@ def node(wf,name):
     rows=[n for n in wf.get('nodes',[]) if n.get('name')==name]
     assert len(rows)==1,(name,len(rows))
     return rows[0]
-q,p,d=map(one,sys.argv[1:])
-for wf in (q,p,d):
+
+def digest(v):
+    return hashlib.sha256(json.dumps(v,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+
+q,p,d_before,d_after=map(one,sys.argv[1:])
+for wf in (q,p):
     assert wf.get('active') is True
     assert wf.get('versionId')==wf.get('activeVersionId')
 prep=node(q,'Photo Prepare')['parameters']['jsCode']
@@ -169,20 +206,18 @@ exact=node(p,'Check duplicate receipt')['parameters']['query']
 assert 'receipt_source_identity || $json.telegram_file_id' in exact
 ingest=[n for n in p.get('nodes',[]) if 'receipt_ingest_v1' in str((n.get('parameters') or {}).get('query',''))]
 assert ingest and all('receipt_source_identity' in n['parameters']['query'] for n in ingest)
-blob=json.dumps(d.get('nodes',[]),ensure_ascii=False)
-assert 'finance_dashboard_read_model_v1' not in blob
-assert blob.count('finance_dashboard_read_model_v2')==1
-print('published_runtime_contract=PASS')
+assert d_before.get('versionId')==d_after.get('versionId')
+assert d_before.get('activeVersionId')==d_after.get('activeVersionId')
+assert digest(d_before.get('nodes') or [])==digest(d_after.get('nodes') or [])
+assert digest(d_before.get('connections') or {})==digest(d_after.get('connections') or {})
+blob=json.dumps(d_after.get('nodes',[]),ensure_ascii=False)
+assert blob.count('finance_dashboard_read_model_v1')==1
+assert 'finance_dashboard_read_model_v2' not in blob
+print('published_quick_photo_contract=PASS')
+print('dashboard_workflow_unchanged=PASS')
+print(f'dashboard_versionId_preserved={d_after.get("versionId","")}')
+print(f'dashboard_activeVersionId_preserved={d_after.get("activeVersionId","")}')
 PY
-
-cat > "$WORK/dashboard-verify.sql" <<'SQL'
-\pset tuples_only on
-\pset format unaligned
-select 'dashboard_v2_function=' || case when to_regprocedure('moneytrack.finance_dashboard_read_model_v2(bigint,date)') is null then 'ABSENT' else 'PRESENT' end;
-select 'dashboard_v2_user1_net_worth=' || coalesce(net_worth::text,'NULL')
-from moneytrack.finance_dashboard_read_model_v2(1,current_date);
-SQL
-ux022_db_psql_file "$WORK/dashboard-verify.sql"
 
 SUCCESS=1
 DB_MUTATED=0
@@ -190,8 +225,9 @@ N8N_MUTATED=0
 trap - ERR
 
 echo "rollback_point=$BACKUP_DIR"
-echo 'DB_MUTATION=finance_dashboard_read_model_v2_APPLIED'
-echo 'N8N_MUTATION=QUICK_PHOTO_DASHBOARD_PUBLISHED'
+echo 'DB_MUTATION=finance_dashboard_read_model_v2_PLUS_v1_WRAPPER_APPLIED'
+echo 'N8N_MUTATION=QUICK_PHOTO_PUBLISHED'
+echo 'DASHBOARD_WORKFLOW_MUTATION=NONE'
 echo 'PREVIEW_FRONTEND_MUTATION=NONE'
 echo 'PRODUCTION_FRONTEND_MUTATION=NONE'
 echo 'TELEGRAM_RUNTIME_ACCEPTANCE=PENDING'
