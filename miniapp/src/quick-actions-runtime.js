@@ -158,6 +158,12 @@ function normalizeHomeActions() {
   })
 }
 
+function closeHomeFab(button) {
+  const menu = button.closest('.fabMenu')
+  const toggle = menu?.querySelector('.fab')
+  if (menu?.classList.contains('open') && toggle) window.setTimeout(() => toggle.click(), 0)
+}
+
 const observer = new MutationObserver(normalizeHomeActions)
 observer.observe(document.body, { childList: true, subtree: true })
 normalizeHomeActions()
@@ -169,7 +175,7 @@ document.addEventListener('click', (event) => {
   if (!['Фото', 'Текст', 'Аудио', 'Голос'].includes(label)) return
   event.preventDefault()
   event.stopPropagation()
-  button.closest('.fabMenu')?.classList.remove('open')
+  closeHomeFab(button)
   if (label === 'Фото') photoInput.click()
   else if (label === 'Текст') openText()
   else openAudio()
