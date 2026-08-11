@@ -11,9 +11,9 @@ echo 'READ_ONLY / ROLLBACK_ONLY'
 
 bash scripts/ux022-source-gate.sh
 bash scripts/ux022r3-transaction-write-gate.sh
-bash scripts/ux022r3-quick-input-forensic.sh
+bash scripts/ux022r3-quick-input-gate.sh
 
-echo 'UX022R3_FUNCTIONAL_PREFLIGHT=COMPLETE'
+echo 'UX022R3_FUNCTIONAL_PREFLIGHT=PASS'
 echo 'PERSISTENT_DB_MUTATION=NONE'
 echo 'N8N_MUTATION=NONE'
 echo 'PREVIEW_MUTATION=NONE'
