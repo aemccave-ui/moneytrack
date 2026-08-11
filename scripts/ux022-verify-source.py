@@ -54,6 +54,18 @@ require(
     and "accountOwnAmount" not in tree,
 )
 require(
+    "home_group_totals_leaf_only",
+    "const totalBase = children.length" in app
+    and "? children.reduce((sum, child) => sum + child.totalBase, 0)" in app
+    and ": ownBase" in app,
+)
+require(
+    "home_currency_totals_leaf_only",
+    "const operationalAccountItems = useMemo(() =>" in app
+    and "return accountItems.filter((account) => !parentIds.has(accountId(account)))" in app
+    and "operationalAccountItems.forEach((account) =>" in app,
+)
+require(
     "tri_state_selection",
     "return 'partial'" in tree
     and "className={`accountSelectionControl is-${state}`}" in tree
@@ -105,13 +117,13 @@ require(
     and "accountLongPressWiggle" in frontend_css
     and "HapticFeedback" in tree,
 )
-cycle_guard = "if (targetId != null && sourceNode && nodeIds(sourceNode).includes(String(targetId)))"
+cycle_guard = "if (parentId != null && nodeIds(source).includes(String(parentId)))"
 cycle_message = "Нельзя переместить счёт внутрь самого себя."
 require(
     "drag_cycle_front_guard",
     cycle_guard in explorer
     and cycle_message in explorer
-    and explorer.index(cycle_guard) < explorer.index("await moveAccount(sourceId, targetId)"),
+    and explorer.index(cycle_guard) < explorer.index("await moveAccount(sourceId, parentId)"),
 )
 require(
     "accounts_global_fab",
