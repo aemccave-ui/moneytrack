@@ -27,6 +27,20 @@ bash -n "$ROOT/scripts/ux022r3-dashboard-drift-forensic.sh"
 python3 -m py_compile "$ROOT/scripts/ux022r3-patch-runtime-regressions.py"
 echo 'source_syntax=PASS'
 
+python3 - "$ROOT/miniapp/src/api.js" <<'PY'
+from pathlib import Path
+import sys
+src=Path(sys.argv[1]).read_text(encoding='utf-8')
+for token in (
+    'includeDescendants = false',
+    'selectedAccountIds = null',
+    "include_descendants: includeDescendants ? 'true' : 'false'",
+    "setOptionalIdFilter(params, 'selected_account_ids', selectedAccountIds ?? [accountId])",
+):
+    assert token in src, token
+print('transactions_api_scope_source=PASS')
+PY
+
 # Validate v2 + the compatibility v1 wrapper in a DB transaction that is always rolled back.
 python3 - "$ROOT/db/domain/UX-022/060_runtime_regression_repair.sql" "$WORK/060.rollback.sql" <<'PY'
 from pathlib import Path
@@ -57,7 +71,7 @@ select case
   else 'LEGACY'
 end;
 SQL
-DASHBOARD_V1_BASELINE="$(ux022_db_psql_file "$WORK/dashboard-v1-baseline.sql" | tr -d '\r' | tail -n 1)"
+DASHBOARD_V1_BASELINE="$(ux022_db_psql_file "$WORK/dashboard-v1-baseline.sql" | tr -d '\r' | awk 'NF{line=$0} END{print line}')"
 echo "dashboard_v1_runtime_baseline=$DASHBOARD_V1_BASELINE"
 [[ "$DASHBOARD_V1_BASELINE" == 'LEGACY' ]] || {
   echo 'dashboard_v1_runtime_baseline=UNEXPECTED_ALREADY_SWITCHED' >&2
