@@ -115,6 +115,28 @@ export function updateTransaction(id, payload, signal) {
   })
 }
 
+export function getTransfer(id, signal) {
+  return request(`api/v1/transfer?id=${encodeURIComponent(id)}`, signal)
+}
+
+export function createTransfer(payload, signal) {
+  return request('api/v1/transfer', signal, { method: 'POST', body: payload })
+}
+
+export function updateTransfer(id, payload, signal) {
+  return request('api/v1/transfer', signal, {
+    method: 'PATCH',
+    body: { transfer_id: Number(id), ...payload },
+  })
+}
+
+export function deleteTransfer(id, signal) {
+  return request(`api/v1/transfer?id=${encodeURIComponent(id)}`, signal, {
+    method: 'DELETE',
+    allowEmpty: true,
+  })
+}
+
 export function createTransactionFromText(text, signal) {
   return request('api/v1/transaction/text', signal, {
     method: 'POST',
