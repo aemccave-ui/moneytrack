@@ -6,33 +6,10 @@ import {
   getTransactionReference,
   updateTransaction,
 } from './api.js'
+import { hierarchyOptions, SmartSelect } from './SmartSelect.jsx'
 
 const idOf = (item) => item?.id ?? item?.account_id
-const parentOf = (item) => item?.parent_id ?? item?.parent_account_id ?? null
-
-function flattenAccounts(items = []) {
-  const result = []
-  const visit = (item, inheritedParent = null) => {
-    const normalized = inheritedParent == null || parentOf(item) != null
-      ? item
-      : { ...item, parent_id: inheritedParent }
-    result.push(normalized)
-    const id = idOf(item)
-    ;(item.children || item.accounts || []).forEach((child) => visit(child, id))
-  }
-  items.forEach((item) => visit(item))
-  return result
-}
-
-function flattenCategories(items = []) {
-  const result = []
-  const visit = (item, depth = 0) => {
-    result.push({ ...item, depth })
-    ;(item.children || item.categories || []).forEach((child) => visit(child, depth + 1))
-  }
-  items.forEach((item) => visit(item))
-  return result
-}
+const parentOf = (item) => item?.parent_id ?? item?.parent_account_id ?? item?.account_parent_id ?? null
 
 function isoParts(value) {
   const date = value ? new Date(value) : new Date()
@@ -49,6 +26,14 @@ function requestId() {
 function showError(message) {
   if (window.Telegram?.WebApp?.showAlert) window.Telegram.WebApp.showAlert(message)
   else window.alert(message)
+}
+
+function currencyName(code) {
+  try {
+    return new Intl.DisplayNames(['ru'], { type: 'currency' }).of(code) || code
+  } catch {
+    return code
+  }
 }
 
 export default function TransactionEditor({ operation, mode, onClose, onSaved }) {
@@ -75,8 +60,8 @@ export default function TransactionEditor({ operation, mode, onClose, onSaved })
       .then(([refs, accountData]) => {
         setReference({
           currencies: refs?.currencies || [],
-          categories: flattenCategories(refs?.categories || []),
-          accounts: flattenAccounts(accountData?.accounts || accountData?.items || []),
+          categories: refs?.categories || [],
+          accounts: accountData?.accounts || accountData?.items || [],
         })
       })
       .catch((error) => {
@@ -86,17 +71,50 @@ export default function TransactionEditor({ operation, mode, onClose, onSaved })
     return () => controller.abort()
   }, [])
 
-  const childParentIds = useMemo(() => new Set(reference.accounts.map(parentOf).filter((id) => id != null).map(String)), [reference.accounts])
-  const postingAccounts = reference.accounts.filter((account) => !childParentIds.has(String(idOf(account))))
+  const accountOptions = useMemo(() => hierarchyOptions(reference.accounts, {
+    id: idOf,
+    parent: parentOf,
+    children: (item) => item?.children || item?.accounts || [],
+    label: (item) => item?.name || 'Счёт',
+    secondary: (item) => String(item?.currency_code || '').toUpperCase(),
+    disabled: (_item, children) => children.length > 0,
+  }), [reference.accounts])
+
+  const categoryOptions = useMemo(() => [
+    { value: '', label: 'Без категории', secondary: 'Не классифицировать', depth: 0 },
+    ...hierarchyOptions(reference.categories, {
+      id: (item) => item?.id,
+      parent: (item) => item?.parent_id ?? item?.parent_category_id ?? null,
+      children: (item) => item?.children || item?.categories || [],
+      label: (item) => item?.name || item?.code || 'Категория',
+      secondary: (item) => item?.code && item?.name && item.code !== item.name ? item.code : '',
+    }),
+  ], [reference.categories])
+
+  const currencyOptions = useMemo(() => {
+    const codes = [...new Set([
+      form.currency,
+      ...reference.currencies.map((item) => String(item?.code || item || '').toUpperCase()).filter(Boolean),
+    ])].filter(Boolean).sort()
+    return codes.map((code) => ({ value: code, label: code, secondary: currencyName(code) }))
+  }, [form.currency, reference.currencies])
+
+  const typeOptions = [
+    { value: 'expense', label: 'Расход' },
+    { value: 'income', label: 'Доход' },
+    { value: 'adjustment', label: 'Корректировка' },
+  ]
 
   const update = (key) => (event) => {
     const value = event.target.value
     setForm((current) => ({ ...current, [key]: value }))
   }
 
-  const changeAccount = (event) => {
-    const value = event.target.value
-    const account = postingAccounts.find((item) => String(idOf(item)) === String(value))
+  const setField = (key) => (value) => setForm((current) => ({ ...current, [key]: value }))
+
+  const changeAccount = (value) => {
+    const option = accountOptions.find((item) => String(item.value) === String(value))
+    const account = option?.source
     setForm((current) => ({
       ...current,
       account_id: value,
@@ -142,11 +160,11 @@ export default function TransactionEditor({ operation, mode, onClose, onSaved })
       <form className="transactionEditorSheet" role="dialog" aria-modal="true" aria-label={repeat ? 'Повторить операцию' : 'Изменить операцию'} onSubmit={submit}>
         <div className="transactionEditorHeader"><div><span>{repeat ? 'Новая операция' : 'Операция'}</span><strong>{repeat ? 'Повторить' : 'Изменить'}</strong></div><button type="button" className="transactionEditorClose" onClick={onClose}>×</button></div>
         <div className="transactionEditorForm">
-          <label className="transactionEditorField"><span>Тип</span><select value={form.transaction_type} onChange={update('transaction_type')}><option value="expense">Расход</option><option value="income">Доход</option><option value="adjustment">Корректировка</option></select></label>
+          <SmartSelect label="Тип" title="Тип операции" value={form.transaction_type} options={typeOptions} onChange={setField('transaction_type')} />
           <label className="transactionEditorField"><span>Сумма</span><input type="number" inputMode="decimal" step="0.01" value={form.amount} onChange={update('amount')} /></label>
-          <label className="transactionEditorField"><span>Счёт</span><select value={form.account_id} onChange={changeAccount} disabled={loading}><option value="">Выбрать</option>{postingAccounts.map((account) => <option key={idOf(account)} value={idOf(account)}>{account.name} · {account.currency_code}</option>)}</select></label>
-          <label className="transactionEditorField"><span>Валюта</span><select value={form.currency} onChange={update('currency')} disabled={loading}>{[...new Set([form.currency, ...reference.currencies.map((item) => item.code)])].filter(Boolean).map((code) => <option key={code} value={code}>{code}</option>)}</select></label>
-          <label className="transactionEditorField"><span>Категория</span><select value={form.category_id} onChange={update('category_id')} disabled={loading}><option value="">Без категории</option>{reference.categories.map((category) => <option key={category.id} value={category.id}>{'— '.repeat(category.depth || 0)}{category.name || category.code}</option>)}</select></label>
+          <SmartSelect label="Счёт" title="Счёт операции" value={form.account_id} options={accountOptions} onChange={changeAccount} placeholder="Выбрать счёт" disabled={loading} />
+          <SmartSelect label="Валюта" title="Валюта операции" value={form.currency} options={currencyOptions} onChange={setField('currency')} disabled={loading} />
+          <SmartSelect label="Категория" title="Категория операции" value={form.category_id} options={categoryOptions} onChange={setField('category_id')} disabled={loading} />
           <label className="transactionEditorField"><span>Дата</span><input type="date" value={form.date} onChange={update('date')} /></label>
           <label className="transactionEditorField"><span>Время</span><input type="time" value={form.time} onChange={update('time')} /></label>
           <label className="transactionEditorField transactionDescriptionField"><span>Описание</span><input type="text" value={form.description} onChange={update('description')} /></label>
