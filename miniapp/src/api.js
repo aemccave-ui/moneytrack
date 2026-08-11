@@ -172,6 +172,8 @@ export function getTransactions({
   accountId,
   dateFrom,
   dateTo,
+  includeDescendants = false,
+  selectedAccountIds = null,
   incomeCategoryIds = null,
   expenseCategoryIds = null,
 }, signal) {
@@ -179,9 +181,9 @@ export function getTransactions({
     account_id: String(accountId),
     date_from: dateFrom,
     date_to: dateTo,
-    include_descendants: 'false',
+    include_descendants: includeDescendants ? 'true' : 'false',
   })
-  setOptionalIdFilter(params, 'selected_account_ids', [accountId])
+  setOptionalIdFilter(params, 'selected_account_ids', selectedAccountIds ?? [accountId])
   setOptionalIdFilter(params, 'income_category_ids', incomeCategoryIds)
   setOptionalIdFilter(params, 'expense_category_ids', expenseCategoryIds)
   return request(`api/v1/transactions?${params.toString()}`, signal)
