@@ -26,7 +26,9 @@ for shell_script in \
   scripts/ux022r3-media-binary-contract-forensic.sh \
   scripts/ux022r3-transaction-write-gate.sh \
   scripts/ux022r3-quick-input-gate.sh \
-  scripts/ux022r3-transfer-write-gate.sh
+  scripts/ux022r3-transfer-write-gate.sh \
+  scripts/ux022r3-acceptance-r2-gate.sh \
+  scripts/ux022r3-acceptance-r2-preview-apply.sh
 do
   bash -n "$shell_script"
 done
