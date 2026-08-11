@@ -116,49 +116,28 @@ def patch_photo(workflow: dict) -> dict:
     return wf
 
 
-def patch_dashboard(workflow: dict) -> dict:
-    wf = copy.deepcopy(workflow)
-    replacements = 0
-    for n in wf.get('nodes', []):
-        params = n.get('parameters') or {}
-        for key in ('query', 'jsCode'):
-            value = params.get(key)
-            if not isinstance(value, str) or 'finance_dashboard_read_model_v1' not in value:
-                continue
-            params[key] = value.replace('finance_dashboard_read_model_v1', 'finance_dashboard_read_model_v2')
-            replacements += 1
-    if replacements != 1:
-        raise SystemExit(f'expected exactly one dashboard v1 adapter reference, patched={replacements}')
-    return wf
-
-
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument('--quick-before', type=Path, required=True)
     p.add_argument('--photo-before', type=Path, required=True)
-    p.add_argument('--dashboard-before', type=Path, required=True)
     p.add_argument('--quick-after', type=Path, required=True)
     p.add_argument('--photo-after', type=Path, required=True)
-    p.add_argument('--dashboard-after', type=Path, required=True)
     args = p.parse_args()
 
     quick, quick_wrapped = load_one(args.quick_before)
     photo, photo_wrapped = load_one(args.photo_before)
-    dashboard, dashboard_wrapped = load_one(args.dashboard_before)
 
     q2 = patch_quick(quick)
     p2 = patch_photo(photo)
-    d2 = patch_dashboard(dashboard)
 
     write_one(args.quick_after, q2, quick_wrapped)
     write_one(args.photo_after, p2, photo_wrapped)
-    write_one(args.dashboard_after, d2, dashboard_wrapped)
 
     print('quick_photo_identity_separated_from_telegram_file_id=PASS')
     print('photo_exact_dedup_identity=PASS')
     print('photo_receipt_ingest_identity_persistence=PASS')
     print('photo_friendly_processor_error=PASS')
-    print('dashboard_adapter_v2=PASS')
+    print('dashboard_workflow_patch=NONE')
     print('UX022R3_RUNTIME_REGRESSION_PATCH=PASS')
 
 
