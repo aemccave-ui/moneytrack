@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createAccount, getTransactionReference } from './api.js'
-import { hierarchyOptions, SmartSelect } from './SmartSelect.jsx'
+import { hierarchyOptions } from './hierarchy-options.js'
+import { SmartSelect } from './SmartSelect.jsx'
 
 const accountId = (account) => account?.id ?? account?.account_id
 const accountParentId = (account) => account?.parent_id ?? account?.parent_account_id ?? account?.account_parent_id ?? null
