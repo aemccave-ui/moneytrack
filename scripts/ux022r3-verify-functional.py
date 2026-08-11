@@ -26,6 +26,7 @@ nav = read('miniapp/packages/lab-design-system/navigation.jsx')
 css = read('miniapp/src/ux022r3-frontend.css')
 sql = read('db/domain/UX-022/050_transaction_editor_write.sql')
 generator = read('scripts/ux022r3-generate-transaction-write-workflow.py')
+quick_generator = read('scripts/ux022r3-generate-quick-input-workflow.py')
 
 require(
     'habitstrack_pointer_swipe_model',
@@ -60,6 +61,9 @@ require(
     "import { MoneyTrackApiError }" in api
     and 'DOMAIN_ERROR' in errors
     and 'ACCOUNT_GROUP_NOT_POSTABLE' in errors
+    and 'TEXT_REQUIRED' in errors
+    and 'PHOTO_BINARY_MISSING' in errors
+    and 'VOICE_BINARY_MISSING' in errors
     and 'throw new MoneyTrackApiError' in api,
 )
 require(
@@ -71,11 +75,38 @@ require(
     'api/v1/transaction/photo' in api
     and 'api/v1/transaction/text' in api
     and 'api/v1/transaction/voice' in api
+    and 'body: { text }' in api
     and 'MediaRecorder' in quick
     and 'createTransactionFromPhoto' in quick
     and 'createTransactionFromText' in quick
     and 'createTransactionFromVoice' in quick
     and "import './quick-actions-runtime.js'" in main,
+)
+require(
+    'quick_input_ingress_wrappers',
+    'UX022QuickInput202608' in quick_generator
+    and "api/v1/transaction/photo" in quick_generator
+    and "api/v1/transaction/text" in quick_generator
+    and "api/v1/transaction/voice" in quick_generator
+    and 'moneytrackVerifyTelegramInitData' in quick_generator
+    and "PHOTO_PROCESSOR_ID = '5VC0EcFB21rwTfoI'" in quick_generator
+    and "TEXT_PROCESSOR_ID = 'f5ioJKyPTupUMV9h'" in quick_generator
+    and "VOICE_PROCESSOR_ID = 'Td7kvvrtqQK0FTJg'" in quick_generator,
+)
+require(
+    'quick_input_binary_passthrough',
+    "const binary = auth.binary || {};" in quick_generator
+    and "PHOTO_BINARY_MISSING" in quick_generator
+    and "VOICE_BINARY_MISSING" in quick_generator
+    and "binary\n}];" in quick_generator
+    and "Voice Text Processor" in quick_generator,
+)
+require(
+    'quick_input_no_duplicate_media_logic',
+    'n8n-nodes-base.telegram' not in quick_generator
+    and '@n8n/n8n-nodes-langchain.openAi' not in quick_generator
+    and 'receipt_ingest_v1' not in quick_generator
+    and 'finance_create_transaction_v1' not in quick_generator,
 )
 require(
     'transaction_editor_save_enabled',
@@ -103,6 +134,14 @@ require(
     and 'insert into ' not in generator.lower()
     and 'update moneytrack.' not in generator.lower()
     and 'delete from ' not in generator.lower(),
+)
+require(
+    'transaction_write_resolves_internal_user_id',
+    'INTERNAL_USER_ID_SQL' in generator
+    and 'from moneytrack.app_users u' in generator
+    and 'where u.telegram_user_id = {{ $json.telegram_user_id }}::bigint' in generator
+    and 'finance_create_transaction_v1(\n  {{ $json.telegram_user_id }}' not in generator
+    and 'finance_update_transaction_v1(\n  {{ $json.telegram_user_id }}' not in generator,
 )
 
 print('UX022R3_FUNCTIONAL_GATE=PASS')
