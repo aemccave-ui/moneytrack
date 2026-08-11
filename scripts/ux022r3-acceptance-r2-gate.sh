@@ -10,6 +10,7 @@ echo '# Gate'
 echo 'READ_ONLY / ROLLBACK_ONLY'
 
 bash scripts/ux022-source-gate.sh
+python3 scripts/ux022r3-verify-account-polish.py
 bash scripts/ux022r3-transfer-write-gate.sh
 
 echo 'UX022R3_ACCEPTANCE_R2_PREFLIGHT=PASS'
