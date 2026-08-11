@@ -38,10 +38,44 @@ function fitCurrencyLabel(meta) {
   label.textContent = suffix
 }
 
+function ensureCountBadge(button, segmentSelector, labelSelector, noun) {
+  const label = button.querySelector(labelSelector)
+  if (!label) return
+
+  const count = button.querySelectorAll(segmentSelector).length
+  let badge = label.querySelector('.stackCount')
+
+  if (count <= 1) {
+    if (badge?.dataset.runtimeCountBadge === 'true') badge.remove()
+    return
+  }
+
+  if (!badge) {
+    badge = document.createElement('span')
+    badge.className = 'stackCount'
+    badge.dataset.runtimeCountBadge = 'true'
+    label.append(badge)
+  }
+
+  const next = String(count)
+  if (badge.textContent !== next) badge.textContent = next
+  badge.setAttribute('aria-label', `${noun}: ${count}`)
+  badge.setAttribute('title', `${noun}: ${count}`)
+}
+
+function enhanceHomeCountBadges() {
+  document.querySelectorAll('.currencyStackButton').forEach((button) => {
+    ensureCountBadge(button, '.currencyStackSegment', '.stackCaption', 'Валют')
+  })
+  document.querySelectorAll('.accountStackButton').forEach((button) => {
+    ensureCountBadge(button, '.accountStackSegment', '.accountStackMeta', 'Счетов')
+  })
+}
+
 function enhanceCurrencySummary() {
   const meta = document.querySelector('.currencyStackMeta')
-  if (!meta) return
-  fitCurrencyLabel(meta)
+  if (meta) fitCurrencyLabel(meta)
+  enhanceHomeCountBadges()
 }
 
 const observer = new MutationObserver(() => requestAnimationFrame(enhanceCurrencySummary))
