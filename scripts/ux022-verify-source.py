@@ -26,6 +26,7 @@ explorer = read("miniapp/src/AccountsExplorer.jsx")
 tree = read("miniapp/src/AccountTree.jsx")
 filters = read("miniapp/src/AccountsFilters.jsx")
 recent = read("miniapp/src/RecentOperations.jsx")
+swipe_reveal = read("miniapp/src/SwipeReveal.jsx")
 api = read("miniapp/src/api.js")
 create_sheet = read("miniapp/src/AccountCreateSheet.jsx")
 currency_layout = read("miniapp/src/currency-layout.css")
@@ -70,14 +71,13 @@ require(
 )
 require(
     "responsive_operation_swipe_with_icons",
-    "transactionSwipeTrack" in recent
-    and recent.count('className="swipeActionButton') == 3
+    "SwipeReveal" in recent
     and "SwipeActionIcon" in recent
-    and "onPointer" not in recent
-    and "onTouch" not in recent
-    and "--transaction-actions-width: 156px" in frontend_css
-    and "scroll-snap-type: x proximity" in frontend_css
-    and "position: static !important" in frontend_css
+    and "setPointerCapture" in swipe_reveal
+    and "Math.abs(dx) < 7 || Math.abs(dx) <= Math.abs(dy)" in swipe_reveal
+    and "width * .34" in swipe_reveal
+    and "autoCloseMs = 2000" in swipe_reveal
+    and "overflow-x: auto" not in recent
     and "disableVerticalSwipes" in gesture_policy,
 )
 require(
