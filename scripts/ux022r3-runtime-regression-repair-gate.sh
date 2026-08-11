@@ -27,16 +27,15 @@ bash -n "$ROOT/scripts/ux022r3-dashboard-drift-forensic.sh"
 python3 -m py_compile "$ROOT/scripts/ux022r3-patch-runtime-regressions.py"
 echo 'source_syntax=PASS'
 
-# Validate the additive dashboard v2 function in a transaction that is always rolled back.
+# Validate v2 + the compatibility v1 wrapper in a DB transaction that is always rolled back.
 python3 - "$ROOT/db/domain/UX-022/060_runtime_regression_repair.sql" "$WORK/060.rollback.sql" <<'PY'
 from pathlib import Path
 import sys
 src=Path(sys.argv[1]).read_text(encoding='utf-8')
+assert 'create or replace function moneytrack.finance_dashboard_read_model_v2' in src.lower()
+assert 'create or replace function moneytrack.finance_dashboard_read_model_v1' in src.lower()
+assert 'finance_dashboard_read_model_v2(p_user_id, p_as_of)' in src
 lines=src.splitlines()
-for i,line in enumerate(lines):
-    if line.strip().lower()=='begin;':
-        lines[i]='begin;'
-        break
 for i in range(len(lines)-1,-1,-1):
     if lines[i].strip().lower()=='commit;':
         lines[i]='rollback;'
@@ -46,7 +45,24 @@ else:
 Path(sys.argv[2]).write_text('\n'.join(lines)+'\n',encoding='utf-8')
 PY
 ux022_db_psql_file "$WORK/060.rollback.sql" >/dev/null
-echo 'dashboard_v2_db_rollback_validation=PASS'
+echo 'dashboard_db_switch_rollback_validation=PASS'
+
+cat > "$WORK/dashboard-v1-baseline.sql" <<'SQL'
+\set QUIET 1
+\pset tuples_only on
+\pset format unaligned
+select case
+  when position('finance_dashboard_read_model_v2' in pg_get_functiondef('moneytrack.finance_dashboard_read_model_v1(bigint,date)'::regprocedure)) > 0
+  then 'WRAPPER_V2'
+  else 'LEGACY'
+end;
+SQL
+DASHBOARD_V1_BASELINE="$(ux022_db_psql_file "$WORK/dashboard-v1-baseline.sql" | tr -d '\r' | tail -n 1)"
+echo "dashboard_v1_runtime_baseline=$DASHBOARD_V1_BASELINE"
+[[ "$DASHBOARD_V1_BASELINE" == 'LEGACY' ]] || {
+  echo 'dashboard_v1_runtime_baseline=UNEXPECTED_ALREADY_SWITCHED' >&2
+  exit 1
+}
 
 container_tmp_rm() {
   docker exec -u 0 "$N8N_CONTAINER" rm -f "$1" >/dev/null 2>&1 || true
@@ -88,8 +104,6 @@ for wf,wid in ((q,'UX022QuickInput202608'),(p,'5VC0EcFB21rwTfoI')):
     assert wf.get('versionId')==wf.get('activeVersionId'),f'{wid}_unpublished_drift'
 assert str(d.get('id'))=='7TJ2xQTxLsTydXZc'
 assert d.get('active') is True
-if d.get('versionId')!=d.get('activeVersionId'):
-    raise SystemExit('DASHBOARD_UNPUBLISHED_DRIFT_RUN_scripts/ux022r3-dashboard-drift-forensic.sh')
 prep=node(q,'Photo Prepare').get('parameters',{}).get('jsCode','')
 assert "telegram_file_id: $('Photo Hash').first().json.photo_identity" in prep
 assert 'receipt_source_identity:' not in prep
@@ -100,18 +114,31 @@ assert any('receipt_ingest_v1' in str((n.get('parameters') or {}).get('query',''
 blob=json.dumps(d.get('nodes',[]),ensure_ascii=False)
 assert blob.count('finance_dashboard_read_model_v1')==1,blob.count('finance_dashboard_read_model_v1')
 assert 'finance_dashboard_read_model_v2' not in blob
+print(f'dashboard_current_versionId={d.get("versionId","")}')
+print(f'dashboard_current_activeVersionId={d.get("activeVersionId","")}')
 print('runtime_before_contract=EXPECTED_REGRESSED_STATE')
 PY
+
+DRIFT_OUT="$(bash "$ROOT/scripts/ux022r3-dashboard-drift-forensic.sh")"
+printf '%s\n' "$DRIFT_OUT"
+if ! grep -Eq '^dashboard_drift_class=(VISUAL_POSITION_ONLY_DRIFT|METADATA_ONLY_DRIFT)$' <<<"$DRIFT_OUT"; then
+  echo 'dashboard_drift_safe_for_db_only_switch=FAIL' >&2
+  exit 1
+fi
+if ! grep -q '^draft_behavior_changed_nodes=NONE$' <<<"$DRIFT_OUT"; then
+  echo 'dashboard_drift_safe_for_db_only_switch=FAIL behavior_changed' >&2
+  exit 1
+fi
+echo 'dashboard_drift_safe_for_db_only_switch=PASS'
+echo 'dashboard_workflow_publish_planned=NO'
 
 python3 "$ROOT/scripts/ux022r3-patch-runtime-regressions.py" \
   --quick-before "$WORK/quick.before.json" \
   --photo-before "$WORK/photo.before.json" \
-  --dashboard-before "$WORK/dashboard.before.json" \
   --quick-after "$WORK/quick.after.json" \
-  --photo-after "$WORK/photo.after.json" \
-  --dashboard-after "$WORK/dashboard.after.json"
+  --photo-after "$WORK/photo.after.json"
 
-python3 - "$WORK/quick.after.json" "$WORK/photo.after.json" "$WORK/dashboard.after.json" <<'PY'
+python3 - "$WORK/quick.after.json" "$WORK/photo.after.json" <<'PY'
 import json,sys
 from pathlib import Path
 
@@ -123,7 +150,7 @@ def node(wf,name):
     rows=[n for n in wf.get('nodes',[]) if n.get('name')==name]
     assert len(rows)==1,(name,len(rows))
     return rows[0]
-q,p,d=map(one,sys.argv[1:])
+q,p=map(one,sys.argv[1:])
 prep=node(q,'Photo Prepare')['parameters']['jsCode']
 assert 'receipt_source_identity:' in prep
 assert "telegram_file_id: $('Photo Hash').first().json.photo_identity" not in prep
@@ -134,9 +161,6 @@ assert 'receipt_source_identity || $json.telegram_file_id' in exact
 ingest=[n for n in p.get('nodes',[]) if 'receipt_ingest_v1' in str((n.get('parameters') or {}).get('query',''))]
 assert ingest
 assert all('receipt_source_identity' in n['parameters']['query'] for n in ingest)
-blob=json.dumps(d.get('nodes',[]),ensure_ascii=False)
-assert 'finance_dashboard_read_model_v1' not in blob
-assert blob.count('finance_dashboard_read_model_v2')==1
 print('candidate_contract=PASS')
 PY
 
