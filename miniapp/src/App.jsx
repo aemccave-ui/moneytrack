@@ -65,7 +65,10 @@ function buildHierarchy(accounts, baseCurrency) {
     const ownBase = Number(node.account.balance_base
       ?? (accountCurrency === baseCurrency ? node.account.balance_original : 0)
       ?? 0)
-    return { account: node.account, children, totalBase: ownBase + children.reduce((sum, child) => sum + child.totalBase, 0) }
+    const totalBase = children.length
+      ? children.reduce((sum, child) => sum + child.totalBase, 0)
+      : ownBase
+    return { account: node.account, children, totalBase }
   }
   return roots.map(normalize)
     .sort((a, b) => Math.abs(b.totalBase) - Math.abs(a.totalBase))
@@ -163,11 +166,20 @@ function App() {
   const transactions = useMemo(() => dashboard?.latest_operations || [], [dashboard?.latest_operations])
   const hidden = (value, valueCurrency = baseCurrency) => privacy ? '••••••' : money(value, valueCurrency)
   const accountItems = useMemo(() => flattenAccounts(accounts), [accounts])
+  const operationalAccountItems = useMemo(() => {
+    const parentIds = new Set(
+      accountItems
+        .map((account) => parentAccountId(account))
+        .filter((id) => id != null)
+        .map(String),
+    )
+    return accountItems.filter((account) => !parentIds.has(accountId(account)))
+  }, [accountItems])
   const accountHierarchy = useMemo(() => buildHierarchy(accountItems, baseCurrency), [accountItems, baseCurrency])
 
   const currencyGroups = useMemo(() => {
     const groups = new Map()
-    accountItems.forEach((account) => {
+    operationalAccountItems.forEach((account) => {
       const code = String(account.currency_code || baseCurrency).toUpperCase()
       const originalBalance = Number(account.balance_original ?? account.balance_base ?? 0)
       const baseBalance = Number(account.balance_base ?? (code === baseCurrency ? originalBalance : 0))
@@ -178,9 +190,9 @@ function App() {
       groups.set(code, group)
     })
     return [...groups.values()]
-      .filter((group) => Math.abs(group.total) >= 1)
+      .filter((group) => Math.abs(group.total) > 0.000001 || Math.abs(group.totalBase) > 0.000001)
       .sort((a, b) => Math.abs(b.totalBase) - Math.abs(a.totalBase))
-  }, [accountItems, baseCurrency])
+  }, [operationalAccountItems, baseCurrency])
 
   const primaryAccount = useMemo(() => {
     const configured = configuredDefaultAccount != null && typeof configuredDefaultAccount === 'object'
@@ -194,15 +206,15 @@ function App() {
       : configured
     const normalizedId = String(configuredId ?? '').trim().toLowerCase()
     const normalizedName = String(configuredName ?? '').trim().toLowerCase()
-    const account = accountItems.find((item) => (
+    const account = operationalAccountItems.find((item) => (
       (normalizedId && [item.id, item.account_id, item.accountId, item.uuid].some((value) => String(value ?? '').trim().toLowerCase() === normalizedId))
       || (normalizedName && String(item.name ?? '').trim().toLowerCase() === normalizedName)
-    )) ?? accountItems.find((item) => item.setdefaultaccount === true || item.is_default === true || item.is_default_account === true)
+    )) ?? operationalAccountItems.find((item) => item.setdefaultaccount === true || item.is_default === true || item.is_default_account === true)
     if (!account) return null
     const currency = String(account.currency_code || baseCurrency).toUpperCase()
     const original = Number(account.balance_original ?? account.balance ?? 0)
     return { account, amountBase: Number(account.balance_base ?? (currency === baseCurrency ? original : 0)) }
-  }, [accountItems, baseCurrency, configuredDefaultAccount])
+  }, [operationalAccountItems, baseCurrency, configuredDefaultAccount])
 
   const accountDistributionTotal = accountHierarchy.reduce((sum, node) => sum + Math.abs(node.totalBase), 0)
   const currencyDistributionTotal = currencyGroups.reduce((sum, group) => sum + Math.abs(group.totalBase), 0)
