@@ -18,8 +18,12 @@ for shell_script in \
   scripts/ux022-deploy-preview.sh \
   scripts/ux022r3-apply-preview.sh \
   scripts/ux022r3-frontend-preview.sh \
+  scripts/ux022r3-functional-gate.sh \
   scripts/ux022r3-quick-input-forensic.sh \
-  scripts/ux022r3-transaction-write-gate.sh
+  scripts/ux022r3-media-ingress-forensic.sh \
+  scripts/ux022r3-media-binary-contract-forensic.sh \
+  scripts/ux022r3-transaction-write-gate.sh \
+  scripts/ux022r3-quick-input-gate.sh
 do
   bash -n "$shell_script"
 done
@@ -34,7 +38,8 @@ python3 -m py_compile \
   scripts/ux022r3-verify-grouping.py \
   scripts/ux022r3-verify-interactions.py \
   scripts/ux022r3-verify-functional.py \
-  scripts/ux022r3-generate-transaction-write-workflow.py
+  scripts/ux022r3-generate-transaction-write-workflow.py \
+  scripts/ux022r3-generate-quick-input-workflow.py
 
 python3 scripts/ux022-verify-source.py
 python3 scripts/ux022r3-verify-grouping.py
