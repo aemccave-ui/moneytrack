@@ -35,7 +35,10 @@ for shell_script in \
   scripts/ux022r3-photo-dedup-recovery-status.sh \
   scripts/ux022r3-runtime-regressions-forensic.sh \
   scripts/ux022r3-execution-regressions-forensic.sh \
-  scripts/ux022r3-execution-data-forensic.sh
+  scripts/ux022r3-execution-data-forensic.sh \
+  scripts/ux022r3-runtime-regression-repair-gate.sh \
+  scripts/ux022r3-runtime-regression-repair-apply.sh \
+  scripts/ux022r3-dashboard-drift-forensic.sh
 do
   bash -n "$shell_script"
 done
@@ -53,7 +56,8 @@ python3 -m py_compile \
   scripts/ux022r3-generate-transaction-write-workflow.py \
   scripts/ux022r3-generate-quick-input-workflow.py \
   scripts/ux022r3-generate-transfer-write-workflow.py \
-  scripts/ux022r3-patch-photo-dedup.py
+  scripts/ux022r3-patch-photo-dedup.py \
+  scripts/ux022r3-patch-runtime-regressions.py
 
 python3 scripts/ux022-verify-source.py
 python3 scripts/ux022r3-verify-grouping.py
