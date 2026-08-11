@@ -6,6 +6,14 @@ const messages = {
   HTTP_500: 'Сервис временно не смог выполнить операцию. Попробуйте ещё раз.',
   API_RESPONSE_INVALID: 'Сервис вернул некорректный ответ.',
   API_RESPONSE_EMPTY: 'Сервис не подтвердил выполнение операции.',
+  INIT_DATA_MISSING: 'Не удалось подтвердить сессию Telegram. Закройте и снова откройте MoneyTrack.',
+  INVALID_INIT_DATA: 'Не удалось подтвердить сессию Telegram. Закройте и снова откройте MoneyTrack.',
+  INVALID_INIT_DATA_HASH: 'Не удалось подтвердить сессию Telegram. Закройте и снова откройте MoneyTrack.',
+  AUTH_DATE_MISSING: 'Сессия Telegram недействительна. Откройте MoneyTrack заново.',
+  AUTH_DATE_INVALID: 'Сессия Telegram недействительна. Откройте MoneyTrack заново.',
+  AUTH_DATE_EXPIRED: 'Сессия Telegram устарела. Закройте и снова откройте MoneyTrack.',
+  AUTH_DATE_IN_FUTURE: 'Не удалось подтвердить время сессии Telegram. Откройте MoneyTrack заново.',
+  USER_NOT_FOUND: 'Пользователь MoneyTrack не найден.',
   ACCOUNT_PARENT_HAS_OPERATIONS: 'Этот счёт содержит операции и не может быть родительским.',
   ACCOUNT_PARENT_IS_DEFAULT: 'Основной счёт нельзя использовать как группу. Сначала выберите другой основной счёт.',
   ACCOUNT_GROUP_NOT_POSTABLE: 'Операции нельзя записывать прямо в группу счетов. Выберите дочерний счёт.',
@@ -26,6 +34,11 @@ const messages = {
   FX_RATE_NOT_FOUND: 'Не найден курс валюты на выбранную дату.',
   DATE_INVALID: 'Проверьте дату.',
   USER_REQUIRED: 'Не удалось определить пользователя Telegram.',
+  TEXT_REQUIRED: 'Введите описание операции.',
+  PHOTO_BINARY_MISSING: 'Не удалось получить выбранное фото.',
+  VOICE_BINARY_MISSING: 'Не удалось получить аудиозапись.',
+  VOICE_TEXT_EMPTY: 'Не удалось распознать речь. Попробуйте записать ещё раз.',
+  VOICE_PROCESSOR_ERROR: 'Не удалось обработать аудиозапись. Попробуйте ещё раз.',
 }
 
 export function apiErrorMessage(code, fallback = '') {
