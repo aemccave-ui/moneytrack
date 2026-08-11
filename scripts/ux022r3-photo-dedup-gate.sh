@@ -13,6 +13,8 @@ echo 'UX-022R3 MiniApp photo duplicate parity'
 echo '# Gate'
 echo 'READ_ONLY'
 
+bash scripts/ux022-source-gate.sh
+
 docker inspect "$N8N_CONTAINER" >/dev/null
 python3 -m py_compile scripts/ux022r3-generate-quick-input-workflow.py scripts/ux022r3-patch-photo-dedup.py
 python3 scripts/ux022r3-generate-quick-input-workflow.py --output "$WORK/quick.before.json"
