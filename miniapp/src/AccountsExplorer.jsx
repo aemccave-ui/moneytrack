@@ -626,7 +626,7 @@ export default function AccountsExplorer({
   return (
     <section className="accountsExplorer">
       <section className="balanceHeader" aria-labelledby="accounts-balance-title">
-        <div><div className="todayLabel">{todayLabel()}</div><div className="balanceLabel" id="accounts-balance-title">Общий баланс</div><strong className="balanceValue sensitive">{privacy ? '••••••' : displayedTotal == null ? '—' : money(displayedTotal, displayCurrency)}</strong></div>
+        <div><div className="todayLabel">{todayLabel()}</div><div className="balanceLabel" id="accounts-balance-title">Общий баланс</div><strong className="balanceValue sensitive">{privacy ? '••••••' : displayedTotal == null ? '—' : money(Math.round(displayedTotal), displayCurrency)}</strong></div>
         <button className={`iconButton privacyButton ${privacy ? 'selected' : ''}`} onClick={onPrivacyToggle} aria-label={privacy ? 'Показать суммы' : 'Скрыть суммы'} aria-pressed={privacy}>◎</button>
       </section>
 
