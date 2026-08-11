@@ -86,6 +86,16 @@ ids=['UX022QuickInput202608','5VC0EcFB21rwTfoI']+[str(w.get('id')) for w in owne
 Path(sys.argv[2]).write_text('\n'.join(dict.fromkeys(ids))+'\n',encoding='utf-8')
 PY
 
+echo '# frontend request contract'
+python3 - <<'PY'
+from pathlib import Path
+p=Path('miniapp/src/api.js')
+text=p.read_text(encoding='utf-8')
+start=text.find('export function getTransactions(')
+end=text.find('\nexport function getAccountsExplorerSummary', start)
+print(text[start:end] if start >= 0 and end > start else 'getTransactions=NOT_FOUND')
+PY
+
 echo '# n8n execution store'
 DB_TYPE="$(docker exec "$N8N_CONTAINER" sh -c 'printf "%s" "${DB_TYPE:-sqlite}"' 2>/dev/null || true)"
 echo "n8n_db_type=${DB_TYPE:-unknown}"
@@ -141,7 +151,7 @@ select_cols=[id_col,wf_col]+[x for x in (status_col,started_col,stopped_col,mode
 ph=','.join('?' for _ in targets)
 rows=list(con.execute(
     f'SELECT {",".join(chr(34)+x+chr(34) for x in select_cols)} FROM "{entity}" '
-    f'WHERE "{wf_col}" IN ({ph}) ORDER BY CAST("{id_col}" AS INTEGER) DESC LIMIT 50',
+    f'WHERE "{wf_col}" IN ({ph}) ORDER BY CAST("{id_col}" AS INTEGER) DESC LIMIT 60',
     tuple(targets)
 )) if targets else []
 print(f'target_execution_count={len(rows)}')
@@ -151,7 +161,6 @@ for r in rows:
 if not data_table:
     print('execution_data=NOT_FOUND')
     raise SystemExit(0)
-
 dc=cols(data_table)
 print('execution_data_columns='+','.join(dc))
 exec_col='executionId' if 'executionId' in dc else 'execution_id' if 'execution_id' in dc else None
@@ -160,28 +169,29 @@ if not exec_col or not payload_col:
     print('execution_data_contract=UNSUPPORTED')
     raise SystemExit(0)
 
-wanted=[str(r[id_col]) for r in rows[:30]]
+wanted=[str(r[id_col]) for r in rows[:40]]
 if not wanted:
     raise SystemExit(0)
 ph=','.join('?' for _ in wanted)
 for r in con.execute(f'SELECT "{exec_col}","{payload_col}" FROM "{data_table}" WHERE "{exec_col}" IN ({ph})',wanted):
     eid=str(r[0]); raw=str(r[1] or '')
     low=raw.lower()
-    markers=['domain_error','error','lastnodeexecuted','check semantic duplicate receipt','check duplicate receipt','photo hash','photo processor','postgres']
+    markers=['domain_error','error','lastnodeexecuted','date_from','account_id','check semantic duplicate receipt','photo hash','photo processor','postgres']
     positions=[low.find(m) for m in markers if low.find(m)>=0]
     if not positions:
         continue
     pos=min(positions)
     start=max(0,pos-700); end=min(len(raw),pos+2600)
     snippet=raw[start:end].replace('\n',' ')
-    snippet=re.sub(r'(?i)(password|token|authorization|initdata)[^,}\]]{0,300}',r'\1=<redacted>',snippet)
+    snippet=re.sub(r'(?i)(x-telegram-init-data|initdata|init_data|authorization|token|password)[^,}\]]{0,1200}',r'\1=<redacted>',snippet)
     print(f'execution_data_hint id={eid} snippet={snippet}')
 PY
 else
   echo 'n8n_execution_store=SQLITE_NOT_FOUND'
 fi
 
-# PostgreSQL-mode fallback. It deliberately prints no password/connection secret.
+# PostgreSQL-mode fallback. docker exec MUST keep stdin open (-i), otherwise the heredoc
+# never reaches psql and a false-positive readable-store result contains no evidence.
 if [[ "${DB_TYPE:-}" == 'postgresdb' || "${DB_TYPE:-}" == 'postgres' ]]; then
   PG_HOST="$(docker exec "$N8N_CONTAINER" sh -c 'printf "%s" "${DB_POSTGRESDB_HOST:-}"' 2>/dev/null || true)"
   PG_PORT="$(docker exec "$N8N_CONTAINER" sh -c 'printf "%s" "${DB_POSTGRESDB_PORT:-5432}"' 2>/dev/null || true)"
@@ -192,7 +202,7 @@ if [[ "${DB_TYPE:-}" == 'postgresdb' || "${DB_TYPE:-}" == 'postgres' ]]; then
   echo "n8n_postgres_host_resolvable=$([[ -n "$PG_HOST" ]] && echo YES || echo NO)"
   if [[ -n "$PG_HOST" ]] && docker inspect "$PG_HOST" >/dev/null 2>&1 && docker exec "$PG_HOST" sh -c 'command -v psql >/dev/null' 2>/dev/null; then
     echo 'n8n_execution_store=POSTGRES_CONTAINER_READABLE'
-    docker exec -e PGPASSWORD="$PG_PASS" "$PG_HOST" psql -X -q -v ON_ERROR_STOP=1 \
+    docker exec -i -e PGPASSWORD="$PG_PASS" "$PG_HOST" psql -X -q -v ON_ERROR_STOP=1 \
       -h 127.0.0.1 -p "$PG_PORT" -U "$PG_USER" -d "$PG_DB" <<SQL || true
 \pset pager off
 \echo '# execution tables'
@@ -202,14 +212,45 @@ select column_name from information_schema.columns where table_schema='$PG_SCHEM
 \echo '# recent target executions'
 select id,"workflowId",status,"startedAt","stoppedAt",mode
 from "$PG_SCHEMA"."execution_entity"
-where "workflowId" in ('UX022QuickInput202608','5VC0EcFB21rwTfoI')
-order by id desc limit 40;
-\echo '# recent execution error hints'
-select d."executionId", left(d.data::text,3500)
+where "workflowId" in ('UX022TxApi202608','UX022QuickInput202608','5VC0EcFB21rwTfoI')
+order by id desc limit 60;
+\echo '# recent failed quick/photo executions'
+select e.id,e."workflowId",e.status,e."startedAt",e."stoppedAt"
+from "$PG_SCHEMA"."execution_entity" e
+where e."workflowId" in ('UX022QuickInput202608','5VC0EcFB21rwTfoI')
+  and e.status <> 'success'
+order by e.id desc limit 30;
+\echo '# sanitized quick/photo error hints'
+select d."executionId",
+       left(
+         regexp_replace(
+           substring(d.data::text from greatest(position('error' in lower(d.data::text)) - 700, 1) for 3600),
+           '(?i)(x-telegram-init-data|initdata|init_data|authorization|token|password)[^,}\\]]{0,1200}',
+           '\\1=<redacted>',
+           'g'
+         ),
+         3600
+       ) as hint
 from "$PG_SCHEMA"."execution_data" d
 join "$PG_SCHEMA"."execution_entity" e on e.id=d."executionId"
 where e."workflowId" in ('UX022QuickInput202608','5VC0EcFB21rwTfoI')
   and lower(d.data::text) like '%error%'
+order by d."executionId" desc limit 16;
+\echo '# sanitized transaction request hints'
+select d."executionId",
+       left(
+         regexp_replace(
+           substring(d.data::text from greatest(position('date_from' in lower(d.data::text)) - 500, 1) for 2200),
+           '(?i)(x-telegram-init-data|initdata|init_data|authorization|token|password)[^,}\\]]{0,1200}',
+           '\\1=<redacted>',
+           'g'
+         ),
+         2200
+       ) as hint
+from "$PG_SCHEMA"."execution_data" d
+join "$PG_SCHEMA"."execution_entity" e on e.id=d."executionId"
+where e."workflowId"='UX022TxApi202608'
+  and lower(d.data::text) like '%date_from%'
 order by d."executionId" desc limit 12;
 SQL
   else
