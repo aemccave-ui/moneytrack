@@ -117,7 +117,7 @@ def execute_workflow(name: str, target_id: str, target_name: str, x: int, y: int
             'options': {'waitForSubWorkflow': True},
         },
         'type': 'n8n-nodes-base.executeWorkflow',
-        'typeVersion': 1.2,
+        'typeVersion': 1.3,
         'position': [x, y],
         'id': uid(name),
         'name': name,
