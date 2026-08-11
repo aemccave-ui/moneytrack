@@ -25,11 +25,11 @@ WORK="$(mktemp -d /tmp/ux022r3-functional-apply.XXXXXX)"
 DB_MUTATED=0
 N8N_MUTATED=0
 PREVIEW_MUTATED=0
+SUCCESS=0
 
 cleanup() {
   rm -rf "$WORK"
 }
-trap cleanup EXIT
 
 [[ "$PREVIEW_ROOT" == "/var/www/moneytrack-miniapp-preview" ]] || {
   echo "preview_target_guard=FAIL root=$PREVIEW_ROOT" >&2
@@ -62,17 +62,12 @@ echo "HEAD=$(git rev-parse HEAD)"
 echo 'preview_target_guard=PASS'
 echo 'clean_checkout=PASS'
 
-# No mutation before the complete accepted preflight passes at this exact HEAD.
 bash "$ROOT/scripts/ux022r3-functional-gate.sh"
 echo 'functional_preflight=PASS'
 
-python3 "$ROOT/scripts/ux022r3-generate-transaction-write-workflow.py" \
-  --output "$WORK/tx-write.json"
-python3 "$ROOT/scripts/ux022r3-generate-quick-input-workflow.py" \
-  --output "$WORK/quick-input.json"
+python3 "$ROOT/scripts/ux022r3-generate-transaction-write-workflow.py" --output "$WORK/tx-write.json"
+python3 "$ROOT/scripts/ux022r3-generate-quick-input-workflow.py" --output "$WORK/quick-input.json"
 
-# Require the additive runtime objects to be absent before apply. This keeps rollback exact:
-# we never overwrite an existing DB function or workflow ID in this phase.
 cat > "$WORK/db-absence.sql" <<'SQL'
 \set ON_ERROR_STOP on
 do $$
@@ -99,7 +94,6 @@ for wanted in ('UX022TxWrite202608','UX022QuickInput202608'):
 print('n8n_additive_workflow_ids_absent=PASS')
 PY
 
-# Backup before any mutation.
 mkdir -p "$BACKUP_DIR" "$PREVIEW_ROOT"
 printf '%s\n' "$(git rev-parse HEAD)" > "$BACKUP_DIR/source-head.txt"
 ux022_db_pg_dump_schema moneytrack "$BACKUP_DIR/moneytrack.before.dump"
@@ -109,7 +103,6 @@ tar -C "$PREVIEW_ROOT" -czf "$BACKUP_DIR/preview.before.tgz" .
 test -s "$BACKUP_DIR/preview.before.tgz"
 echo "runtime_backup=PASS path=$BACKUP_DIR"
 
-# Inert replacements used only by automatic rollback to remove newly introduced webhook routes.
 python3 - "$BACKUP_DIR/tx-write.inert.json" "$BACKUP_DIR/quick-input.inert.json" <<'PY'
 import json,sys
 from pathlib import Path
@@ -125,8 +118,7 @@ PY
 import_publish() {
   local file="$1"
   local id="$2"
-  local name
-  name="$(basename "$file")"
+  local name="$(basename "$file")"
   docker cp "$file" "$N8N_CONTAINER:/tmp/$name" >/dev/null
   docker exec "$N8N_CONTAINER" n8n import:workflow --input="/tmp/$name"
   docker exec "$N8N_CONTAINER" n8n publish:workflow --id="$id"
@@ -134,26 +126,22 @@ import_publish() {
 
 import_inert() {
   local file="$1"
-  local name
-  name="$(basename "$file")"
+  local name="$(basename "$file")"
   docker cp "$file" "$N8N_CONTAINER:/tmp/$name" >/dev/null
-  # Import intentionally deactivates the new workflow. Do not republish the inert version.
   docker exec "$N8N_CONTAINER" n8n import:workflow --input="/tmp/$name"
 }
 
 rollback() {
-  local status=$?
-  trap - ERR
+  local status="${1:-1}"
+  trap - ERR EXIT
   echo "UX022R3_FUNCTIONAL_PREVIEW_APPLY=FAIL status=$status" >&2
 
   if (( PREVIEW_MUTATED )); then
     rm -rf "$PREVIEW_ROOT"
     mkdir -p "$PREVIEW_ROOT"
-    if tar -C "$PREVIEW_ROOT" -xzf "$BACKUP_DIR/preview.before.tgz"; then
-      echo 'rollback_preview=PASS' >&2
-    else
-      echo 'rollback_preview=FAIL' >&2
-    fi
+    tar -C "$PREVIEW_ROOT" -xzf "$BACKUP_DIR/preview.before.tgz" \
+      && echo 'rollback_preview=PASS' >&2 \
+      || echo 'rollback_preview=FAIL' >&2
   fi
 
   if (( N8N_MUTATED )); then
@@ -174,24 +162,30 @@ SQL
   fi
 
   echo "rollback_point=$BACKUP_DIR" >&2
+  cleanup
   exit "$status"
 }
-trap rollback ERR
 
-# 1. Add canonical ordinary-transaction edit boundary.
+on_exit() {
+  local status=$?
+  if (( status != 0 && SUCCESS == 0 && (DB_MUTATED || N8N_MUTATED || PREVIEW_MUTATED) )); then
+    rollback "$status"
+  fi
+  cleanup
+}
+trap 'rollback $?' ERR
+trap on_exit EXIT
+
 ux022_db_psql_file "$ROOT/db/domain/UX-022/050_transaction_editor_write.sql"
 DB_MUTATED=1
 echo 'db_transaction_editor_apply=PASS'
 
-# 2. Add two new thin n8n adapters and publish them.
-# Arm rollback before the first import/publish so a partial n8n mutation cannot escape cleanup.
 N8N_MUTATED=1
 import_publish "$WORK/tx-write.json" UX022TxWrite202608
 import_publish "$WORK/quick-input.json" UX022QuickInput202608
 docker restart "$N8N_CONTAINER" >/dev/null
 echo 'n8n_new_adapters_publish=PASS'
 
-# 3. Missing-auth readiness proves all five new webhook registrations exist without writing data.
 readiness=(
   'POST api/v1/transaction'
   'PATCH api/v1/transaction'
@@ -211,12 +205,11 @@ for spec in "${readiness[@]}"; do
   done
   if (( ! ready )); then
     echo "new_webhook_readiness=FAIL method=$method path=$path http=$code" >&2
-    exit 1
+    false
   fi
   echo "new_webhook_readiness=PASS method=$method path=$path"
 done
 
-# 4. Preview frontend only.
 PREVIEW_MUTATED=1
 rsync -a --delete "$ROOT/miniapp/dist/" "$PREVIEW_ROOT/"
 echo 'preview_rsync=PASS'
@@ -237,9 +230,9 @@ echo "LOCAL_SHA=$local_sha"
 echo "REMOTE_SHA=$remote_sha"
 echo 'preview_artifact_identity=PASS'
 
-# Success. Keep rollback point for manual recovery/audit.
-trap - ERR
+SUCCESS=1
 PREVIEW_MUTATED=0
+trap - ERR
 
 echo "rollback_point=$BACKUP_DIR"
 echo 'DB_MUTATION=finance_update_transaction_v1_APPLIED'
