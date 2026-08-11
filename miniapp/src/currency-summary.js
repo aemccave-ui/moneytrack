@@ -38,45 +38,71 @@ function fitCurrencyLabel(meta) {
   label.textContent = suffix
 }
 
-/* UX022R3_HOME_COUNT_BADGE_RUNTIME */
-function ensureCountBadge(button, segmentSelector, labelSelector, noun) {
-  const label = button.querySelector(labelSelector)
-  if (!label) return
-
-  const count = button.querySelectorAll(segmentSelector).length
-  let badge = label.querySelector('.stackCount')
-
-  if (count <= 1) {
-    if (badge?.dataset.runtimeCountBadge === 'true') badge.remove()
-    return
-  }
-
-  if (!badge) {
-    badge = document.createElement('span')
-    badge.className = 'stackCount'
-    badge.dataset.runtimeCountBadge = 'true'
-    label.append(badge)
-  }
-
-  const next = String(count)
-  if (badge.textContent !== next) badge.textContent = next
+/* UX022R3_HOME_COUNT_BADGE_RUNTIME
+   Counts are attached to each named Home aggregate, never to the whole stack.
+   A count of 1 is valid and remains visible. */
+function setCountBadge(badge, count, noun = 'Счетов') {
+  badge.classList.add('homeCountBadge')
+  badge.textContent = String(count)
   badge.setAttribute('aria-label', `${noun}: ${count}`)
   badge.setAttribute('title', `${noun}: ${count}`)
 }
 
-function enhanceHomeCountBadges() {
-  document.querySelectorAll('.currencyStackButton').forEach((button) => {
-    ensureCountBadge(button, '.currencyStackSegment', '.stackCaption', 'Валют')
+function enhanceCurrencyGroupBadges() {
+  document.querySelectorAll('.currencyDistribution .currencyGroupHeader').forEach((button) => {
+    const name = button.querySelector('.currencyBadge')
+    const countNode = button.querySelector('.hierarchyCount, .homeCountBadge')
+    if (!name || !countNode) return
+
+    const match = countNode.textContent.match(/\d+/)
+    if (!match) return
+
+    setCountBadge(countNode, Number(match[0]))
   })
-  document.querySelectorAll('.accountStackButton').forEach((button) => {
-    ensureCountBadge(button, '.accountStackSegment', '.accountStackMeta', 'Счетов')
+}
+
+function enhanceHomeAccountBadges() {
+  document.querySelectorAll('.accountDistribution .accountTreeRow.hasChildren').forEach((row) => {
+    const identity = row.querySelector('.accountTreeIdentity')
+    const title = identity?.querySelector(':scope > strong, :scope > .homeAggregateTitleRow > strong')
+    const meta = identity?.querySelector(':scope > span:not(.homeAggregateTitleRow)')
+    if (!identity || !title || !meta) return
+
+    const match = meta.textContent.match(/(?:^|\s)·\s*(\d+)\s*$/)
+    let count = match ? Number(match[1]) : null
+    let titleRow = identity.querySelector(':scope > .homeAggregateTitleRow')
+    let badge = titleRow?.querySelector(':scope > .homeCountBadge')
+
+    if (count == null && badge) {
+      const existing = badge.textContent.match(/\d+/)
+      count = existing ? Number(existing[0]) : null
+    }
+    if (count == null) return
+
+    if (!titleRow) {
+      titleRow = document.createElement('span')
+      titleRow.className = 'homeAggregateTitleRow'
+      identity.insertBefore(titleRow, title)
+      titleRow.append(title)
+    }
+
+    if (!badge) {
+      badge = document.createElement('span')
+      titleRow.append(badge)
+    }
+    setCountBadge(badge, count)
+
+    if (match) {
+      meta.textContent = meta.textContent.replace(/\s*·\s*\d+\s*$/, '').trim()
+    }
   })
 }
 
 function enhanceCurrencySummary() {
   const meta = document.querySelector('.currencyStackMeta')
   if (meta) fitCurrencyLabel(meta)
-  enhanceHomeCountBadges()
+  enhanceCurrencyGroupBadges()
+  enhanceHomeAccountBadges()
 }
 
 const observer = new MutationObserver(() => requestAnimationFrame(enhanceCurrencySummary))
