@@ -43,7 +43,8 @@ function fitCurrencyLabel(meta) {
    A count of 1 is valid and remains visible. */
 function setCountBadge(badge, count, noun = 'Счетов') {
   badge.classList.add('homeCountBadge')
-  badge.textContent = String(count)
+  const next = String(count)
+  if (badge.textContent !== next) badge.textContent = next
   badge.setAttribute('aria-label', `${noun}: ${count}`)
   badge.setAttribute('title', `${noun}: ${count}`)
 }
