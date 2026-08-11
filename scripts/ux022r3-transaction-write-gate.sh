@@ -27,6 +27,11 @@ assert all(q.startswith('select * from moneytrack.') for q in queries)
 assert not any(token in '\n'.join(queries) for token in ('insert into ','update moneytrack.','delete from '))
 assert any('finance_create_transaction_v1' in q for q in queries)
 assert any('finance_update_transaction_v1' in q for q in queries)
+assert all('from moneytrack.app_users u' in q for q in queries)
+assert all('where u.telegram_user_id = {{ $json.telegram_user_id }}::bigint' in q for q in queries)
+assert not any('finance_create_transaction_v1(\n  {{ $json.telegram_user_id }}' in q for q in queries)
+assert not any('finance_update_transaction_v1(\n  {{ $json.telegram_user_id }}' in q for q in queries)
+print('transaction_write_internal_user_resolution=PASS')
 print('transaction_write_workflow_static=PASS')
 PY
 
