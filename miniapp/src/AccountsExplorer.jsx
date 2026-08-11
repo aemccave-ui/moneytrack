@@ -365,47 +365,67 @@ function MoveHistorySheet({ source, accounts, deleteAfter, onClose, onComplete }
     <div className="accountSheetBackdrop" role="presentation" onClick={(event) => event.target === event.currentTarget && onClose()}>
       <section className="accountSheet" role="dialog" aria-modal="true" aria-label="Перенести операции">
         <header><strong>Перенести операции</strong><button type="button" onClick={onClose}>×</button></header>
-        <label><span>Куда перенести</span><select value={targetId} onChange={(event) => setTargetId(event.target.value)}>{targets.map((item) => <option key={accountId(item)} value={accountId(item)}>{item.name}</option>)}</select></label>
-        {error && <div className="accountSheetError" role="alert">{error}</div>}
-        {preview && <div className="accountSheetHint">Будет перенесено: {operationCount} операций, {transferCount} переводов.</div>}
-        <button className="accountSheetPrimary" type="button" disabled={saving || !preview || !targetId} onClick={commit}>{saving ? 'Перенос…' : 'Перенести'}</button>
+        <p>Из <b>{source.name}</b> →</p>
+        <label><span>Целевой счёт · {currency}</span><select value={targetId} onChange={(event) => setTargetId(event.target.value)}><option value="">Выберите счёт</option>{targets.map((item) => <option key={accountId(item)} value={accountId(item)}>{item.name}</option>)}</select></label>
+        {preview && <div className="movePreview"><strong>Будет перенесено:</strong><span>{operationCount} операций</span><span>{transferCount} переводов</span></div>}
+        {error && <div className="explorerInlineError" role="alert">{error}</div>}
+        <button type="button" className="accountSheetPrimary" onClick={commit} disabled={!targetId || !preview || saving}>{saving ? 'Перенос…' : deleteAfter ? 'Перенести и удалить счёт' : 'Перенести'}</button>
       </section>
     </div>
   )
 }
 
-function ArchivedAccountsSheet({ accounts, onClose, onRestored }) {
-  const [busyId, setBusyId] = useState(null)
+function ArchivedAccountsSheet({ onClose, onRestored }) {
+  const [accounts, setAccounts] = useState([])
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const restore = async (account) => {
-    const id = accountId(account)
-    setBusyId(id)
-    setError('')
+
+  useEffect(() => {
+    const controller = new AbortController()
+    getArchivedAccounts(controller.signal)
+      .then((result) => setAccounts(result?.accounts || result?.items || []))
+      .catch((reason) => {
+        if (reason?.name !== 'AbortError') setError(reason?.message || 'Не удалось загрузить архив')
+      })
+      .finally(() => setLoading(false))
+    return () => controller.abort()
+  }, [])
+
+  const restore = async (item) => {
     try {
-      await restoreAccount(id)
+      await restoreAccount(accountId(item))
+      setAccounts((current) => current.filter((account) => accountId(account) !== accountId(item)))
       await onRestored()
     } catch (reason) {
-      setError(reason?.message || 'Не удалось восстановить счёт')
-    } finally {
-      setBusyId(null)
+      showError(reason?.message || 'Не удалось восстановить счёт')
     }
   }
+
   return (
     <div className="accountSheetBackdrop" role="presentation" onClick={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="accountSheet" role="dialog" aria-modal="true" aria-label="Архив счетов">
-        <header><strong>Архив</strong><button type="button" onClick={onClose}>×</button></header>
-        {!accounts.length && <div className="accountSheetHint">Архив пуст</div>}
-        {accounts.map((account) => <div className="archivedAccountRow" key={accountId(account)}><div><strong>{account.name}</strong><span>{account.currency_code}</span></div><button type="button" disabled={busyId === accountId(account)} onClick={() => restore(account)}>{busyId === accountId(account) ? '…' : 'Восстановить'}</button></div>)}
-        {error && <div className="accountSheetError" role="alert">{error}</div>}
+      <section className="accountSheet" role="dialog" aria-modal="true" aria-label="Архивные счета">
+        <header><strong>Архивные счета</strong><button type="button" onClick={onClose}>×</button></header>
+        {loading && <p>Загрузка…</p>}
+        {error && <div className="explorerInlineError" role="alert">{error}</div>}
+        {!loading && !accounts.length && !error && <p>Архив пуст.</p>}
+        <div className="archivedAccountList">{accounts.map((item) => <div key={accountId(item)}><span><strong>{item.name}</strong><small>{item.currency_code}</small></span><button type="button" onClick={() => restore(item)}>Восстановить</button></div>)}</div>
       </section>
     </div>
   )
 }
 
-function AccountsExplorer({ accounts, baseCurrency, privacy, onPrivacyToggle, initialAccountId, onAccountsChanged }) {
-  const flatAccounts = useMemo(() => flattenAccounts(accounts), [accounts])
+export default function AccountsExplorer({
+  accounts,
+  baseCurrency,
+  privacy,
+  onPrivacyToggle,
+  initialAccountId,
+  onAccountsChanged,
+}) {
   const hierarchy = useMemo(() => buildHierarchy(accounts), [accounts])
-  const allAccountIds = useMemo(() => flatAccounts.map(accountId), [flatAccounts])
+  const flatAccounts = useMemo(() => flattenAccounts(accounts), [accounts])
+  const allAccountIds = useMemo(() => flatAccounts.map(accountId).sort((a, b) => Number(a) - Number(b)), [flatAccounts])
+  const previousAllIds = useRef(allAccountIds)
   const [selectedIds, setSelectedIds] = useState(() => new Set(allAccountIds))
   const [expanded, setExpanded] = useState(() => new Set())
   const [openOperations, setOpenOperations] = useState(() => new Set(initialAccountId ? [String(initialAccountId)] : []))
@@ -418,20 +438,20 @@ function AccountsExplorer({ accounts, baseCurrency, privacy, onPrivacyToggle, in
   const [dateFrom, setDateFrom] = useState(localDateKey(monthStart))
   const [dateTo, setDateTo] = useState(localDateKey(today))
   const [aggregateState, setAggregateState] = useState({ key: '', payload: null, error: '' })
-  const [archivedOpen, setArchivedOpen] = useState(false)
-  const [archivedAccounts, setArchivedAccounts] = useState([])
   const [editor, setEditor] = useState(null)
   const [moveHistory, setMoveHistory] = useState(null)
+  const [archiveOpen, setArchiveOpen] = useState(false)
   const [snackbar, setSnackbar] = useState(null)
-  const dragStateRef = useRef(null)
 
   useEffect(() => {
+    const previous = previousAllIds.current
     setSelectedIds((current) => {
-      const next = new Set([...current].filter((id) => allAccountIds.includes(id)))
-      allAccountIds.forEach((id) => { if (!current.size) next.add(id) })
-      return next
+      const wasAll = previous.length === current.size && previous.every((id) => current.has(id))
+      previousAllIds.current = allAccountIds
+      if (wasAll) return new Set(allAccountIds)
+      return new Set([...current].filter((id) => allAccountIds.includes(id)))
     })
-  }, [allAccountIds.join('|')])
+  }, [allAccountIds.join(',')])
 
   useEffect(() => {
     if (!snackbar) return undefined
@@ -449,6 +469,21 @@ function AccountsExplorer({ accounts, baseCurrency, privacy, onPrivacyToggle, in
     resolvedPeriod.dateFrom,
     resolvedPeriod.dateTo,
   ].join('|')
+  const aggregate = aggregateState.key === aggregateKey ? aggregateState.payload : null
+  const aggregateError = aggregateState.key === aggregateKey ? aggregateState.error : ''
+  const snapshotById = useMemo(() => new Map(
+    (aggregate?.account_balances || []).map((item) => [String(item.account_id), item]),
+  ), [aggregate])
+  const displayCurrency = aggregate?.base_currency || baseCurrency
+  const snapshotMissingRateCount = Number(aggregate?.snapshot_missing_rate_count ?? aggregate?.missing_rate_count ?? 0)
+  const displayedTotal = aggregate && snapshotMissingRateCount === 0 ? selectedTotal(selectedIds, snapshotById) : null
+  const serverTotal = aggregate?.total_base == null ? null : Number(aggregate.total_base)
+  const totalMismatch = displayedTotal != null && serverTotal != null && Math.abs(displayedTotal - serverTotal) > 0.01
+  const periodSummary = aggregate?.period_summary || {
+    income: aggregate?.period_income || 0,
+    expense: aggregate?.period_expense || 0,
+    result: aggregate?.period_result || 0,
+  }
 
   useEffect(() => {
     if (invalidRange) return undefined
@@ -460,79 +495,32 @@ function AccountsExplorer({ accounts, baseCurrency, privacy, onPrivacyToggle, in
       incomeCategoryIds,
       expenseCategoryIds,
     }, controller.signal)
-      .then((payload) => setAggregateState({ key: aggregateKey, payload, error: '' }))
+      .then((result) => setAggregateState({ key: aggregateKey, payload: result, error: '' }))
       .catch((reason) => {
-        if (reason?.name !== 'AbortError') setAggregateState({ key: aggregateKey, payload: null, error: reason?.message || 'Не удалось загрузить сводку' })
+        if (reason?.name !== 'AbortError') setAggregateState({ key: aggregateKey, payload: null, error: reason?.message || 'Не удалось пересчитать баланс' })
       })
     return () => controller.abort()
   }, [aggregateKey])
 
-  const aggregatePayload = aggregateState.key === aggregateKey ? aggregateState.payload : null
-  const aggregateError = aggregateState.key === aggregateKey ? aggregateState.error : ''
-  const snapshot = aggregatePayload?.snapshot || aggregatePayload?.accounts || aggregatePayload?.items || []
-  const snapshotById = useMemo(() => new Map(snapshot.map((row) => [String(row.account_id ?? row.id), row])), [snapshot])
-  const snapshotMissingRateCount = Number(aggregatePayload?.snapshot_missing_rate_count || 0)
-  const aggregateTotal = Number(aggregatePayload?.total_base ?? aggregatePayload?.total ?? 0)
-  const displayedTotal = snapshotMissingRateCount === 0 ? selectedTotal(selectedIds, snapshotById) ?? aggregateTotal : aggregateTotal
-  const displayCurrency = aggregatePayload?.base_currency || baseCurrency
-  const periodSummary = aggregatePayload?.period_summary || aggregatePayload?.summary || {}
+  const refreshAccounts = async () => {
+    if (onAccountsChanged) await onAccountsChanged()
+  }
 
-  const activePresetChanged = (message) => setSnackbar(message)
-
-  const toggleExpanded = (id) => setExpanded((current) => {
+  const toggleParent = (id) => setExpanded((current) => {
     const next = new Set(current)
     if (next.has(id)) next.delete(id)
     else next.add(id)
     return next
   })
 
-  const toggleOperations = (id) => setOpenOperations((current) => {
-    const next = new Set(current)
-    if (next.has(id)) next.delete(id)
-    else next.add(id)
-    return next
-  })
-
-  const handleMove = async (sourceId, targetId) => {
-    const sourceNode = (() => {
-      let found = null
-      const visit = (node) => {
-        if (accountId(node.account) === String(sourceId)) found = node
-        else node.children.forEach(visit)
-      }
-      hierarchy.forEach(visit)
-      return found
-    })()
-    if (targetId != null && sourceNode && nodeIds(sourceNode).includes(String(targetId))) {
-      showError('Нельзя переместить счёт внутрь самого себя.')
-      return
-    }
-    try {
-      await moveAccount(sourceId, targetId)
-      await onAccountsChanged?.()
-      setSnackbar('Счёт перемещён')
-    } catch (reason) {
-      showError(reason?.message || 'Не удалось переместить счёт')
-    }
-  }
-
-  const openArchive = async () => {
-    setArchivedOpen(true)
-    try {
-      const result = await getArchivedAccounts()
-      setArchivedAccounts(result?.accounts || result?.items || [])
-    } catch (reason) {
-      setArchivedAccounts([])
-      showError(reason?.message || 'Не удалось загрузить архив')
-    }
-  }
-
-  const reloadAfterAccountMutation = async () => {
-    await onAccountsChanged?.()
-    if (archivedOpen) {
-      const result = await getArchivedAccounts()
-      setArchivedAccounts(result?.accounts || result?.items || [])
-    }
+  const toggleSelection = (node, state) => {
+    const ids = nodeIds(node)
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (state === 'all') ids.forEach((id) => next.delete(id))
+      else ids.forEach((id) => next.add(id))
+      return next
+    })
   }
 
   const applySelected = (ids) => setSelectedIds(new Set(ids.map(String).filter((id) => allAccountIds.includes(id))))
@@ -542,18 +530,112 @@ function AccountsExplorer({ accounts, baseCurrency, privacy, onPrivacyToggle, in
     setExpenseCategoryIds(null)
   }
 
-  const balanceLabel = privacy ? '••••••' : money(displayedTotal, displayCurrency)
-  const periodLabel = selectedPeriodLabel(period, resolvedPeriod.dateFrom, resolvedPeriod.dateTo)
+  const toggleOperations = (node) => {
+    const id = accountId(node.account)
+    if (!nodeIds(node).some((value) => selectedIds.has(value))) return
+    setOpenOperations((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const findNode = (id) => {
+    let found = null
+    const visit = (node) => {
+      if (accountId(node.account) === String(id)) found = node
+      else node.children.forEach(visit)
+    }
+    hierarchy.forEach(visit)
+    return found
+  }
+
+  const handleMove = async (sourceId, parentId) => {
+    const source = findNode(sourceId)
+    const target = parentId == null ? null : findNode(parentId)
+    if (!source) return
+    if (parentId != null && nodeIds(source).includes(String(parentId))) {
+      showError('Нельзя переместить счёт внутрь самого себя.')
+      return
+    }
+    const previousParentId = accountParentId(source.account)
+    try {
+      await moveAccount(sourceId, parentId)
+      await refreshAccounts()
+      setSnackbar({ accountId: sourceId, previousParentId, text: 'Счёт перемещён' })
+      if (target && target.children.length === 0) {
+        try {
+          const preview = await previewMoveAccountOperations(parentId, sourceId)
+          const operationCount = Number(preview?.operation_count ?? preview?.operations ?? 0)
+          if (operationCount > 0 && await confirmAction(`На счёте ${target.account.name} есть ${operationCount} операций. Перенести их на ${source.account.name}?`)) {
+            await moveAccountOperations(parentId, sourceId)
+            await refreshAccounts()
+          }
+        } catch (error) {
+          if (error?.message !== 'ACCOUNT_CURRENCY_INCOMPATIBLE') showError(error?.message || 'Не удалось проверить операции родителя')
+        }
+      }
+    } catch (error) {
+      showError(error?.message || 'Не удалось переместить счёт')
+    }
+  }
+
+  const undoMove = async () => {
+    if (!snackbar?.accountId) return
+    try {
+      await moveAccount(snackbar.accountId, snackbar.previousParentId)
+      await refreshAccounts()
+      setSnackbar(null)
+    } catch (error) {
+      showError(error?.message || 'Не удалось отменить перемещение')
+    }
+  }
+
+  const handleCopy = async (node) => {
+    try {
+      await copyAccount(accountId(node.account))
+      await refreshAccounts()
+    } catch (error) {
+      showError(error?.message || 'Не удалось копировать счёт')
+    }
+  }
+
+  const handleArchive = async (node) => {
+    if (!(await confirmAction(`Архивировать счёт «${node.account.name}»?`))) return
+    try {
+      await archiveAccount(accountId(node.account))
+      await refreshAccounts()
+    } catch (error) {
+      showError(error?.message || 'Не удалось архивировать счёт')
+    }
+  }
+
+  const handleDelete = async (node) => {
+    if (!(await confirmAction(`Удалить счёт «${node.account.name}»?`))) return
+    try {
+      await deleteAccount(accountId(node.account))
+      await refreshAccounts()
+    } catch (error) {
+      if (['ACCOUNT_HAS_OPERATIONS', 'ACCOUNT_HAS_REFERENCES', 'ACCOUNT_BALANCE_NOT_ZERO'].includes(error?.message)) {
+        setMoveHistory({ source: node.account, deleteAfter: true })
+      } else showError(error?.message || 'Не удалось удалить счёт')
+    }
+  }
 
   return (
-    <>
-      <header className="accountsExplorerHeader">
-        <div><div className="todayLabel">{todayLabel()}</div><div className="balanceLabel">Общий баланс</div><strong className="balanceValue sensitive">{balanceLabel}</strong></div>
+    <section className="accountsExplorer">
+      <section className="balanceHeader" aria-labelledby="accounts-balance-title">
+        <div><div className="todayLabel">{todayLabel()}</div><div className="balanceLabel" id="accounts-balance-title">Общий баланс</div><strong className="balanceValue sensitive">{privacy ? '••••••' : displayedTotal == null ? '—' : money(displayedTotal, displayCurrency)}</strong></div>
         <button className={`iconButton privacyButton ${privacy ? 'selected' : ''}`} onClick={onPrivacyToggle} aria-label={privacy ? 'Показать суммы' : 'Скрыть суммы'} aria-pressed={privacy}>◎</button>
-      </header>
+      </section>
+
+      {aggregateError && <div className="explorerInlineError" role="alert">{aggregateError}</div>}
+      {snapshotMissingRateCount > 0 && <div className="explorerInlineError" role="alert">Не хватает курса валюты для части snapshot на {resolvedPeriod.dateTo}.</div>}
+      {totalMismatch && <div className="explorerInlineError" role="alert">Баланс строк не согласован с серверным итогом.</div>}
 
       <BalanceHero
-        label={periodLabel}
+        label={selectedPeriodLabel(period, resolvedPeriod.dateFrom, resolvedPeriod.dateTo)}
         result={periodSummary.result}
         income={periodSummary.income}
         expense={periodSummary.expense}
@@ -582,49 +664,61 @@ function AccountsExplorer({ accounts, baseCurrency, privacy, onPrivacyToggle, in
       />
 
       <section className="section accountsSection compactSectionStart explorerAccountsSection">
-        <div className="sectionHeader"><h2>Счета</h2><button type="button" className="archiveShortcut" onClick={openArchive}>Архив</button></div>
-        {aggregateError && <div className="explorerInlineError" role="alert">{aggregateError}</div>}
-        <AccountTree
-          hierarchy={hierarchy}
-          snapshotById={snapshotById}
-          selectedIds={selectedIds}
-          expanded={expanded}
-          openOperations={openOperations}
-          privacy={privacy}
-          baseCurrency={displayCurrency}
-          money={money}
-          onToggle={toggleExpanded}
-          onToggleOperations={toggleOperations}
-          onSelectionChange={applySelected}
-          onEdit={(account) => setEditor({ mode: 'edit', account })}
-          onArchive={(account) => setEditor({ mode: 'archive', account })}
-          onDelete={(account) => setEditor({ mode: 'delete', account })}
-          onLongPressStart={(payload) => { dragStateRef.current = payload }}
-          onLongPressMove={(payload) => { dragStateRef.current = payload }}
-          onLongPressEnd={(payload) => { dragStateRef.current = null; if (payload?.moved) handleMove(payload.sourceId, payload.targetId) }}
-          className="explorerAccountTree"
-          renderAfterNode={(node, { id }) => openOperations.has(id) ? (
-            <OperationsPanel
-              node={node}
-              selectedIds={selectedIds}
-              dateFrom={resolvedPeriod.dateFrom}
-              dateTo={resolvedPeriod.dateTo}
-              baseCurrency={baseCurrency}
-              privacy={privacy}
-              incomeCategoryIds={incomeCategoryIds}
-              expenseCategoryIds={expenseCategoryIds}
-            />
-          ) : null}
-        />
+        <div className="accountsExplorerSectionHeader">
+          <div><h2>Баланс по счетам</h2><button type="button" className="archivedAccountsLink" onClick={() => setArchiveOpen(true)}>Архивные счета</button></div>
+          <button type="button" className="accountsPlusButton" onClick={() => setEditor({ mode: 'create', account: null })} aria-label="Добавить новый счёт">+</button>
+        </div>
+        {hierarchy.length ? (
+          <AccountTree
+            hierarchy={hierarchy}
+            expanded={expanded}
+            baseCurrency={displayCurrency}
+            privacy={privacy}
+            money={money}
+            selectedIds={selectedIds}
+            onToggleParent={toggleParent}
+            onToggleSelection={toggleSelection}
+            onNodeBody={toggleOperations}
+            isNodeBodyInteractive={() => true}
+            resolveNodeAmount={(node) => {
+              if (!aggregate) return '—'
+              const value = fullSubtreeTotal(node, snapshotById)
+              return value == null ? '—' : money(value, displayCurrency)
+            }}
+            resolveOwnAmount={(node) => {
+              if (!node.children.length || !aggregate) return null
+              const value = snapshotBase(snapshotById, accountId(node.account))
+              return value == null ? null : { value, label: `(${value >= 0 ? '+' : ''}${money(value, displayCurrency)})` }
+            }}
+            onMoveAccount={handleMove}
+            onCopy={handleCopy}
+            onEdit={(node) => setEditor({ mode: 'edit', account: node.account })}
+            onArchive={handleArchive}
+            onDelete={handleDelete}
+            openActionsId={openActionsId}
+            onActionsOpen={setOpenActionsId}
+            onActionsClose={(id) => setOpenActionsId((current) => current === id ? null : current)}
+            className="explorerAccountTree"
+            renderAfterNode={(node, { id }) => openOperations.has(id) ? (
+              <OperationsPanel
+                node={node}
+                selectedIds={selectedIds}
+                dateFrom={resolvedPeriod.dateFrom}
+                dateTo={resolvedPeriod.dateTo}
+                baseCurrency={baseCurrency}
+                privacy={privacy}
+                incomeCategoryIds={incomeCategoryIds}
+                expenseCategoryIds={expenseCategoryIds}
+              />
+            ) : null}
+          />
+        ) : <div className="emptyCard">Счета пока не созданы</div>}
       </section>
 
-      {editor?.mode === 'edit' && <AccountEditor mode="edit" account={editor.account} accounts={accounts} baseCurrency={baseCurrency} onClose={() => setEditor(null)} onSaved={reloadAfterAccountMutation} />}
-      {editor?.mode === 'archive' && <MoveHistorySheet source={editor.account} accounts={accounts} deleteAfter={false} onClose={() => setEditor(null)} onComplete={reloadAfterAccountMutation} />}
-      {editor?.mode === 'delete' && <MoveHistorySheet source={editor.account} accounts={accounts} deleteAfter={true} onClose={() => setEditor(null)} onComplete={reloadAfterAccountMutation} />}
-      {archivedOpen && <ArchivedAccountsSheet accounts={archivedAccounts} onClose={() => setArchivedOpen(false)} onRestored={reloadAfterAccountMutation} />}
-      {snackbar && <div className="accountsSnackbar" role="status">{snackbar}</div>}
-    </>
+      {editor && <AccountEditor mode={editor.mode} account={editor.account} accounts={accounts} baseCurrency={baseCurrency} onClose={() => setEditor(null)} onSaved={refreshAccounts} />}
+      {moveHistory && <MoveHistorySheet source={moveHistory.source} accounts={accounts} deleteAfter={moveHistory.deleteAfter} onClose={() => setMoveHistory(null)} onComplete={refreshAccounts} />}
+      {archiveOpen && <ArchivedAccountsSheet onClose={() => setArchiveOpen(false)} onRestored={refreshAccounts} />}
+      {snackbar && <div className="accountSnackbar" role="status"><span>{snackbar.text}</span><button type="button" onClick={undoMove}>Отменить</button></div>}
+    </section>
   )
 }
-
-export default AccountsExplorer
