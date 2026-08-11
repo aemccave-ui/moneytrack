@@ -98,6 +98,42 @@
 }
 .stackCount { flex: 0 0 auto; white-space: nowrap; }
 
+/* Shared muted count badge: before group/account captions, in the page teal palette. */
+.app .accountTreeIdentity .accountTreeTitleRow > .accountGroupCountBadge,
+.stackCaption .stackCount,
+.accountStackMeta .stackCount {
+  flex: 0 0 auto;
+  min-width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(29,85,89,.16);
+  border-radius: 999px;
+  background: rgba(220,235,236,.9);
+  color: #1d5559;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  box-sizing: border-box;
+}
+
+/* Account-list group count is visually before the account name without changing hit targets. */
+.app .accountTreeIdentity .accountTreeTitleRow > .accountGroupCountBadge { order: -1; }
+.app .accountTreeIdentity .accountTreeTitleRow > strong { order: 0; }
+
+/* Home compact balance summaries use the same badge before the caption text. */
+.stackCaption {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.stackCaption .stackCount,
+.accountStackMeta .stackCount { order: -1; }
+
 .accountDistribution .accountTree,
 .currencyDistribution .currencyHierarchy { margin-top: 0; }
 
