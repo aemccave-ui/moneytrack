@@ -38,20 +38,25 @@ fi
 # Raw execution_data is transferred as hex. No PostgreSQL regular expressions are used.
 docker exec -e PGPASSWORD="$PG_PASS" "$PG_HOST" psql -X -qAt -F $'\t' \
   -h 127.0.0.1 -p "$PG_PORT" -U "$PG_USER" -d "$PG_DB" -c "
-with ranked as (
-  select
-    e.id,
-    e.\"workflowId\",
-    e.status,
-    e.\"startedAt\",
-    row_number() over (partition by e.\"workflowId\" order by e.id desc) as rn
+with photo_failed as (
+  select e.id,e.\"workflowId\",e.status,e.\"startedAt\"
   from \"$PG_SCHEMA\".\"execution_entity\" e
-  where e.\"workflowId\" in ('UX022TxApi202608','UX022QuickInput202608','5VC0EcFB21rwTfoI')
+  where e.\"workflowId\"='5VC0EcFB21rwTfoI' and e.status <> 'success'
+  order by e.id desc limit 8
+), quick_recent as (
+  select e.id,e.\"workflowId\",e.status,e.\"startedAt\"
+  from \"$PG_SCHEMA\".\"execution_entity\" e
+  where e.\"workflowId\"='UX022QuickInput202608'
+  order by e.id desc limit 12
+), tx_recent as (
+  select e.id,e.\"workflowId\",e.status,e.\"startedAt\"
+  from \"$PG_SCHEMA\".\"execution_entity\" e
+  where e.\"workflowId\"='UX022TxApi202608'
+  order by e.id desc limit 16
 ), chosen as (
-  select * from ranked
-  where (\"workflowId\"='5VC0EcFB21rwTfoI' and status <> 'success' and rn <= 20)
-     or (\"workflowId\"='UX022QuickInput202608' and rn <= 12)
-     or (\"workflowId\"='UX022TxApi202608' and rn <= 16)
+  select * from photo_failed
+  union all select * from quick_recent
+  union all select * from tx_recent
 )
 select
   c.id,
