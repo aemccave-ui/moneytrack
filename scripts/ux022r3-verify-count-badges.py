@@ -18,6 +18,8 @@ tree = read('miniapp/src/AccountTree.jsx')
 app = read('miniapp/src/App.jsx')
 css = read('miniapp/src/account-distribution.css')
 main = read('miniapp/src/main.jsx')
+hero = read('miniapp/src/BalanceHero.jsx')
+explorer = read('miniapp/src/AccountsExplorer.jsx')
 
 require(
     'account_group_badge_source_present',
@@ -50,6 +52,15 @@ require(
     'const structuralLeafItems = useMemo(() =>' in app
     and 'return accountItems.filter((account) => !parentIds.has(accountId(account)))' in app
     and 'selectedAccountIds = structuralLeafItems.map(accountId)' in app,
+)
+require(
+    'home_snapshot_effect_is_async_keyed',
+    "useState({ key: '', payload: null, error: '' })" in app
+    and 'const homeSnapshotRequest = useMemo(() =>' in app
+    and 'homeSnapshotState.key === homeSnapshotRequest?.key' in app
+    and '.then((result) => setHomeSnapshotState({' in app
+    and 'setHomeSnapshot(null)' not in app
+    and "setHomeSnapshotError('')" not in app,
 )
 require(
     'home_group_totals_are_descendant_leaf_only',
@@ -110,6 +121,14 @@ require(
     'home_currency_row_uses_three_columns',
     '.currencyDistribution .currencyGroupHeader {' in css
     and 'grid-template-columns: 22px minmax(0,1fr) auto;' in css,
+)
+require(
+    'summary_totals_round_without_losing_detail_cents',
+    'money(Math.round(Number(value || 0)), baseCurrency)' in hero
+    and 'money(Math.round(displayedTotal), displayCurrency)' in explorer
+    and 'money(summary.result, currency)' in explorer
+    and 'money(summary.income, currency)' in explorer
+    and 'money(summary.expense, currency)' in explorer,
 )
 
 print('UX022R3_COUNT_BADGES_GATE=PASS')
