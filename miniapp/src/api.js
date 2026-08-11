@@ -118,8 +118,7 @@ export function updateTransaction(id, payload, signal) {
 export function createTransactionFromText(text, signal) {
   return request('api/v1/transaction/text', signal, {
     method: 'POST',
-    rawBody: JSON.stringify({ text }),
-    headers: { 'Content-Type': 'text/plain' },
+    body: { text },
     allowEmpty: true,
     allowText: true,
   })
