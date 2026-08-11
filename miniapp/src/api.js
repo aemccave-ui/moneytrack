@@ -1,3 +1,5 @@
+import { MoneyTrackApiError } from './api-errors.js'
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://n8n.moneytrackapp.xyz/webhook'
 
 let lastAccountMoveResult = null
@@ -12,47 +14,62 @@ function errorCode(payload) {
   return payload.error?.code || payload.code || ''
 }
 
+function errorMessage(payload) {
+  if (!payload || typeof payload !== 'object') return ''
+  return payload.error?.message || payload.message || ''
+}
+
+async function parseResponse(response, { allowText = false } = {}) {
+  const responseBody = await response.text()
+  if (!responseBody.trim()) return { responseBody, payload: null }
+  try {
+    return { responseBody, payload: JSON.parse(responseBody) }
+  } catch {
+    if (allowText && response.ok) return { responseBody, payload: responseBody }
+    if (!response.ok) {
+      throw new MoneyTrackApiError(`HTTP_${response.status}`, responseBody.slice(0, 120), response.status)
+    }
+    throw new MoneyTrackApiError('API_RESPONSE_INVALID', 'Сервис вернул некорректный ответ.', response.status)
+  }
+}
+
 async function request(path, signal, {
   allowEmpty = false,
+  allowText = false,
   method = 'GET',
   body = undefined,
+  rawBody = undefined,
+  headers: extraHeaders = {},
 } = {}) {
   const headers = {
     Accept: 'application/json',
     'X-Telegram-Init-Data': telegramInitData(),
+    ...extraHeaders,
   }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
 
   const response = await fetch(`${API_BASE}/${path}`, {
     method,
     headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: rawBody !== undefined ? rawBody : body === undefined ? undefined : JSON.stringify(body),
     signal,
   })
 
-  const responseBody = await response.text()
-  let payload = null
-  if (responseBody.trim()) {
-    try {
-      payload = JSON.parse(responseBody)
-    } catch {
-      if (!response.ok) throw new Error(`API ${response.status}: ${responseBody.slice(0, 120)}`)
-      throw new Error(`Некорректный JSON API: ${path}`)
-    }
-  }
+  const { responseBody, payload } = await parseResponse(response, { allowText })
 
   if (!response.ok) {
-    const code = errorCode(payload)
-    throw new Error(code || `API ${response.status}${responseBody ? `: ${responseBody.slice(0, 120)}` : ''}`)
+    const code = errorCode(payload) || `HTTP_${response.status}`
+    throw new MoneyTrackApiError(code, errorMessage(payload), response.status)
   }
 
   if (!responseBody.trim()) {
     if (allowEmpty) return null
-    throw new Error(`Пустой ответ API: ${path}`)
+    throw new MoneyTrackApiError('API_RESPONSE_EMPTY', 'Сервис вернул пустой ответ.', response.status)
   }
 
+  if (typeof payload === 'string') return payload
   const code = errorCode(payload)
-  if (code) throw new Error(code)
+  if (code) throw new MoneyTrackApiError(code, errorMessage(payload), response.status)
   return payload?.data ?? payload
 }
 
@@ -84,6 +101,49 @@ export function deleteTransaction(id, signal) {
   return request(`api/v1/transaction?id=${encodeURIComponent(id)}`, signal, {
     method: 'DELETE',
     allowEmpty: true,
+  })
+}
+
+export function createTransaction(payload, signal) {
+  return request('api/v1/transaction', signal, { method: 'POST', body: payload })
+}
+
+export function updateTransaction(id, payload, signal) {
+  return request('api/v1/transaction', signal, {
+    method: 'PATCH',
+    body: { transaction_id: Number(id), ...payload },
+  })
+}
+
+export function createTransactionFromText(text, signal) {
+  return request('api/v1/transaction/text', signal, {
+    method: 'POST',
+    rawBody: JSON.stringify({ text }),
+    headers: { 'Content-Type': 'text/plain' },
+    allowEmpty: true,
+    allowText: true,
+  })
+}
+
+export function createTransactionFromPhoto(file, signal) {
+  const form = new FormData()
+  form.append('receipt', file)
+  return request('api/v1/transaction/photo', signal, {
+    method: 'POST',
+    rawBody: form,
+    allowEmpty: true,
+    allowText: true,
+  })
+}
+
+export function createTransactionFromVoice(blob, signal) {
+  const form = new FormData()
+  form.append('voice', blob, 'voice.webm')
+  return request('api/v1/transaction/voice', signal, {
+    method: 'POST',
+    rawBody: form,
+    allowEmpty: true,
+    allowText: true,
   })
 }
 
