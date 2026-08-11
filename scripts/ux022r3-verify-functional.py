@@ -16,6 +16,7 @@ def require(name: str, condition: bool) -> None:
 
 swipe = read('miniapp/src/SwipeReveal.jsx')
 recent = read('miniapp/src/RecentOperations.jsx')
+explorer = read('miniapp/src/AccountsExplorer.jsx')
 editor = read('miniapp/src/TransactionEditor.jsx')
 transfer_editor = read('miniapp/src/TransferEditor.jsx')
 smart_select = read('miniapp/src/SmartSelect.jsx')
@@ -78,6 +79,16 @@ require(
     'getTransactionReference' in recent
     and 'categoryNames.get(String(tx.category_id))' in recent
     and 'categoryName || tx.category_name' in recent,
+)
+require(
+    'account_turnover_preserves_cents',
+    'minimumFractionDigits: 0' in explorer
+    and 'maximumFractionDigits: 2' in explorer
+    and 'money(summary.result, currency)' in explorer
+    and 'money(summary.income, currency)' in explorer
+    and 'money(summary.expense, currency)' in explorer
+    and 'money={money}' in explorer
+    and 'money(amount, amountCurrency)' in recent,
 )
 require(
     'account_create_uses_full_currency_catalog',
