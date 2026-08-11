@@ -1,5 +1,8 @@
 -- MoneyTrack — UX-022R3 — runtime regression repair
 -- Transfer-inclusive dashboard snapshot aligned with Accounts Explorer semantics.
+-- The live dashboard workflow is intentionally left untouched. Its existing
+-- finance_dashboard_read_model_v1 call is switched atomically at the DB layer
+-- by making v1 a compatibility wrapper over v2.
 
 begin;
 
@@ -201,5 +204,30 @@ $function$;
 
 comment on function moneytrack.finance_dashboard_read_model_v2(bigint, date)
 is 'UX-022R3 dashboard snapshot aligned with Accounts Explorer: signed transaction movements plus transfer movements, valued as of p_as_of; monthly turnover/latest-operation response shape remains compatible with v1.';
+
+create or replace function moneytrack.finance_dashboard_read_model_v1(
+    p_user_id bigint,
+    p_as_of date
+)
+returns table (
+    user_id bigint,
+    base_currency text,
+    report_currency text,
+    language_code text,
+    date_from date,
+    date_to date,
+    net_worth numeric,
+    income_month numeric,
+    expenses_month numeric,
+    result_month numeric,
+    balances_by_currency jsonb,
+    latest_operations jsonb
+)
+language sql
+stable
+as $function$
+    select *
+    from moneytrack.finance_dashboard_read_model_v2(p_user_id, p_as_of);
+$function$;
 
 commit;
