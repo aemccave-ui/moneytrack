@@ -98,7 +98,8 @@
 }
 .stackCount { flex: 0 0 auto; white-space: nowrap; }
 
-/* Shared muted count badge: before group/account captions, in the page teal palette. */
+/* UX022R3_COUNT_BADGE_CONTRACT
+   Shared muted count badge: before group/account captions, in the page teal palette. */
 .app .accountTreeIdentity .accountTreeTitleRow > .accountGroupCountBadge,
 .stackCaption .stackCount,
 .accountStackMeta .stackCount {
