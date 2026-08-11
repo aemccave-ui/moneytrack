@@ -33,7 +33,8 @@ for shell_script in \
   scripts/ux022r3-photo-dedup-gate.sh \
   scripts/ux022r3-photo-dedup-apply.sh \
   scripts/ux022r3-photo-dedup-recovery-status.sh \
-  scripts/ux022r3-runtime-regressions-forensic.sh
+  scripts/ux022r3-runtime-regressions-forensic.sh \
+  scripts/ux022r3-execution-regressions-forensic.sh
 do
   bash -n "$shell_script"
 done
