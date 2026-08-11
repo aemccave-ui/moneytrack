@@ -16,6 +16,8 @@ def require(name: str, condition: bool) -> None:
 
 tree = read('miniapp/src/AccountTree.jsx')
 recent = read('miniapp/src/RecentOperations.jsx')
+swipe = read('miniapp/src/SwipeReveal.jsx')
+drag_ghost = read('miniapp/src/account-drag-ghost-runtime.js')
 css = read('miniapp/src/ux022r3-frontend.css')
 coordinator = read('miniapp/src/swipe-coordinator.js')
 
@@ -29,31 +31,32 @@ require(
 )
 
 require(
-    'operation_swipe_deterministic_settle',
-    'TRANSACTION_ACTIONS_WIDTH = 156' in recent
-    and 'TRANSACTION_OPEN_THRESHOLD = 34' in recent
-    and "addEventListener('touchend', settle" in recent
-    and "shell.scrollTo({ left: TRANSACTION_ACTIONS_WIDTH, behavior: 'smooth' })" in recent
-    and "shell.scrollTo({ left: 0, behavior: 'smooth' })" in recent
-    and 'scroll-snap-type: none !important;' in css
-    and 'onScroll={handleScroll}' not in recent,
+    'operation_swipe_habitstrack_pointer_model',
+    "import { SwipeReveal }" in recent
+    and 'setPointerCapture' in swipe
+    and 'Math.abs(dx) < 7 || Math.abs(dx) <= Math.abs(dy)' in swipe
+    and 'width * .34' in swipe
+    and 'translate3d(${effectiveX}px,0,0)' in swipe
+    and 'overflow-x: auto' not in recent
+    and 'scrollLeft' not in recent,
 )
 
 require(
     'all_swipes_autoclose_2s_and_cross_close',
     'SWIPE_OPEN_EVENT' in coordinator
     and 'announceSwipeOpen' in tree
-    and 'announceSwipeOpen' in recent
-    and 'window.setTimeout(() => setOpenSwipeId(null), 2000)' in tree
-    and 'window.setTimeout(() => setOpenSwipeId(null), 2000)' in recent
+    and 'announceSwipeOpen(key)' in swipe
+    and 'autoCloseMs = 2000' in swipe
     and 'window.addEventListener(SWIPE_OPEN_EVENT' in tree
-    and 'window.addEventListener(SWIPE_OPEN_EVENT' in recent,
+    and 'window.addEventListener(SWIPE_OPEN_EVENT' in swipe,
 )
 
 require(
     'account_drag_card_follows_finger',
-    'setDragOffset({ x: x - dragRef.current.startX, y: y - dragRef.current.startY })' in tree
-    and 'translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0)' in tree
+    'cloneNode(true)' in drag_ghost
+    and 'accountDragGhost' in drag_ghost
+    and 'positionGhost(touch.clientX, touch.clientY)' in drag_ghost
+    and '.accountDragGhost' in css
     and 'document.elementsFromPoint' in tree
     and 'isDropTarget' in tree,
 )
