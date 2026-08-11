@@ -37,25 +37,43 @@ require(
     and 'border: 1px solid rgba(29,85,89,.16);' in css,
 )
 require(
-    'home_aggregate_sources_present',
-    'currencyStackSegment' in app
-    and 'accountStackSegment' in app
-    and 'currencyStackButton' in app
-    and 'accountStackButton' in app,
+    'home_aggregates_use_leaf_accounts',
+    'const operationalAccountItems = useMemo(() =>' in app
+    and 'return accountItems.filter((account) => !parentIds.has(accountId(account)))' in app
+    and 'operationalAccountItems.forEach((account) =>' in app
+    and 'const totalBase = children.length' in app
+    and '? children.reduce((sum, child) => sum + child.totalBase, 0)' in app,
 )
 require(
-    'home_count_badges_for_currency_and_accounts',
+    'home_currency_badge_bound_to_named_row',
     'UX022R3_HOME_COUNT_BADGE_RUNTIME' in runtime
-    and "ensureCountBadge(button, '.currencyStackSegment', '.stackCaption', 'Валют')" in runtime
-    and "ensureCountBadge(button, '.accountStackSegment', '.accountStackMeta', 'Счетов')" in runtime
-    and "badge.className = 'stackCount'" in runtime
-    and 'if (count <= 1)' in runtime,
+    and 'function enhanceCurrencyGroupBadges()' in runtime
+    and "document.querySelectorAll('.currencyDistribution .currencyGroupHeader')" in runtime
+    and "button.querySelector('.currencyBadge')" in runtime
+    and "button.querySelector('.hierarchyCount, .homeCountBadge')" in runtime,
 )
 require(
-    'home_badges_visually_before_caption',
-    '.stackCaption .stackCount,' in css
-    and '.accountStackMeta .stackCount { order: -1; }' in css
-    and 'display: flex;' in css,
+    'home_account_badge_bound_to_named_row',
+    'function enhanceHomeAccountBadges()' in runtime
+    and "document.querySelectorAll('.accountDistribution .accountTreeRow.hasChildren')" in runtime
+    and "titleRow.className = 'homeAggregateTitleRow'" in runtime
+    and "badge = document.createElement('span')" in runtime
+    and "titleRow.append(badge)" in runtime,
+)
+require(
+    'single_item_badges_are_visible',
+    'badge.textContent = String(count)' in runtime
+    and 'if (count <= 1)' not in runtime,
+)
+require(
+    'home_count_removed_from_subline',
+    "meta.textContent = meta.textContent.replace(/\\s*·\\s*\\d+\\s*$/, '').trim()" in runtime,
+)
+require(
+    'home_badges_inline_after_name',
+    'UX022R3_HOME_NAMED_COUNT_BADGES' in css
+    and '.app .homeAggregateTitleRow > .homeCountBadge {' in css
+    and 'order: 1;' in css,
 )
 
 print('UX022R3_COUNT_BADGES_GATE=PASS')
