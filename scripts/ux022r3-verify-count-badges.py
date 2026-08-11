@@ -52,6 +52,16 @@ require(
     and '? children.reduce((sum, child) => sum + child.leafCount, 0)' in app,
 )
 require(
+    'compact_home_summaries_have_per_name_badges',
+    'function HomeNamedSummary({ items, title })' in app
+    and 'className="stackNamedItem"' in app
+    and 'className="homeCountBadge compactCountBadge"' in app
+    and 'count: group.accounts.length' in app
+    and 'count: node.leafCount' in app
+    and '.stackNamedCaption {' in css
+    and '.app .compactCountBadge {' in css,
+)
+require(
     'home_currency_badge_is_direct_named_markup',
     'className="homeNamedAggregate"' in app
     and 'className="currencyBadge">{group.currency}</span>' in app
