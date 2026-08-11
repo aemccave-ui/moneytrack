@@ -15,9 +15,14 @@ function subtreeIds(node) {
   return [accountId(node.account), ...node.children.flatMap(subtreeIds)]
 }
 
+function selectableIds(node) {
+  if (!node.children.length) return [accountId(node.account)]
+  return node.children.flatMap(selectableIds)
+}
+
 function selectionState(node, selectedIds) {
   if (!selectedIds) return 'none'
-  const ids = subtreeIds(node)
+  const ids = selectableIds(node)
   const selected = ids.filter((id) => selectedIds.has(id)).length
   if (selected === 0) return 'none'
   if (selected === ids.length) return 'all'
@@ -172,8 +177,17 @@ function TreeRow({
   const identity = (
     <>
       <span className="accountTreeIdentity">
-        <strong>{node.account.name}</strong>
-        <span>{hasChildren ? `Группа · ${node.children.length}` : `${node.account.account_type || 'Счёт'} · ${accountCurrency}`}</span>
+        <span className="accountTreeTitleRow">
+          <strong>{node.account.name}</strong>
+          {hasChildren && (
+            <span
+              className="accountGroupCountBadge"
+              aria-label={`Счетов внутри: ${node.children.length}`}
+              title={`Счетов внутри: ${node.children.length}`}
+            >{node.children.length}</span>
+          )}
+        </span>
+        {!hasChildren && <span className="accountTreeMeta">{node.account.account_type || 'Счёт'} · {accountCurrency}</span>}
       </span>
       <span className="accountTreeAmounts">
         <strong className="accountTreeAmount sensitive">{privacy ? '••••••' : displayedAmount}</strong>
