@@ -26,7 +26,8 @@ require(
 )
 require(
     'account_group_badge_visually_before_name',
-    '.accountTreeTitleRow > .accountGroupCountBadge { order: -1; }' in css
+    'UX022R3_COUNT_BADGE_CONTRACT' in css
+    and '.accountTreeTitleRow > .accountGroupCountBadge { order: -1; }' in css
     and '.accountTreeTitleRow > strong { order: 0; }' in css,
 )
 require(
