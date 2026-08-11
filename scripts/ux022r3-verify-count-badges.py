@@ -32,6 +32,13 @@ require(
     and 'border: 1px solid rgba(29,85,89,.16);' in css,
 )
 require(
+    'home_account_structure_deduplicated',
+    'function flattenAccounts(accounts = [])' in app
+    and 'const byId = new Map()' in app
+    and 'byId.set(id, existing ? { ...existing, ...normalized } : normalized)' in app
+    and 'return [...byId.values()]' in app,
+)
+require(
     'home_uses_canonical_snapshot_read_model',
     'getAccountsExplorerSummary' in app
     and 'homeSnapshot?.account_balances' in app
