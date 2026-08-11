@@ -97,6 +97,38 @@
   white-space: nowrap;
 }
 
+/* Compact Home captions: each concrete name owns its own account-count badge. */
+.stackNamedCaption {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  color: rgba(22,63,67,.58);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+}
+.stackNamedItem {
+  min-width: 0;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.stackNamedItem + .stackNamedItem::before {
+  content: '·';
+  margin-right: 4px;
+  color: rgba(22,63,67,.38);
+}
+.stackNamedLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* UX022R3_COUNT_BADGE_CONTRACT
    Shared muted count badge in the page teal palette. */
 .app .accountTreeIdentity .accountTreeTitleRow > .accountGroupCountBadge,
@@ -120,6 +152,12 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   box-sizing: border-box;
+}
+.app .compactCountBadge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 10px;
 }
 
 /* Existing Accounts Explorer group badge stays unchanged. */
