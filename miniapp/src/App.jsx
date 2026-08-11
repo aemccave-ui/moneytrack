@@ -231,6 +231,7 @@ function App() {
     (homeSnapshot?.account_balances || []).map((item) => [String(item.account_id), item]),
   ), [homeSnapshot])
   const homeSnapshotComplete = Boolean(homeSnapshot)
+    && Number(homeSnapshot?.snapshot_missing_rate_count ?? homeSnapshot?.missing_rate_count ?? 0) === 0
     && structuralLeafItems.every((account) => homeSnapshotById.has(accountId(account)))
 
   const canonicalAccountItems = useMemo(() => {
@@ -248,9 +249,21 @@ function App() {
 
   const operationalAccountItems = useMemo(() => {
     if (!homeSnapshotComplete) return []
-    const leafIds = new Set(structuralLeafItems.map(accountId))
-    return canonicalAccountItems.filter((account) => leafIds.has(accountId(account)))
-  }, [canonicalAccountItems, structuralLeafItems, homeSnapshotComplete])
+    const parentIds = new Set(
+      accountItems
+        .map((account) => parentAccountId(account))
+        .filter((id) => id != null)
+        .map(String),
+    )
+    return accountItems.filter((account) => !parentIds.has(accountId(account))).map((account) => {
+      const snapshot = homeSnapshotById.get(accountId(account))
+      return {
+        ...account,
+        balance_original: Number(snapshot?.balance_original ?? 0),
+        balance_base: Number(snapshot?.balance_base ?? 0),
+      }
+    })
+  }, [accountItems, homeSnapshotById, homeSnapshotComplete])
 
   const accountHierarchy = useMemo(
     () => buildHierarchy(canonicalAccountItems, baseCurrency),
