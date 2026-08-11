@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { deleteTransaction, getTransactionReference } from './api.js'
+import { deleteTransaction, deleteTransfer, getTransactionReference } from './api.js'
 import { SwipeReveal } from './SwipeReveal.jsx'
 import TransactionEditor from './TransactionEditor.jsx'
+import TransferEditor from './TransferEditor.jsx'
 
 let categoryNamePromise = null
 
@@ -15,6 +16,12 @@ function loadCategoryNames() {
       })
   }
   return categoryNamePromise
+}
+
+function transferIdOf(tx) {
+  if (tx?.transfer_id != null) return Number(tx.transfer_id)
+  const match = String(tx?.id || '').match(/^transfer-(\d+)$/)
+  return match ? Number(match[1]) : null
 }
 
 const operationTypeLabel = (type) => ({
@@ -54,31 +61,12 @@ function TransactionRow({ tx, privacy, baseCurrency, money, expanded, onExpand, 
   const amountCurrency = tx.currency_original || tx.currency || baseCurrency
   const rawAmount = Number(tx.amount_original ?? tx.amount ?? 0)
   const amount = positive ? Math.abs(rawAmount) : -Math.abs(rawAmount)
-  const transferReason = 'Перевод связан с двумя счетами. Для него используется отдельное безопасное редактирование.'
+  const transferReason = 'Перевод связан с двумя счетами и редактируется как единая парная операция.'
 
   const actions = [
-    {
-      key: 'repeat',
-      label: 'Повторить',
-      icon: <SwipeActionIcon name="repeat" />,
-      disabled: transfer,
-      onClick: onRepeat,
-    },
-    {
-      key: 'edit',
-      label: 'Изменить',
-      icon: <SwipeActionIcon name="edit" />,
-      disabled: transfer,
-      onClick: onEdit,
-    },
-    {
-      key: 'delete',
-      label: 'Удалить',
-      icon: <SwipeActionIcon name="delete" />,
-      disabled: transfer,
-      danger: true,
-      onClick: onDelete,
-    },
+    { key: 'repeat', label: 'Повторить', icon: <SwipeActionIcon name="repeat" />, onClick: onRepeat },
+    { key: 'edit', label: 'Изменить', icon: <SwipeActionIcon name="edit" />, onClick: onEdit },
+    { key: 'delete', label: 'Удалить', icon: <SwipeActionIcon name="delete" />, danger: true, onClick: onDelete },
   ]
 
   return (
@@ -146,15 +134,22 @@ export function RecentOperations({
   })(), [groups, transactions])
 
   const remove = async (tx) => {
-    if (busyId != null || tx.transaction_type === 'transfer') return
-    if (!(await confirmAction('Удалить эту операцию?'))) return
+    if (busyId != null) return
+    const transfer = tx.transaction_type === 'transfer'
+    const transferId = transfer ? transferIdOf(tx) : null
+    if (transfer && !transferId) {
+      showError('Не удалось определить перевод.')
+      return
+    }
+    if (!(await confirmAction(transfer ? 'Удалить этот перевод целиком?' : 'Удалить эту операцию?'))) return
     setBusyId(tx.id)
     try {
-      await deleteTransaction(tx.id)
+      if (transfer) await deleteTransfer(transferId)
+      else await deleteTransaction(tx.id)
       setExpandedId(null)
       await onDeleted?.(tx)
     } catch (error) {
-      showError(error?.message || 'Не удалось удалить операцию')
+      showError(error?.message || (transfer ? 'Не удалось удалить перевод' : 'Не удалось удалить операцию'))
     } finally {
       setBusyId(null)
     }
@@ -164,6 +159,12 @@ export function RecentOperations({
     setExpandedId(null)
     await onDeleted?.()
   }
+
+  const openEditor = (tx, mode) => setEditor({
+    operation: tx,
+    mode,
+    kind: tx.transaction_type === 'transfer' ? 'transfer' : 'transaction',
+  })
 
   return (
     <>
@@ -186,8 +187,8 @@ export function RecentOperations({
                       money={money}
                       expanded={expandedId === id}
                       onExpand={() => setExpandedId((current) => current === id ? null : id)}
-                      onRepeat={() => setEditor({ operation: tx, mode: 'repeat' })}
-                      onEdit={() => setEditor({ operation: tx, mode: 'edit' })}
+                      onRepeat={() => openEditor(tx, 'repeat')}
+                      onEdit={() => openEditor(tx, 'edit')}
                       onDelete={() => remove(tx)}
                       categoryName={tx.category_id == null ? '' : categoryNames.get(String(tx.category_id))}
                     />
@@ -198,7 +199,8 @@ export function RecentOperations({
           ))}
         </div>
       </section>
-      {editor && <TransactionEditor operation={editor.operation} mode={editor.mode} onClose={() => setEditor(null)} onSaved={saved} />}
+      {editor?.kind === 'transaction' && <TransactionEditor operation={editor.operation} mode={editor.mode} onClose={() => setEditor(null)} onSaved={saved} />}
+      {editor?.kind === 'transfer' && <TransferEditor operation={editor.operation} mode={editor.mode} onClose={() => setEditor(null)} onSaved={saved} />}
       {busyId != null && <div className="transactionBusy" role="status">Удаление…</div>}
     </>
   )
