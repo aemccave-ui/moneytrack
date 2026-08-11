@@ -1,7 +1,21 @@
-import { useState } from 'react'
-import { deleteTransaction } from './api.js'
+import { useEffect, useMemo, useState } from 'react'
+import { deleteTransaction, getTransactionReference } from './api.js'
 import { SwipeReveal } from './SwipeReveal.jsx'
 import TransactionEditor from './TransactionEditor.jsx'
+
+let categoryNamePromise = null
+
+function loadCategoryNames() {
+  if (!categoryNamePromise) {
+    categoryNamePromise = getTransactionReference()
+      .then((refs) => new Map((refs?.categories || []).map((item) => [String(item.id), item.name || item.code || String(item.id)])))
+      .catch((error) => {
+        categoryNamePromise = null
+        throw error
+      })
+  }
+  return categoryNamePromise
+}
 
 const operationTypeLabel = (type) => ({
   income: 'Доход',
@@ -33,14 +47,14 @@ function DetailRow({ label, value }) {
   return <div className="transactionDetailRow"><span>{label}</span><strong>{value ?? '—'}</strong></div>
 }
 
-function TransactionRow({ tx, privacy, baseCurrency, money, expanded, onExpand, onEdit, onRepeat, onDelete }) {
+function TransactionRow({ tx, privacy, baseCurrency, money, expanded, onExpand, onEdit, onRepeat, onDelete, categoryName }) {
   const transfer = tx.transaction_type === 'transfer'
   const incoming = transfer && tx.transfer_direction === 'incoming'
   const positive = tx.transaction_type === 'income' || incoming
   const amountCurrency = tx.currency_original || tx.currency || baseCurrency
   const rawAmount = Number(tx.amount_original ?? tx.amount ?? 0)
   const amount = positive ? Math.abs(rawAmount) : -Math.abs(rawAmount)
-  const transferReason = 'Перевод связан с двумя счетами. Его нельзя безопасно менять как обычную одиночную операцию.'
+  const transferReason = 'Перевод связан с двумя счетами. Для него используется отдельное безопасное редактирование.'
 
   const actions = [
     {
@@ -79,7 +93,7 @@ function TransactionRow({ tx, privacy, baseCurrency, money, expanded, onExpand, 
             aria-label={`${tx.description || operationTypeLabel(tx.transaction_type)}. Смахните влево для действий.`}
           >
             <span className={`transactionTypeMark ${positive ? 'income' : 'expense'}`} aria-hidden="true">{positive ? '↑' : '↓'}</span>
-            <span className="transactionIdentity"><strong>{tx.description || operationTypeLabel(tx.transaction_type)}</strong><small>{tx.account_name || tx.category_name || operationTypeLabel(tx.transaction_type)}</small></span>
+            <span className="transactionIdentity"><strong>{tx.description || operationTypeLabel(tx.transaction_type)}</strong><small>{tx.account_name || categoryName || tx.category_name || operationTypeLabel(tx.transaction_type)}</small></span>
             <strong className={`transactionAmount ${positive ? 'income' : 'expense'} sensitive`}>{privacy ? '••••' : money(amount, amountCurrency)}</strong>
           </button>
         )}
@@ -88,7 +102,7 @@ function TransactionRow({ tx, privacy, baseCurrency, money, expanded, onExpand, 
         <div className="transactionDetails">
           <DetailRow label="Тип" value={transfer ? (incoming ? 'Входящий перевод' : 'Исходящий перевод') : operationTypeLabel(tx.transaction_type)} />
           <DetailRow label="Счёт" value={tx.account_name || tx.account_id} />
-          {!transfer && <DetailRow label="Категория" value={tx.category_name || tx.category_id} />}
+          {!transfer && <DetailRow label="Категория" value={categoryName || tx.category_name || tx.category_code || tx.category_id} />}
           <DetailRow label="Валюта" value={amountCurrency} />
           <DetailRow label="Дата" value={String(tx.transaction_date || '').replace('T', ' ').slice(0, 16)} />
           <DetailRow label="Описание" value={tx.description} />
@@ -113,7 +127,15 @@ export function RecentOperations({
   const [expandedId, setExpandedId] = useState(null)
   const [editor, setEditor] = useState(null)
   const [busyId, setBusyId] = useState(null)
-  const groupList = groups || (() => {
+  const [categoryNames, setCategoryNames] = useState(() => new Map())
+
+  useEffect(() => {
+    let alive = true
+    loadCategoryNames().then((names) => alive && setCategoryNames(names)).catch(() => {})
+    return () => { alive = false }
+  }, [])
+
+  const groupList = useMemo(() => groups || (() => {
     const byDate = new Map()
     ;(transactions || []).forEach((tx) => {
       const key = String(tx.transaction_date || '').slice(0, 10)
@@ -121,7 +143,7 @@ export function RecentOperations({
       byDate.get(key).push(tx)
     })
     return [...byDate.entries()]
-  })()
+  })(), [groups, transactions])
 
   const remove = async (tx) => {
     if (busyId != null || tx.transaction_type === 'transfer') return
@@ -167,6 +189,7 @@ export function RecentOperations({
                       onRepeat={() => setEditor({ operation: tx, mode: 'repeat' })}
                       onEdit={() => setEditor({ operation: tx, mode: 'edit' })}
                       onDelete={() => remove(tx)}
+                      categoryName={tx.category_id == null ? '' : categoryNames.get(String(tx.category_id))}
                     />
                   )
                 })}
