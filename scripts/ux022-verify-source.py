@@ -105,7 +105,14 @@ require(
     and "accountLongPressWiggle" in frontend_css
     and "HapticFeedback" in tree,
 )
-require("drag_cycle_front_guard", "ACCOUNT_HIERARCHY_CYCLE" in explorer)
+cycle_guard = "if (targetId != null && sourceNode && nodeIds(sourceNode).includes(String(targetId)))"
+cycle_message = "Нельзя переместить счёт внутрь самого себя."
+require(
+    "drag_cycle_front_guard",
+    cycle_guard in explorer
+    and cycle_message in explorer
+    and explorer.index(cycle_guard) < explorer.index("await moveAccount(sourceId, targetId)"),
+)
 require(
     "accounts_global_fab",
     "AccountCreateSheet" in app
