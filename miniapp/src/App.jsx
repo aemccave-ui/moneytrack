@@ -84,6 +84,19 @@ function buildHierarchy(accounts, baseCurrency) {
     .sort((a, b) => Math.abs(b.totalBase) - Math.abs(a.totalBase))
 }
 
+function HomeNamedSummary({ items, title }) {
+  return (
+    <span className="stackNamedCaption" title={title}>
+      {items.map((item) => (
+        <span className="stackNamedItem" key={item.key}>
+          <span className="stackNamedLabel">{item.label}</span>
+          <span className="homeCountBadge compactCountBadge" aria-label={`Счетов: ${item.count}`} title={`Счетов: ${item.count}`}>{item.count}</span>
+        </span>
+      ))}
+    </span>
+  )
+}
+
 function HomeAccountTree({ hierarchy, expanded, onToggle, baseCurrency, hidden }) {
   const renderNode = (node, depth = 0) => {
     const id = accountId(node.account)
@@ -410,7 +423,7 @@ function App() {
         {homeBreakdownReady ? (currencyGroups.length ? <div className="currencyDistribution">
           <button type="button" className="currencyStackButton compactStackButton" onClick={() => setCurrencyBreakdownOpen((value) => !value)} aria-expanded={currencyBreakdownOpen} aria-controls="currency-breakdown">
             <span className={`hierarchyChevron ${currencyBreakdownOpen ? 'expanded' : ''}`} aria-hidden="true">›</span>
-            <span className="currencyStackContent"><span className="currencyStackBar" aria-label="Распределение баланса по валютам">{currencyGroups.map((group, index) => { const width = currencyDistributionTotal > 0 ? Math.abs(group.totalBase) / currencyDistributionTotal * 100 : 100 / currencyGroups.length; return <i key={group.currency} className="currencyStackSegment" style={{ width: `${width}%`, background: segmentColors[index % segmentColors.length] }} /> })}</span><span className="stackCaption" title={currencyCaption}>{currencyCaption}</span></span>
+            <span className="currencyStackContent"><span className="currencyStackBar" aria-label="Распределение баланса по валютам">{currencyGroups.map((group, index) => { const width = currencyDistributionTotal > 0 ? Math.abs(group.totalBase) / currencyDistributionTotal * 100 : 100 / currencyGroups.length; return <i key={group.currency} className="currencyStackSegment" style={{ width: `${width}%`, background: segmentColors[index % segmentColors.length] }} /> })}</span><HomeNamedSummary title={currencyCaption} items={currencyGroups.map((group) => ({ key: group.currency, label: group.currency, count: group.accounts.length }))} /></span>
           </button>
           {currencyBreakdownOpen && <div className="currencyHierarchy" id="currency-breakdown">{currencyGroups.map((group) => { const expanded = expandedCurrencies.has(group.currency); return <section className="currencyGroup" key={group.currency}><button type="button" className="hierarchyToggle currencyGroupHeader" onClick={() => toggleSetItem(setExpandedCurrencies, group.currency)} aria-expanded={expanded}><span className={`hierarchyChevron ${expanded ? 'expanded' : ''}`} aria-hidden="true">›</span><span className="homeNamedAggregate"><span className="currencyBadge">{group.currency}</span><span className="homeCountBadge" aria-label={`Счетов: ${group.accounts.length}`} title={`Счетов: ${group.accounts.length}`}>{group.accounts.length}</span></span><strong className="sensitive">{hidden(group.total, group.currency)}</strong></button>{expanded && <div className="currencyGroupChildren">{group.accounts.map((account) => <article className="currencyAccountRow" key={accountId(account)}><span className="hierarchyChevron currencyAccountMarker" aria-hidden="true">•</span><span className="accountTreeIdentity"><strong>{account.name}</strong><span>{account.account_type || 'Счёт'} · {group.currency}</span></span><strong className="sensitive">{hidden(account.balance_original ?? 0, group.currency)}</strong></article>)}</div>}</section> })}</div>}
         </div> : <div className="emptyCard">Нет ненулевых валютных остатков</div>) : homeBreakdownFallback}
@@ -423,7 +436,7 @@ function App() {
           {accountHierarchy.length ? <div className="accountDistribution">
             <button type="button" className="accountStackButton compactStackButton" onClick={() => setAccountBreakdownOpen((value) => !value)} aria-expanded={accountBreakdownOpen} aria-controls="account-breakdown">
               <span className={`hierarchyChevron ${accountBreakdownOpen ? 'expanded' : ''}`} aria-hidden="true">›</span>
-              <span className="accountStackContent"><span className="accountStackBar" aria-label="Распределение баланса по счетам">{accountHierarchy.map((node, index) => { const width = accountDistributionTotal > 0 ? Math.abs(node.totalBase) / accountDistributionTotal * 100 : 100 / accountHierarchy.length; return <i key={accountId(node.account)} className="accountStackSegment" style={{ width: `${width}%`, background: segmentColors[index % segmentColors.length] }} /> })}</span><span className="accountStackMeta" title={accountCaption}><span className="accountStackNames">{accountCaption}</span></span></span>
+              <span className="accountStackContent"><span className="accountStackBar" aria-label="Распределение баланса по счетам">{accountHierarchy.map((node, index) => { const width = accountDistributionTotal > 0 ? Math.abs(node.totalBase) / accountDistributionTotal * 100 : 100 / accountHierarchy.length; return <i key={accountId(node.account)} className="accountStackSegment" style={{ width: `${width}%`, background: segmentColors[index % segmentColors.length] }} /> })}</span><HomeNamedSummary title={accountCaption} items={accountHierarchy.map((node) => ({ key: accountId(node.account), label: node.account.name, count: node.leafCount }))} /></span>
             </button>
             {accountBreakdownOpen && <HomeAccountTree hierarchy={accountHierarchy} expanded={expandedAccounts} onToggle={(id) => toggleSetItem(setExpandedAccounts, id)} baseCurrency={baseCurrency} hidden={hidden} />}
           </div> : <div className="emptyCard">Счета пока не созданы</div>}
