@@ -77,29 +77,36 @@ return [{{json:out}}];'''
 POST_VERIFY = verify('''const request=id(body.request_id,"REQUEST_ID_INVALID"); if(request.error)return fail(request.error); out.request_id=request.value;''')
 PATCH_VERIFY = verify('''const tx=id(body.transaction_id,"TRANSACTION_ID_INVALID"); if(tx.error)return fail(tx.error); out.transaction_id=tx.value;''')
 
-POST_QUERY = """select * from moneytrack.finance_create_transaction_v1(
-  {{ $json.telegram_user_id }}::bigint,
-  {{ $json.account_id }}::bigint,
-  '{{ $json.type_sql }}'::text,
-  {{ $json.amount_sql }}::numeric,
-  '{{ $json.currency_sql }}'::text,
-  nullif('{{ $json.description_sql }}','')::text,
-  '{{ $json.date_sql }}'::timestamptz,
+INTERNAL_USER_ID_SQL = """(
+  select u.id
+  from moneytrack.app_users u
+  where u.telegram_user_id = {{ $json.telegram_user_id }}::bigint
+  limit 1
+)"""
+
+POST_QUERY = f"""select * from moneytrack.finance_create_transaction_v1(
+  {INTERNAL_USER_ID_SQL},
+  {{{{ $json.account_id }}}}::bigint,
+  '{{{{ $json.type_sql }}}}'::text,
+  {{{{ $json.amount_sql }}}}::numeric,
+  '{{{{ $json.currency_sql }}}}'::text,
+  nullif('{{{{ $json.description_sql }}}}','')::text,
+  '{{{{ $json.date_sql }}}}'::timestamptz,
   'miniapp'::text,
-  {{ $json.request_id }}::bigint,
-  {{ $json.category_sql }}
+  {{{{ $json.request_id }}}}::bigint,
+  {{{{ $json.category_sql }}}}
 );"""
 
-PATCH_QUERY = """select * from moneytrack.finance_update_transaction_v1(
-  {{ $json.telegram_user_id }}::bigint,
-  {{ $json.transaction_id }}::bigint,
-  {{ $json.account_id }}::bigint,
-  '{{ $json.type_sql }}'::text,
-  {{ $json.amount_sql }}::numeric,
-  '{{ $json.currency_sql }}'::text,
-  nullif('{{ $json.description_sql }}','')::text,
-  '{{ $json.date_sql }}'::timestamptz,
-  {{ $json.category_sql }}
+PATCH_QUERY = f"""select * from moneytrack.finance_update_transaction_v1(
+  {INTERNAL_USER_ID_SQL},
+  {{{{ $json.transaction_id }}}}::bigint,
+  {{{{ $json.account_id }}}}::bigint,
+  '{{{{ $json.type_sql }}}}'::text,
+  {{{{ $json.amount_sql }}}}::numeric,
+  '{{{{ $json.currency_sql }}}}'::text,
+  nullif('{{{{ $json.description_sql }}}}','')::text,
+  '{{{{ $json.date_sql }}}}'::timestamptz,
+  {{{{ $json.category_sql }}}}
 );"""
 
 FORMAT = '''const row=$input.first().json||{};
