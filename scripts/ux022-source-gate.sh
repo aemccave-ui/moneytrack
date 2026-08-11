@@ -31,7 +31,8 @@ for shell_script in \
   scripts/ux022r3-acceptance-r2-preview-apply.sh \
   scripts/ux022r3-photo-dedup-forensic.sh \
   scripts/ux022r3-photo-dedup-gate.sh \
-  scripts/ux022r3-photo-dedup-apply.sh
+  scripts/ux022r3-photo-dedup-apply.sh \
+  scripts/ux022r3-photo-dedup-recovery-status.sh
 do
   bash -n "$shell_script"
 done
