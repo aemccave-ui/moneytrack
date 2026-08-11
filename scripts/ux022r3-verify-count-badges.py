@@ -62,8 +62,13 @@ require(
 )
 require(
     'single_item_badges_are_visible',
-    'badge.textContent = String(count)' in runtime
+    'const next = String(count)' in runtime
+    and 'badge.textContent = next' in runtime
     and 'if (count <= 1)' not in runtime,
+)
+require(
+    'badge_observer_updates_are_idempotent',
+    'if (badge.textContent !== next) badge.textContent = next' in runtime,
 )
 require(
     'home_count_removed_from_subline',
