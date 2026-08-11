@@ -45,7 +45,8 @@ require(
 )
 require(
     'home_count_badges_for_currency_and_accounts',
-    "ensureCountBadge(button, '.currencyStackSegment', '.stackCaption', 'Валют')" in runtime
+    'UX022R3_HOME_COUNT_BADGE_RUNTIME' in runtime
+    and "ensureCountBadge(button, '.currencyStackSegment', '.stackCaption', 'Валют')" in runtime
     and "ensureCountBadge(button, '.accountStackSegment', '.accountStackMeta', 'Счетов')" in runtime
     and "badge.className = 'stackCount'" in runtime
     and 'if (count <= 1)' in runtime,
