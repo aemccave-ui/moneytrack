@@ -18,6 +18,13 @@ cleanup() {
   rm -rf "$WORK"
 }
 
+container_tmp_rm() {
+  local remote="$1"
+  # docker cp may create root-owned files under sticky /tmp. Cleanup must never
+  # turn a successful n8n import/publish (or rollback) into a failed mutation.
+  docker exec -u 0 "$N8N_CONTAINER" rm -f "$remote" >/dev/null 2>&1 || true
+}
+
 for command_name in docker curl python3; do
   command -v "$command_name" >/dev/null 2>&1 || {
     echo "runtime_preflight=FAIL missing_command=$command_name" >&2
@@ -46,10 +53,11 @@ echo 'photo_dedup_preflight=PASS'
 export_one() {
   local id="$1"
   local target="$2"
-  local remote="/tmp/$(basename "$target")"
+  local remote="/tmp/ux022r3-export-$$-$(basename "$target")"
+  container_tmp_rm "$remote"
   docker exec "$N8N_CONTAINER" n8n export:workflow --id="$id" --output="$remote" >/dev/null
   docker cp "$N8N_CONTAINER:$remote" "$target" >/dev/null
-  docker exec "$N8N_CONTAINER" rm -f "$remote"
+  container_tmp_rm "$remote"
 }
 
 export_one "$QUICK_ID" "$WORK/quick.before.json"
@@ -99,11 +107,12 @@ echo "runtime_backup=PASS path=$BACKUP_DIR"
 import_publish() {
   local file="$1"
   local id="$2"
-  local remote="/tmp/$(basename "$file")"
+  local remote="/tmp/ux022r3-import-$$-${id}.json"
+  container_tmp_rm "$remote"
   docker cp "$file" "$N8N_CONTAINER:$remote" >/dev/null
   docker exec "$N8N_CONTAINER" n8n import:workflow --input="$remote"
   docker exec "$N8N_CONTAINER" n8n publish:workflow --id="$id"
-  docker exec "$N8N_CONTAINER" rm -f "$remote"
+  container_tmp_rm "$remote"
 }
 
 rollback() {
@@ -111,9 +120,15 @@ rollback() {
   trap - ERR EXIT
   echo "UX022R3_PHOTO_DEDUP_APPLY=FAIL status=$status" >&2
   if (( MUTATED )); then
-    import_publish "$BACKUP_DIR/quick.before.json" "$QUICK_ID" || echo 'rollback_quick=FAIL' >&2
-    import_publish "$BACKUP_DIR/photo.before.json" "$PHOTO_ID" || echo 'rollback_photo=FAIL' >&2
-    docker restart "$N8N_CONTAINER" >/dev/null || echo 'rollback_n8n_restart=FAIL' >&2
+    import_publish "$BACKUP_DIR/quick.before.json" "$QUICK_ID" \
+      && echo 'rollback_quick=PASS' >&2 \
+      || echo 'rollback_quick=FAIL' >&2
+    import_publish "$BACKUP_DIR/photo.before.json" "$PHOTO_ID" \
+      && echo 'rollback_photo=PASS' >&2 \
+      || echo 'rollback_photo=FAIL' >&2
+    docker restart "$N8N_CONTAINER" >/dev/null \
+      && echo 'rollback_n8n_restart=PASS' >&2 \
+      || echo 'rollback_n8n_restart=FAIL' >&2
     echo 'rollback_n8n_workflows=ATTEMPTED' >&2
   fi
   echo "rollback_point=$BACKUP_DIR" >&2
