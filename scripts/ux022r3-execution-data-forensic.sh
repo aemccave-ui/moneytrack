@@ -35,7 +35,9 @@ if [[ -z "$PG_HOST" ]] || ! docker inspect "$PG_HOST" >/dev/null 2>&1; then
   exit 1
 fi
 
-# Raw execution_data is transferred as hex. No PostgreSQL regular expressions are used.
+# Fetch exact n8n execution_data rows as hex and do all searching/redaction in Python.
+# This deliberately uses no PostgreSQL regexp functions: the prior forensic query
+# itself failed on a regexp before it could expose the real workflow error.
 docker exec -e PGPASSWORD="$PG_PASS" "$PG_HOST" psql -X -qAt -F $'\t' \
   -h 127.0.0.1 -p "$PG_PORT" -U "$PG_USER" -d "$PG_DB" -c "
 with photo_failed as (
