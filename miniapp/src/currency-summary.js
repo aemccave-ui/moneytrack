@@ -38,6 +38,7 @@ function fitCurrencyLabel(meta) {
   label.textContent = suffix
 }
 
+/* UX022R3_HOME_COUNT_BADGE_RUNTIME */
 function ensureCountBadge(button, segmentSelector, labelSelector, noun) {
   const label = button.querySelector(labelSelector)
   if (!label) return
