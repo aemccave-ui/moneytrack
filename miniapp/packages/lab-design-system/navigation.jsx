@@ -9,6 +9,14 @@ const iconProps = {
   'aria-hidden': true,
 }
 
+const navigationOrder = {
+  home: 0,
+  accounts: 1,
+  stats: 2,
+  budgets: 3,
+  settings: 4,
+}
+
 export function LabNavIcon({ name }) {
   if (name === 'home') {
     return <svg {...iconProps}><path d="M4 10.5 12 4l8 6.5"/><path d="M5.5 9.8V20h13V9.8"/><path d="M9.5 20v-5.2h5V20"/></svg>
@@ -26,9 +34,13 @@ export function LabNavIcon({ name }) {
 }
 
 export function LabBottomNavigation({ items, activeId, ariaLabel = 'Основная навигация' }) {
+  const orderedItems = [...items].sort((a, b) => (
+    (navigationOrder[a.id] ?? 999) - (navigationOrder[b.id] ?? 999)
+  ))
+
   return (
     <nav className="labBottomNav" aria-label={ariaLabel}>
-      {items.map((item) => (
+      {orderedItems.map((item) => (
         <button
           type="button"
           key={item.id}
