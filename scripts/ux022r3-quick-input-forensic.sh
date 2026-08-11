@@ -31,7 +31,6 @@ processors = {
     'text': 'f5ioJKyPTupUMV9h',
     'voice': 'Td7kvvrtqQK0FTJg',
 }
-processor_ids = set(processors.values())
 found = []
 
 for wf in workflows:
@@ -125,7 +124,7 @@ for kind, workflow_id in processors.items():
     trigger_refs = []
     for node in wf.get('nodes', []):
         params_text = json.dumps(node.get('parameters') or {}, ensure_ascii=False)
-        if any(name and (f"$('" + name + "')") in params_text for name in trigger_names):
+        if any(name and ("$('" + name + "')") in params_text for name in trigger_names):
             trigger_refs.append({
                 'node': node.get('name'),
                 'type': node.get('type'),
