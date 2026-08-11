@@ -6,7 +6,8 @@ import {
   getTransactionReference,
   updateTransaction,
 } from './api.js'
-import { hierarchyOptions, SmartSelect } from './SmartSelect.jsx'
+import { hierarchyOptions } from './hierarchy-options.js'
+import { SmartSelect } from './SmartSelect.jsx'
 
 const idOf = (item) => item?.id ?? item?.account_id
 const parentOf = (item) => item?.parent_id ?? item?.parent_account_id ?? item?.account_parent_id ?? null
