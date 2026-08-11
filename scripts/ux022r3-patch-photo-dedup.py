@@ -108,17 +108,17 @@ SEMANTIC_QUERY = r'''with parsed as (
 ),
 input_signature as (
     select
-        count(*)::integer as item_count,
+        count(e.value)::integer as item_count,
         coalesce(
             array_agg(
                 round(
                     case
-                        when nullif(value->>'amount','') is not null
-                            then (value->>'amount')::numeric
-                        else coalesce(nullif(value->>'quantity','')::numeric, 1)
+                        when nullif(e.value->>'amount','') is not null
+                            then (e.value->>'amount')::numeric
+                        else coalesce(nullif(e.value->>'quantity','')::numeric, 1)
                              * coalesce(
-                                 nullif(value->>'unit_price','')::numeric,
-                                 nullif(value->>'price','')::numeric,
+                                 nullif(e.value->>'unit_price','')::numeric,
+                                 nullif(e.value->>'price','')::numeric,
                                  0
                                )
                     end,
@@ -126,22 +126,22 @@ input_signature as (
                 )
                 order by round(
                     case
-                        when nullif(value->>'amount','') is not null
-                            then (value->>'amount')::numeric
-                        else coalesce(nullif(value->>'quantity','')::numeric, 1)
+                        when nullif(e.value->>'amount','') is not null
+                            then (e.value->>'amount')::numeric
+                        else coalesce(nullif(e.value->>'quantity','')::numeric, 1)
                              * coalesce(
-                                 nullif(value->>'unit_price','')::numeric,
-                                 nullif(value->>'price','')::numeric,
+                                 nullif(e.value->>'unit_price','')::numeric,
+                                 nullif(e.value->>'price','')::numeric,
                                  0
                                )
                     end,
                     2
                 )
-            ),
+            ) filter (where e.value is not null),
             array[]::numeric[]
         ) as amount_signature
     from parsed p
-    cross join lateral jsonb_array_elements(p.items) e(value)
+    left join lateral jsonb_array_elements(p.items) e(value) on true
 ),
 candidates as (
     select
@@ -221,7 +221,6 @@ def patch_quick(workflow: dict) -> dict:
     prepare['parameters']['jsCode'] = prepare_code.replace(needle, needle + addition, 1)
     photo_format.setdefault('parameters', {})['jsCode'] = PHOTO_FORMAT_CODE
 
-    # Ensure relative order stays obvious in the editor.
     user_context['position'] = [int(pos[0]) + 320, int(pos[1]) - 70]
     prepare['position'] = [int(pos[0]) + 540, int(pos[1]) - 70]
     return wf
