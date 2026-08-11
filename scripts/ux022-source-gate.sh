@@ -30,11 +30,14 @@ python3 -m py_compile \
   scripts/ux022-runtime-smoke.py \
   scripts/ux022-verify-source.py \
   scripts/ux022r3-verify-grouping.py \
-  scripts/ux022r3-verify-interactions.py
+  scripts/ux022r3-verify-interactions.py \
+  scripts/ux022r3-verify-functional.py \
+  scripts/ux022r3-generate-transaction-write-workflow.py
 
 python3 scripts/ux022-verify-source.py
 python3 scripts/ux022r3-verify-grouping.py
 python3 scripts/ux022r3-verify-interactions.py
+python3 scripts/ux022r3-verify-functional.py
 
 cd miniapp
 npm ci
