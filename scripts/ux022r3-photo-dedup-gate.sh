@@ -73,7 +73,7 @@ assert 'r.telegram_file_id' in exact
 print('exact_duplicate_user_scoped=PASS')
 
 semantic=node(photo,'Check semantic duplicate receipt')['parameters']['query'].lower()
-for token in ('receipt_items','item_count','amount_signature','receipt_date','total_amount','upper(r.currency)'):
+for token in ('receipt_items','item_count','amount_signature','receipt_date','total_amount','upper(r.currency)','left join lateral jsonb_array_elements'):
     assert token in semantic,token
 assert 'receipt_fingerprint' in semantic
 print('semantic_duplicate_content_signature=PASS')
@@ -84,7 +84,6 @@ assert len(true_branch)==1 and true_branch[0]['node']=='Photo Hash'
 assert conns['Photo Hash']['main'][0][0]['node']=='Photo User Context'
 print('photo_hash_topology=PASS')
 
-# No public route or processor identity changes.
 webhooks=[n for n in quick['nodes'] if n.get('type')=='n8n-nodes-base.webhook']
 routes={(n['parameters'].get('httpMethod','GET'),n['parameters'].get('path')) for n in webhooks}
 assert ('POST','api/v1/transaction/photo') in routes
