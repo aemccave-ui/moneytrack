@@ -10,6 +10,8 @@ import './recent-operations.css'
 import './accounts-explorer.css'
 import './ux022r3-frontend.css'
 import './telegram-gesture-policy.js'
+import './account-drag-ghost-runtime.js'
+import './quick-actions-runtime.js'
 import './currency-summary.js'
 
 createRoot(document.getElementById('root')).render(
