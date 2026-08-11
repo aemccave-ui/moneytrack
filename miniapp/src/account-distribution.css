@@ -99,10 +99,11 @@
 .stackCount { flex: 0 0 auto; white-space: nowrap; }
 
 /* UX022R3_COUNT_BADGE_CONTRACT
-   Shared muted count badge: before group/account captions, in the page teal palette. */
+   Shared muted count badge in the page teal palette. */
 .app .accountTreeIdentity .accountTreeTitleRow > .accountGroupCountBadge,
 .stackCaption .stackCount,
-.accountStackMeta .stackCount {
+.accountStackMeta .stackCount,
+.app .homeCountBadge {
   flex: 0 0 auto;
   min-width: 22px;
   height: 22px;
@@ -111,6 +112,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  overflow: visible;
   border: 1px solid rgba(29,85,89,.16);
   border-radius: 999px;
   background: rgba(220,235,236,.9);
@@ -119,14 +121,15 @@
   line-height: 1;
   font-weight: 750;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
   box-sizing: border-box;
 }
 
-/* Account-list group count is visually before the account name without changing hit targets. */
+/* Account-list group count keeps the pre-existing placement before the name. */
 .app .accountTreeIdentity .accountTreeTitleRow > .accountGroupCountBadge { order: -1; }
 .app .accountTreeIdentity .accountTreeTitleRow > strong { order: 0; }
 
-/* Home compact balance summaries use the same badge before the caption text. */
+/* Legacy compact summary selectors stay compatible with older preview markup. */
 .stackCaption {
   display: flex;
   align-items: center;
@@ -134,6 +137,29 @@
 }
 .stackCaption .stackCount,
 .accountStackMeta .stackCount { order: -1; }
+
+/* UX022R3_HOME_NAMED_COUNT_BADGES
+   Home aggregate badges are inline after the concrete currency/account name. */
+.app .homeAggregateTitleRow {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+.app .homeAggregateTitleRow > strong {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.app .homeAggregateTitleRow > .homeCountBadge {
+  flex: 0 0 auto;
+  order: 1;
+}
+.currencyDistribution .currencyGroupHeader > .homeCountBadge {
+  justify-self: start;
+}
 
 .accountDistribution .accountTree,
 .currencyDistribution .currencyHierarchy { margin-top: 0; }
