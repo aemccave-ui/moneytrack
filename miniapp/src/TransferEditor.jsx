@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { createTransfer, getAccounts, getTransfer, updateTransfer } from './api.js'
-import { hierarchyOptions, SmartSelect } from './SmartSelect.jsx'
+import { hierarchyOptions } from './hierarchy-options.js'
+import { SmartSelect } from './SmartSelect.jsx'
 
 const idOf = (item) => item?.id ?? item?.account_id
 const parentOf = (item) => item?.parent_id ?? item?.parent_account_id ?? item?.account_parent_id ?? null
@@ -35,13 +36,12 @@ export default function TransferEditor({ operation, mode = 'edit', onClose, onSa
   const [detail, setDetail] = useState(null)
   const [accounts, setAccounts] = useState([])
   const [form, setForm] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(Boolean(transferId))
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (!transferId) {
       showError('Не удалось определить перевод.')
-      setLoading(false)
       return undefined
     }
     const controller = new AbortController()
