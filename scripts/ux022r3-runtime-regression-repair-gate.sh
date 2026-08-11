@@ -32,13 +32,13 @@ from pathlib import Path
 import sys
 src=Path(sys.argv[1]).read_text(encoding='utf-8')
 for token in (
-    'includeDescendants = false',
-    'selectedAccountIds = null',
-    "include_descendants: includeDescendants ? 'true' : 'false'",
-    "setOptionalIdFilter(params, 'selected_account_ids', selectedAccountIds ?? [accountId])",
+    "include_descendants: 'false'",
+    "setOptionalIdFilter(params, 'selected_account_ids', [accountId])",
 ):
     assert token in src, token
-print('transactions_api_scope_source=PASS')
+assert 'includeDescendants = false' not in src
+assert 'selectedAccountIds = null' not in src
+print('transactions_api_own_only_source=PASS')
 PY
 
 # Validate v2 + the compatibility v1 wrapper in a DB transaction that is always rolled back.
