@@ -51,7 +51,9 @@ container_tmp_rm() {
 }
 
 export_one() {
-  local id="$1" target="$2" remote="/tmp/ux022r3-runtime-repair-gate-$$-$id.json"
+  local id="$1"
+  local target="$2"
+  local remote="/tmp/ux022r3-runtime-repair-gate-$$-${id}.json"
   container_tmp_rm "$remote"
   docker exec "$N8N_CONTAINER" n8n export:workflow --id="$id" --output="$remote" >/dev/null
   docker cp "$N8N_CONTAINER:$remote" "$target" >/dev/null
@@ -62,6 +64,7 @@ docker inspect "$N8N_CONTAINER" >/dev/null
 export_one "$QUICK_ID" "$WORK/quick.before.json"
 export_one "$PHOTO_ID" "$WORK/photo.before.json"
 export_one "$DASHBOARD_ID" "$WORK/dashboard.before.json"
+echo 'workflow_export_runtime_smoke=PASS'
 
 python3 - "$WORK/quick.before.json" "$WORK/photo.before.json" "$WORK/dashboard.before.json" <<'PY'
 import json,sys
