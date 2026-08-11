@@ -1,9 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { deleteTransaction } from './api.js'
-import { announceSwipeOpen, nextSwipeScope, SWIPE_OPEN_EVENT } from './swipe-coordinator.js'
-
-const TRANSACTION_ACTIONS_WIDTH = 156
-const TRANSACTION_OPEN_THRESHOLD = 34
+import { SwipeReveal } from './SwipeReveal.jsx'
+import TransactionEditor from './TransactionEditor.jsx'
 
 const operationTypeLabel = (type) => ({
   income: 'Доход',
@@ -26,7 +24,7 @@ function confirmAction(message) {
   return Promise.resolve(window.confirm(message))
 }
 
-function showInfo(message) {
+function showError(message) {
   if (window.Telegram?.WebApp?.showAlert) window.Telegram.WebApp.showAlert(message)
   else window.alert(message)
 }
@@ -35,120 +33,57 @@ function DetailRow({ label, value }) {
   return <div className="transactionDetailRow"><span>{label}</span><strong>{value ?? '—'}</strong></div>
 }
 
-function TransactionRow({
-  tx,
-  privacy,
-  baseCurrency,
-  money,
-  expanded,
-  swipeOpen,
-  onSwipeOpen,
-  onSwipeClose,
-  onExpand,
-  onDeleted,
-}) {
-  const shellRef = useRef(null)
-  const swipeGesture = useRef({ startX: 0, startY: 0 })
+function TransactionRow({ tx, privacy, baseCurrency, money, expanded, onExpand, onEdit, onRepeat, onDelete }) {
   const transfer = tx.transaction_type === 'transfer'
   const incoming = transfer && tx.transfer_direction === 'incoming'
   const positive = tx.transaction_type === 'income' || incoming
   const amountCurrency = tx.currency_original || tx.currency || baseCurrency
   const rawAmount = Number(tx.amount_original ?? tx.amount ?? 0)
   const amount = positive ? Math.abs(rawAmount) : -Math.abs(rawAmount)
+  const transferReason = 'Перевод связан с двумя счетами. Его нельзя безопасно менять как обычную одиночную операцию.'
 
-  useEffect(() => {
-    const shell = shellRef.current
-    if (!shell) return
-    const target = swipeOpen ? TRANSACTION_ACTIONS_WIDTH : 0
-    if (Math.abs(shell.scrollLeft - target) > 1) {
-      shell.scrollTo({ left: target, behavior: 'smooth' })
-    }
-  }, [swipeOpen])
-
-  useEffect(() => {
-    const shell = shellRef.current
-    if (!shell) return undefined
-
-    const touchStart = (event) => {
-      const touch = event.touches[0]
-      if (!touch) return
-      swipeGesture.current.startX = touch.clientX
-      swipeGesture.current.startY = touch.clientY
-    }
-
-    const settle = (event) => {
-      const touch = event.changedTouches?.[0]
-      const dx = touch ? touch.clientX - swipeGesture.current.startX : 0
-      const dy = touch ? touch.clientY - swipeGesture.current.startY : 0
-      const horizontal = Math.abs(dx) > Math.abs(dy) * 1.05
-      const explicitOpen = horizontal && dx < -24
-      const explicitClose = horizontal && dx > 18
-      const shouldOpen = !explicitClose && (explicitOpen || shell.scrollLeft >= TRANSACTION_OPEN_THRESHOLD)
-      if (shouldOpen) {
-        onSwipeOpen?.()
-        shell.scrollTo({ left: TRANSACTION_ACTIONS_WIDTH, behavior: 'smooth' })
-      } else {
-        onSwipeClose?.()
-        shell.scrollTo({ left: 0, behavior: 'smooth' })
-      }
-    }
-
-    const cancel = () => {
-      onSwipeClose?.()
-      shell.scrollTo({ left: 0, behavior: 'smooth' })
-    }
-
-    shell.addEventListener('touchstart', touchStart, { passive: true })
-    shell.addEventListener('touchend', settle, { passive: true })
-    shell.addEventListener('touchcancel', cancel, { passive: true })
-    return () => {
-      shell.removeEventListener('touchstart', touchStart)
-      shell.removeEventListener('touchend', settle)
-      shell.removeEventListener('touchcancel', cancel)
-    }
-  }, [onSwipeClose, onSwipeOpen])
-
-  const remove = async () => {
-    if (transfer) {
-      showInfo('Перевод не удаляется через endpoint обычной операции.')
-      return
-    }
-    if (!(await confirmAction('Удалить эту операцию?'))) return
-    try {
-      await deleteTransaction(tx.id)
-      await onDeleted?.(tx)
-    } catch (error) {
-      showInfo(error?.message || 'Не удалось удалить операцию')
-    }
-  }
+  const actions = [
+    {
+      key: 'repeat',
+      label: 'Повторить',
+      icon: <SwipeActionIcon name="repeat" />,
+      disabled: transfer,
+      onClick: onRepeat,
+    },
+    {
+      key: 'edit',
+      label: 'Изменить',
+      icon: <SwipeActionIcon name="edit" />,
+      disabled: transfer,
+      onClick: onEdit,
+    },
+    {
+      key: 'delete',
+      label: 'Удалить',
+      icon: <SwipeActionIcon name="delete" />,
+      disabled: transfer,
+      danger: true,
+      onClick: onDelete,
+    },
+  ]
 
   return (
     <article className={`transactionCard ${expanded ? 'expanded' : ''}`}>
-      <div ref={shellRef} className="transactionSwipeShell" aria-label="Смахните строку влево для действий">
-        <div className="transactionSwipeTrack">
+      <SwipeReveal id={`tx:${tx.id}`} actions={actions} actionWidth={56} className="transactionSwipeReveal">
+        {({ open }) => (
           <button
             type="button"
             className="transactionRow"
-            onClick={(event) => {
-              if ((shellRef.current?.scrollLeft || 0) > 4) {
-                event.preventDefault()
-                return
-              }
-              onExpand()
-            }}
+            onClick={() => { if (!open) onExpand() }}
             aria-expanded={expanded}
+            aria-label={`${tx.description || operationTypeLabel(tx.transaction_type)}. Смахните влево для действий.`}
           >
             <span className={`transactionTypeMark ${positive ? 'income' : 'expense'}`} aria-hidden="true">{positive ? '↑' : '↓'}</span>
             <span className="transactionIdentity"><strong>{tx.description || operationTypeLabel(tx.transaction_type)}</strong><small>{tx.account_name || tx.category_name || operationTypeLabel(tx.transaction_type)}</small></span>
             <strong className={`transactionAmount ${positive ? 'income' : 'expense'} sensitive`}>{privacy ? '••••' : money(amount, amountCurrency)}</strong>
           </button>
-          <div className="transactionSwipeActions">
-            <button type="button" className="swipeActionButton" disabled={transfer} onClick={() => showInfo('Повтор операции будет подключён отдельным write-contract.')}><SwipeActionIcon name="repeat" /><span>Повторить</span></button>
-            <button type="button" className="swipeActionButton" disabled={transfer} onClick={() => showInfo('Редактирование операции будет подключено отдельным write-contract.')}><SwipeActionIcon name="edit" /><span>Изменить</span></button>
-            <button type="button" className="swipeActionButton danger" disabled={transfer} onClick={remove}><SwipeActionIcon name="delete" /><span>Удалить</span></button>
-          </div>
-        </div>
-      </div>
+        )}
+      </SwipeReveal>
       {expanded && (
         <div className="transactionDetails">
           <DetailRow label="Тип" value={transfer ? (incoming ? 'Входящий перевод' : 'Исходящий перевод') : operationTypeLabel(tx.transaction_type)} />
@@ -157,6 +92,7 @@ function TransactionRow({
           <DetailRow label="Валюта" value={amountCurrency} />
           <DetailRow label="Дата" value={String(tx.transaction_date || '').replace('T', ' ').slice(0, 16)} />
           <DetailRow label="Описание" value={tx.description} />
+          {transfer && <div className="transactionTransferReason">{transferReason}</div>}
         </div>
       )}
     </article>
@@ -175,8 +111,8 @@ export function RecentOperations({
   emptyLabel = 'Операций пока нет',
 }) {
   const [expandedId, setExpandedId] = useState(null)
-  const [openSwipeId, setOpenSwipeId] = useState(null)
-  const [swipeScope] = useState(() => nextSwipeScope('operations'))
+  const [editor, setEditor] = useState(null)
+  const [busyId, setBusyId] = useState(null)
   const groupList = groups || (() => {
     const byDate = new Map()
     ;(transactions || []).forEach((tx) => {
@@ -187,58 +123,60 @@ export function RecentOperations({
     return [...byDate.entries()]
   })()
 
-  useEffect(() => {
-    if (openSwipeId == null) return undefined
-    const timer = window.setTimeout(() => setOpenSwipeId(null), 2000)
-    return () => window.clearTimeout(timer)
-  }, [openSwipeId])
-
-  useEffect(() => {
-    const onExternalSwipe = (event) => {
-      if (openSwipeId == null) return
-      const ownKey = `${swipeScope}:${openSwipeId}`
-      if (event.detail?.key !== ownKey) setOpenSwipeId(null)
+  const remove = async (tx) => {
+    if (busyId != null || tx.transaction_type === 'transfer') return
+    if (!(await confirmAction('Удалить эту операцию?'))) return
+    setBusyId(tx.id)
+    try {
+      await deleteTransaction(tx.id)
+      setExpandedId(null)
+      await onDeleted?.(tx)
+    } catch (error) {
+      showError(error?.message || 'Не удалось удалить операцию')
+    } finally {
+      setBusyId(null)
     }
-    window.addEventListener(SWIPE_OPEN_EVENT, onExternalSwipe)
-    return () => window.removeEventListener(SWIPE_OPEN_EVENT, onExternalSwipe)
-  }, [openSwipeId, swipeScope])
+  }
 
-  const openSwipe = (id) => {
-    setOpenSwipeId(id)
-    announceSwipeOpen(`${swipeScope}:${id}`)
+  const saved = async () => {
+    setExpandedId(null)
+    await onDeleted?.()
   }
 
   return (
-    <section className="section recentOperationsSection">
-      <div className="sectionHeader"><h2>{title}</h2></div>
-      {!groupList.length && <div className="emptyCard">{emptyLabel}</div>}
-      <div className="transactionGroups">
-        {groupList.map(([date, items]) => (
-          <section className="transactionGroup" key={date}>
-            <h3>{dayLabel ? dayLabel(date) : date}</h3>
-            <div className="transactionList">
-              {items.map((tx) => {
-                const id = String(tx.id)
-                return (
-                  <TransactionRow
-                    key={id}
-                    tx={tx}
-                    privacy={privacy}
-                    baseCurrency={baseCurrency}
-                    money={money}
-                    expanded={expandedId === id}
-                    swipeOpen={openSwipeId === id}
-                    onSwipeOpen={() => openSwipe(id)}
-                    onSwipeClose={() => setOpenSwipeId((current) => current === id ? null : current)}
-                    onExpand={() => setExpandedId((current) => current === id ? null : id)}
-                    onDeleted={onDeleted}
-                  />
-                )
-              })}
-            </div>
-          </section>
-        ))}
-      </div>
-    </section>
+    <>
+      <section className="section recentOperationsSection">
+        <div className="sectionHeader"><h2>{title}</h2></div>
+        {!groupList.length && <div className="emptyCard">{emptyLabel}</div>}
+        <div className="transactionGroups">
+          {groupList.map(([date, items]) => (
+            <section className="transactionGroup" key={date}>
+              <h3>{dayLabel ? dayLabel(date) : date}</h3>
+              <div className="transactionList">
+                {items.map((tx) => {
+                  const id = String(tx.id)
+                  return (
+                    <TransactionRow
+                      key={id}
+                      tx={tx}
+                      privacy={privacy}
+                      baseCurrency={baseCurrency}
+                      money={money}
+                      expanded={expandedId === id}
+                      onExpand={() => setExpandedId((current) => current === id ? null : id)}
+                      onRepeat={() => setEditor({ operation: tx, mode: 'repeat' })}
+                      onEdit={() => setEditor({ operation: tx, mode: 'edit' })}
+                      onDelete={() => remove(tx)}
+                    />
+                  )
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
+      </section>
+      {editor && <TransactionEditor operation={editor.operation} mode={editor.mode} onClose={() => setEditor(null)} onSaved={saved} />}
+      {busyId != null && <div className="transactionBusy" role="status">Удаление…</div>}
+    </>
   )
 }
