@@ -171,6 +171,20 @@
    main editor because all visible selects now use SmartSelect. */
 .transactionEditorForm > .smartSelectField { align-self: start; }
 
+.transferEditorDerived {
+  min-height: 46px;
+  padding: 8px 11px;
+  border: 1px solid rgba(22,63,67,.08);
+  border-radius: 14px;
+  background: rgba(229,243,240,.72);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+}
+.transferEditorDerived span { color: rgba(22,63,67,.52); font-size: 10px; font-weight: 650; }
+.transferEditorDerived strong { color: #173f43; font-size: 12px; }
+
 @media (max-width: 380px) {
   .smartSelectSheet { max-height: 82dvh; }
 }
