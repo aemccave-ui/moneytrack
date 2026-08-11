@@ -27,7 +27,7 @@ export function SwipeReveal({
     timerRef.current = null
   }
 
-  const close = () => {
+  const closeActions = () => {
     clearTimer()
     setOpen(false)
     setDragX(0)
@@ -35,11 +35,18 @@ export function SwipeReveal({
 
   const scheduleClose = () => {
     clearTimer()
-    timerRef.current = window.setTimeout(close, autoCloseMs)
+    timerRef.current = window.setTimeout(() => {
+      setOpen(false)
+      setDragX(0)
+      timerRef.current = null
+    }, autoCloseMs)
   }
 
   const openActions = () => {
-    if (!actions.length) return close()
+    if (!actions.length) {
+      closeActions()
+      return
+    }
     announceSwipeOpen(key)
     setOpen(true)
     setDragX(-width)
@@ -48,11 +55,16 @@ export function SwipeReveal({
 
   useEffect(() => {
     const onOtherSwipe = (event) => {
-      if (event.detail?.key !== key) close()
+      if (event.detail?.key === key) return
+      if (timerRef.current != null) window.clearTimeout(timerRef.current)
+      timerRef.current = null
+      setOpen(false)
+      setDragX(0)
     }
     window.addEventListener(SWIPE_OPEN_EVENT, onOtherSwipe)
     return () => {
-      clearTimer()
+      if (timerRef.current != null) window.clearTimeout(timerRef.current)
+      timerRef.current = null
       window.removeEventListener(SWIPE_OPEN_EVENT, onOtherSwipe)
     }
   }, [key])
@@ -87,14 +99,14 @@ export function SwipeReveal({
     const finalX = dragX
     startRef.current = null
     if (finalX <= -(width * .34)) openActions()
-    else close()
+    else closeActions()
     window.setTimeout(() => setDragging(false), 0)
   }
 
   const cancel = () => {
     startRef.current = null
     setDragging(false)
-    close()
+    closeActions()
   }
 
   return (
@@ -110,7 +122,7 @@ export function SwipeReveal({
             onClick={(event) => {
               event.preventDefault()
               event.stopPropagation()
-              close()
+              closeActions()
               action.onClick?.()
             }}
           >
@@ -128,13 +140,13 @@ export function SwipeReveal({
         onPointerCancel={cancel}
         onClickCapture={(event) => {
           if (movedRef.current || open) {
-            if (open) close()
+            if (open) closeActions()
             if (movedRef.current) event.stopPropagation()
           }
           movedRef.current = false
         }}
       >
-        {children({ open, dragging, close })}
+        {children({ open })}
       </div>
     </div>
   )
