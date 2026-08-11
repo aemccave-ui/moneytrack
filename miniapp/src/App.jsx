@@ -42,18 +42,20 @@ const parentAccountId = (account) => account.parent_account_id
 const accountId = (account) => String(account.id ?? account.account_id)
 const segmentColors = ['#1d5559', '#4f9fa3', '#79b7b9', '#a4cccd', '#c6dddd', '#799397']
 
-function flattenAccounts(accounts) {
-  const result = []
+function flattenAccounts(accounts = []) {
+  const byId = new Map()
   const visit = (account, inheritedParentId = null) => {
-    const normalized = inheritedParentId == null || parentAccountId(account) != null
-      ? account
-      : { ...account, parent_id: inheritedParentId }
-    result.push(normalized)
-    const id = account.id ?? account.account_id
-    ;(account.children || account.accounts || []).forEach((child) => visit(child, id))
+    const rawId = account?.id ?? account?.account_id
+    if (rawId == null) return
+    const id = String(rawId)
+    const parentId = parentAccountId(account) ?? inheritedParentId
+    const normalized = parentId == null ? account : { ...account, parent_id: parentId }
+    const existing = byId.get(id)
+    byId.set(id, existing ? { ...existing, ...normalized } : normalized)
+    ;(account.children || account.accounts || []).forEach((child) => visit(child, rawId))
   }
   accounts.forEach((account) => visit(account))
-  return result
+  return [...byId.values()]
 }
 
 function buildHierarchy(accounts, baseCurrency) {
