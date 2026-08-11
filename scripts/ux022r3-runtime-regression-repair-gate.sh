@@ -22,6 +22,8 @@ echo "HEAD=$(git rev-parse HEAD)"
 echo "db_runtime_mode=$UX022_DB_MODE"
 
 bash -n "$ROOT/scripts/ux022r3-runtime-regression-repair-gate.sh"
+bash -n "$ROOT/scripts/ux022r3-runtime-regression-repair-apply.sh"
+bash -n "$ROOT/scripts/ux022r3-dashboard-drift-forensic.sh"
 python3 -m py_compile "$ROOT/scripts/ux022r3-patch-runtime-regressions.py"
 echo 'source_syntax=PASS'
 
@@ -53,7 +55,7 @@ container_tmp_rm() {
 export_one() {
   local id="$1"
   local target="$2"
-  local remote="/tmp/ux022r3-runtime-repair-gate-$$-${id}.json"
+  local remote="/tmp/ux022r3-runtime-repair-gate-$$-$id.json"
   container_tmp_rm "$remote"
   docker exec "$N8N_CONTAINER" n8n export:workflow --id="$id" --output="$remote" >/dev/null
   docker cp "$N8N_CONTAINER:$remote" "$target" >/dev/null
@@ -80,10 +82,14 @@ def node(wf,name):
     return rows[0]
 
 q,p,d=map(one,sys.argv[1:])
-for wf,wid in ((q,'UX022QuickInput202608'),(p,'5VC0EcFB21rwTfoI'),(d,'7TJ2xQTxLsTydXZc')):
+for wf,wid in ((q,'UX022QuickInput202608'),(p,'5VC0EcFB21rwTfoI')):
     assert str(wf.get('id'))==wid,(wf.get('id'),wid)
     assert wf.get('active') is True,wid
     assert wf.get('versionId')==wf.get('activeVersionId'),f'{wid}_unpublished_drift'
+assert str(d.get('id'))=='7TJ2xQTxLsTydXZc'
+assert d.get('active') is True
+if d.get('versionId')!=d.get('activeVersionId'):
+    raise SystemExit('DASHBOARD_UNPUBLISHED_DRIFT_RUN_scripts/ux022r3-dashboard-drift-forensic.sh')
 prep=node(q,'Photo Prepare').get('parameters',{}).get('jsCode','')
 assert "telegram_file_id: $('Photo Hash').first().json.photo_identity" in prep
 assert 'receipt_source_identity:' not in prep
