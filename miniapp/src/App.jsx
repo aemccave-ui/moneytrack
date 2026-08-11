@@ -129,8 +129,7 @@ function App() {
   const [dashboard, setDashboard] = useState(null)
   const [accounts, setAccounts] = useState([])
   const [defaultAccount, setDefaultAccount] = useState(null)
-  const [homeSnapshot, setHomeSnapshot] = useState(null)
-  const [homeSnapshotError, setHomeSnapshotError] = useState('')
+  const [homeSnapshotState, setHomeSnapshotState] = useState({ key: '', payload: null, error: '' })
   const [homeSnapshotRefresh, setHomeSnapshotRefresh] = useState(0)
   const [activeScreen, setActiveScreen] = useState('home')
   const [explorerAccountId, setExplorerAccountId] = useState(null)
@@ -214,34 +213,46 @@ function App() {
     return accountItems.filter((account) => !parentIds.has(accountId(account)))
   }, [accountItems])
 
-  useEffect(() => {
-    if (!dashboard || !structuralLeafItems.length) {
-      setHomeSnapshot(null)
-      setHomeSnapshotError('')
-      return undefined
-    }
-
-    const controller = new AbortController()
+  const homeSnapshotRequest = useMemo(() => {
+    if (!dashboard || !structuralLeafItems.length) return null
     const today = localDateKey(new Date())
     const dateFrom = String(dashboard?.period?.date_from || `${today.slice(0, 7)}-01`).slice(0, 10)
     const selectedAccountIds = structuralLeafItems.map(accountId).sort((a, b) => Number(a) - Number(b))
-
-    setHomeSnapshot(null)
-    setHomeSnapshotError('')
-    getAccountsExplorerSummary({
+    return {
+      key: [selectedAccountIds.join(','), dateFrom, today, homeSnapshotRefresh].join('|'),
       selectedAccountIds,
       dateFrom,
       dateTo: today,
+    }
+  }, [dashboard, structuralLeafItems, homeSnapshotRefresh])
+
+  useEffect(() => {
+    if (!homeSnapshotRequest) return undefined
+    const controller = new AbortController()
+    getAccountsExplorerSummary({
+      selectedAccountIds: homeSnapshotRequest.selectedAccountIds,
+      dateFrom: homeSnapshotRequest.dateFrom,
+      dateTo: homeSnapshotRequest.dateTo,
     }, controller.signal)
-      .then((result) => setHomeSnapshot(result))
+      .then((result) => setHomeSnapshotState({ key: homeSnapshotRequest.key, payload: result, error: '' }))
       .catch((reason) => {
         if (reason?.name !== 'AbortError') {
-          setHomeSnapshotError(reason?.message || 'Не удалось загрузить остатки')
+          setHomeSnapshotState({
+            key: homeSnapshotRequest.key,
+            payload: null,
+            error: reason?.message || 'Не удалось загрузить остатки',
+          })
         }
       })
     return () => controller.abort()
-  }, [dashboard, structuralLeafItems, homeSnapshotRefresh])
+  }, [homeSnapshotRequest])
 
+  const homeSnapshot = homeSnapshotState.key === homeSnapshotRequest?.key
+    ? homeSnapshotState.payload
+    : null
+  const homeSnapshotError = homeSnapshotState.key === homeSnapshotRequest?.key
+    ? homeSnapshotState.error
+    : ''
   const homeSnapshotById = useMemo(() => new Map(
     (homeSnapshot?.account_balances || []).map((item) => [String(item.account_id), item]),
   ), [homeSnapshot])
