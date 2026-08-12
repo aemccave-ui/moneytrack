@@ -44,10 +44,7 @@ export function orderedCurrencyCodes(referenceCurrencies = [], usedCurrencies = 
   })
 
   const current = currencyCode(currentCurrency)
-  if (current) {
-    all.add(current)
-    used.add(current)
-  }
+  if (current) all.add(current)
 
   const sort = (left, right) => left.localeCompare(right, 'en')
   return [
