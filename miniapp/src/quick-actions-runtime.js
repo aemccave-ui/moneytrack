@@ -52,7 +52,7 @@ photoInput.addEventListener('change', () => {
   const file = photoInput.files?.[0]
   photoInput.value = ''
   if (!file) return
-  void run(() => createTransactionFromPhoto(file), 'Обрабатываю фото…')
+  void run(() => createTransactionFromPhoto(file), 'Обрабатываю фото чека…')
 })
 document.body.appendChild(photoInput)
 
@@ -93,8 +93,8 @@ function openAudio() {
   const backdrop = document.createElement('div')
   backdrop.className = 'quickTransactionBackdrop runtime'
   backdrop.innerHTML = `
-    <section class="quickTransactionSheet voice" role="dialog" aria-modal="true" aria-label="Добавить операцию аудио">
-      <header><strong>Добавить аудио</strong><button type="button" data-close>×</button></header>
+    <section class="quickTransactionSheet voice" role="dialog" aria-modal="true" aria-label="Добавить операцию голосом">
+      <header><strong>Добавить голосом</strong><button type="button" data-close>×</button></header>
       <p data-state>Нажмите «Записать» и продиктуйте операцию.</p>
       <button type="button" class="quickTransactionPrimary" data-record>Записать</button>
     </section>`
@@ -135,7 +135,7 @@ function openAudio() {
         stopTracks()
         recorder = null
         closeModal()
-        void run(() => createTransactionFromVoice(blob), 'Обрабатываю аудио…')
+        void run(() => createTransactionFromVoice(blob), 'Обрабатываю голос…')
       }
       recorder.start()
       backdrop.querySelector('[data-state]').textContent = 'Запись идёт…'
@@ -151,10 +151,25 @@ function openAudio() {
   document.body.appendChild(backdrop)
 }
 
-function normalizeHomeActions() {
-  document.querySelectorAll('.fabAction').forEach((button) => {
-    const labelNode = button.querySelector('span')
-    if (labelNode?.textContent?.trim() === 'Голос') labelNode.textContent = 'Аудио'
+function ensureHomeActions() {
+  document.querySelectorAll('.fabMenu .fabActions').forEach((actions) => {
+    const labels = [...actions.querySelectorAll(':scope > .fabAction span')]
+      .map((node) => node.textContent?.trim())
+    const isHomeQuickMenu = labels.some((label) => ['Фото', 'Фото чека', 'Текст', 'Голос'].includes(label))
+    if (!isHomeQuickMenu) return
+
+    actions.querySelectorAll(':scope > .fabAction').forEach((button) => {
+      const labelNode = button.querySelector('span')
+      if (labelNode?.textContent?.trim() === 'Фото') labelNode.textContent = 'Фото чека'
+    })
+
+    if (!labels.includes('Операция')) {
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = 'fabAction quickOperationAction'
+      button.innerHTML = '<span>Операция</span><b aria-hidden="true">＋</b>'
+      actions.prepend(button)
+    }
   })
 }
 
@@ -164,19 +179,20 @@ function closeHomeFab(button) {
   if (menu?.classList.contains('open') && toggle) window.setTimeout(() => toggle.click(), 0)
 }
 
-const observer = new MutationObserver(normalizeHomeActions)
+const observer = new MutationObserver(ensureHomeActions)
 observer.observe(document.body, { childList: true, subtree: true })
-normalizeHomeActions()
+ensureHomeActions()
 
 document.addEventListener('click', (event) => {
   const button = event.target.closest('.fabAction')
   if (!button || button.closest('.accountSheet')) return
   const label = button.querySelector('span')?.textContent?.trim()
-  if (!['Фото', 'Текст', 'Аудио', 'Голос'].includes(label)) return
+  if (!['Операция', 'Фото чека', 'Фото', 'Текст', 'Аудио', 'Голос'].includes(label)) return
   event.preventDefault()
   event.stopPropagation()
   closeHomeFab(button)
-  if (label === 'Фото') photoInput.click()
+  if (label === 'Операция') window.dispatchEvent(new CustomEvent('moneytrack:new-operation'))
+  else if (label === 'Фото чека' || label === 'Фото') photoInput.click()
   else if (label === 'Текст') openText()
   else openAudio()
 }, true)
