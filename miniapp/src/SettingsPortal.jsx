@@ -71,7 +71,7 @@ function CategorySettingsRow({ category, onSaved }) {
 export default function SettingsPortal() {
   const [open, setOpen] = useState(false)
   const [categories, setCategories] = useState([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const click = (event) => {
@@ -90,7 +90,6 @@ export default function SettingsPortal() {
   useEffect(() => {
     if (!open) return undefined
     const controller = new AbortController()
-    setLoading(true)
     getTransactionReference(controller.signal)
       .then((result) => setCategories(result?.categories || []))
       .catch((error) => {
