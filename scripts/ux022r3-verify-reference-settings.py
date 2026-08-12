@@ -24,6 +24,7 @@ filters = read('miniapp/src/AccountsFilters.jsx')
 runtime = read('miniapp/src/ux022r3-reference-runtime.js')
 api = read('miniapp/src/api.js')
 main = read('miniapp/src/main.jsx')
+picker_css = read('miniapp/src/transaction-picker.css')
 category_sql = read('db/domain/UX-022/070_category_flow_settings.sql')
 category_bootstrap_sql = read('db/domain/UX-022/071_category_flow_bootstrap_hardening.sql')
 category_workflow = read('scripts/ux022r3-generate-category-settings-workflow.py')
@@ -46,6 +47,19 @@ require(
     and "placeholder=\"ЧЧ:ММ\"" in editor
     and "^([01]\\d|2[0-3]):[0-5]\\d$" in editor
     and "match(/^(\\d{2})\\.(\\d{2})\\.(\\d{4})$/)" in editor,
+)
+require(
+    'operation_datetime_native_pickers',
+    'useRef' in editor
+    and 'function showNativePicker(ref)' in editor
+    and "typeof input.showPicker === 'function'" in editor
+    and 'aria-label="Выбрать дату"' in editor
+    and 'aria-label="Выбрать время"' in editor
+    and 'className="transactionEditorNativePicker" type="date"' in editor
+    and 'className="transactionEditorNativePicker" type="time"' in editor
+    and "import './transaction-picker.css'" in main
+    and '.transactionEditorPickerButton {' in picker_css
+    and '.transactionEditorPickerControl > .transactionEditorNativePicker {' in picker_css,
 )
 require(
     'new_operation_defaults_now',
