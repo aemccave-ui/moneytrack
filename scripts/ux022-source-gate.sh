@@ -54,9 +54,11 @@ python3 -m py_compile \
   scripts/ux022r3-verify-interactions.py \
   scripts/ux022r3-verify-functional.py \
   scripts/ux022r3-verify-count-badges.py \
+  scripts/ux022r3-verify-reference-settings.py \
   scripts/ux022r3-generate-transaction-write-workflow.py \
   scripts/ux022r3-generate-quick-input-workflow.py \
   scripts/ux022r3-generate-transfer-write-workflow.py \
+  scripts/ux022r3-generate-category-settings-workflow.py \
   scripts/ux022r3-patch-photo-dedup.py \
   scripts/ux022r3-patch-runtime-regressions.py
 
@@ -65,6 +67,7 @@ python3 scripts/ux022r3-verify-grouping.py
 python3 scripts/ux022r3-verify-interactions.py
 python3 scripts/ux022r3-verify-functional.py
 python3 scripts/ux022r3-verify-count-badges.py
+python3 scripts/ux022r3-verify-reference-settings.py
 
 cd miniapp
 npm ci
