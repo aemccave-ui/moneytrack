@@ -18,6 +18,7 @@ WORK="$(mktemp -d /tmp/ux022r3-backend-6-8-apply.XXXXXX)"
 
 DB_MUTATED=0
 N8N_MUTATED=0
+CATEGORY_MUTATED=0
 SUCCESS=0
 
 for command_name in docker curl python3 grep; do
@@ -52,21 +53,38 @@ import_publish() {
   docker exec -u 0 "$N8N_CONTAINER" rm -f "$remote" >/dev/null 2>&1 || true
 }
 
-import_inert_category() {
-  local file="$WORK/category.rollback-inert.json"
+write_inert_category() {
+  local file="$1"
   cat > "$file" <<JSON
 {
   "id": "$CATEGORY_ID",
   "name": "MoneyTrack Category Settings API — rollback inert",
-  "nodes": [],
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "id": "ca787ad4-dd4a-4d48-a95a-c3427d73dc64",
+      "name": "Rollback Manual Trigger"
+    }
+  ],
   "connections": {},
   "settings": {"executionOrder": "v1"},
   "active": false
 }
 JSON
-  docker cp "$file" "$N8N_CONTAINER:/tmp/ux022r3-category-rollback-inert.json" >/dev/null
-  docker exec "$N8N_CONTAINER" n8n import:workflow --input=/tmp/ux022r3-category-rollback-inert.json >/dev/null || true
-  docker exec -u 0 "$N8N_CONTAINER" rm -f /tmp/ux022r3-category-rollback-inert.json >/dev/null 2>&1 || true
+}
+
+verify_category_webhook_absent() {
+  local code=''
+  code="$(curl -sS -X PATCH -H 'Content-Type: application/json' -d '{}' -o "$WORK/category-rollback-readiness.json" -w '%{http_code}' "$API_BASE/api/v1/categories" || true)"
+  if [[ "$code" == '404' ]]; then
+    echo 'rollback_category_webhook_absent=PASS http=404' >&2
+    return 0
+  fi
+  echo "rollback_category_webhook_absent=FAIL http=$code" >&2
+  return 1
 }
 
 rollback_runtime() {
@@ -78,8 +96,23 @@ rollback_runtime() {
       && echo 'rollback_text_workflow=PASS' >&2 || echo 'rollback_text_workflow=FAIL' >&2
     import_publish "$BACKUP_DIR/photo.before.json" "$PHOTO_ID" >/dev/null 2>&1 \
       && echo 'rollback_photo_workflow=PASS' >&2 || echo 'rollback_photo_workflow=FAIL' >&2
-    import_inert_category
-    docker restart "$N8N_CONTAINER" >/dev/null || echo 'rollback_n8n_restart=FAIL' >&2
+
+    if (( CATEGORY_MUTATED )); then
+      if import_publish "$BACKUP_DIR/category.rollback-inert.json" "$CATEGORY_ID" >/dev/null 2>&1; then
+        echo 'rollback_category_workflow=PASS published_inert_replacement' >&2
+      else
+        echo 'rollback_category_workflow=FAIL' >&2
+      fi
+    fi
+
+    if docker restart "$N8N_CONTAINER" >/dev/null; then
+      echo 'rollback_n8n_restart=PASS' >&2
+      if (( CATEGORY_MUTATED )); then
+        verify_category_webhook_absent || true
+      fi
+    else
+      echo 'rollback_n8n_restart=FAIL' >&2
+    fi
   fi
 
   if (( DB_MUTATED )); then
@@ -137,6 +170,8 @@ test -s "$BACKUP_DIR/moneytrack.before.dump"
 export_one "$QUICK_ID" "$BACKUP_DIR/quick.before.json"
 export_one "$TEXT_ID" "$BACKUP_DIR/text.before.json"
 export_one "$PHOTO_ID" "$BACKUP_DIR/photo.before.json"
+write_inert_category "$BACKUP_DIR/category.rollback-inert.json"
+test -s "$BACKUP_DIR/category.rollback-inert.json"
 
 cat > "$WORK/function-backup.sql" <<'SQL'
 \set ON_ERROR_STOP on
@@ -188,6 +223,7 @@ N8N_MUTATED=1
 import_publish "$WORK/quick.candidate.json" "$QUICK_ID"
 import_publish "$WORK/text.candidate.json" "$TEXT_ID"
 import_publish "$WORK/photo.candidate.json" "$PHOTO_ID"
+CATEGORY_MUTATED=1
 import_publish "$WORK/category.candidate.json" "$CATEGORY_ID"
 docker restart "$N8N_CONTAINER" >/dev/null
 echo 'backend_n8n_publish_restart=PASS'
@@ -261,6 +297,7 @@ echo 'category_webhook_readiness=PASS http=401'
 SUCCESS=1
 DB_MUTATED=0
 N8N_MUTATED=0
+CATEGORY_MUTATED=0
 
 echo "rollback_point=$BACKUP_DIR"
 echo 'DB_MUTATION=category_flow_and_receipt_metadata_APPLIED'
