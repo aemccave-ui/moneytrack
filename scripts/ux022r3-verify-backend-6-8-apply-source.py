@@ -22,6 +22,8 @@ quick = read('scripts/ux022r3-patch-quick-ingress-time.py')
 category = read('db/domain/UX-022/070_category_flow_settings.sql')
 bootstrap = read('db/domain/UX-022/071_category_flow_bootstrap_hardening.sql')
 receipt_sql = read('db/domain/UX-022/080_receipt_operation_metadata.sql')
+apply_gate = read('scripts/ux022r3-backend-6-8-apply-gate.sh')
+apply_script = read('scripts/ux022r3-backend-6-8-apply.sh')
 
 require(
     'photo_prompt_requests_explicit_receipt_time',
@@ -89,6 +91,15 @@ require(
     'future_bootstrap_copies_flow',
     'flow_type' in bootstrap
     and bootstrap.count('tc.flow_type') >= 2,
+)
+require(
+    'backend_shell_locals_are_nounset_safe',
+    'local id="$1"\n  local target="$2"\n  local remote=' in apply_gate
+    and 'local id="$1"\n  local target="$2"\n  local remote=' in apply_script
+    and 'local file="$1"\n  local id="$2"\n  local remote=' in apply_script
+    and 'local id="$1" target="$2" remote=' not in apply_gate
+    and 'local id="$1" target="$2" remote=' not in apply_script
+    and 'local file="$1" id="$2" remote=' not in apply_script,
 )
 
 print('UX022R3_BACKEND_6_8_APPLY_SOURCE=PASS')
