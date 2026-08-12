@@ -25,8 +25,10 @@ runtime = read('miniapp/src/ux022r3-reference-runtime.js')
 api = read('miniapp/src/api.js')
 main = read('miniapp/src/main.jsx')
 category_sql = read('db/domain/UX-022/070_category_flow_settings.sql')
+category_bootstrap_sql = read('db/domain/UX-022/071_category_flow_bootstrap_hardening.sql')
 category_workflow = read('scripts/ux022r3-generate-category-settings-workflow.py')
 quick_workflow = read('scripts/ux022r3-generate-quick-input-workflow.py')
+text_write = read('scripts/be-dom-001-transform-text-write.py')
 receipt_metadata_sql = read('db/domain/UX-022/080_receipt_operation_metadata.sql')
 receipt_patch = read('scripts/ux022r3-patch-receipt-operation-metadata.py')
 
@@ -76,6 +78,13 @@ require(
     and "'flow_type', cr.flow_type" in category_sql,
 )
 require(
+    'category_flow_survives_new_user_bootstrap',
+    'catalog_ensure_user_categories_v1' in category_bootstrap_sql
+    and 'show_in_budget_report, budget_sort_order, flow_type' in category_bootstrap_sql
+    and category_bootstrap_sql.count('tc.flow_type') >= 2
+    and 'template.user_id = 0' in category_bootstrap_sql,
+)
+require(
     'category_filter_single_column_compat',
     'draftCategories' in filters
     and 'categoryMatrixHeader single' in filters
@@ -97,8 +106,14 @@ require(
     and 'category_update_v1' in category_workflow,
 )
 require(
-    'text_and_voice_use_current_ingress_time',
+    'text_and_voice_ingress_starts_with_current_time',
     quick_workflow.count('message_date: Math.floor(Date.now()/1000)') >= 3,
+)
+require(
+    'text_write_does_not_truncate_to_midnight',
+    "to_char(current_timestamp, 'HH24:MI:SS')" in text_write
+    and text_write.count('else current_timestamp') >= 2
+    and "current_date\n    )::timestamptz" not in text_write,
 )
 require(
     'receipt_uses_receipt_clock_when_available',
