@@ -4,10 +4,9 @@
 
 begin;
 
--- Template user 0 has no posting history of its own. Infer its initial flow_type
--- by matching category code to observed user-category usage before future users
--- copy the template. Mixed/unused codes remain conservative expense defaults and
--- are still correctable per user in Settings.
+-- Template user 0 has no posting history of its own. Infer flow_type only when
+-- user-owned categories with the same code have one-sided historical usage.
+-- Mixed or unused codes remain NULL instead of being guessed as expense.
 with code_usage as (
     select
         c.code,
@@ -21,14 +20,23 @@ with code_usage as (
 update moneytrack.category_catalog template
    set flow_type = case
        when u.income_count > 0 and u.expense_count = 0 then 'income'
-       else 'expense'
+       when u.expense_count > 0 and u.income_count = 0 then 'expense'
+       else template.flow_type
    end
   from code_usage u
  where template.user_id = 0
-   and template.code = u.code;
+   and template.code = u.code
+   and nullif(btrim(template.flow_type), '') is null
+   and (
+       (u.income_count > 0 and u.expense_count = 0)
+       or
+       (u.expense_count > 0 and u.income_count = 0)
+   );
 
 -- Override the existing BE-DOM-002 bootstrap boundary after flow_type exists so
--- new user-owned category copies inherit the canonical template value.
+-- new user-owned category copies inherit the canonical template value. A NULL
+-- template value remains NULL and is explicitly correctable by that user's
+-- Settings screen; it is never silently coerced to expense.
 create or replace function moneytrack.catalog_ensure_user_categories_v1(
     p_user_id bigint
 )
@@ -151,6 +159,6 @@ end;
 $function$;
 
 comment on function moneytrack.catalog_ensure_user_categories_v1(bigint)
-is 'UX-022R3 hardened category bootstrap: copies canonical template hierarchy, translations and flow_type to new user-owned categories.';
+is 'UX-022R3 hardened category bootstrap: copies canonical template hierarchy, translations and nullable migration-safe flow_type to new user-owned categories.';
 
 commit;
