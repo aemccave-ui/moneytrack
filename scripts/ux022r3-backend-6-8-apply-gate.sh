@@ -38,7 +38,9 @@ python3 "$ROOT/scripts/ux022r3-verify-backend-6-8-apply-source.py"
 echo 'source_preflight=PASS'
 
 export_one() {
-  local id="$1" target="$2" remote="/tmp/ux022r3-b68-gate-$$-$id.json"
+  local id="$1"
+  local target="$2"
+  local remote="/tmp/ux022r3-b68-gate-$$-$id.json"
   docker exec -u 0 "$N8N_CONTAINER" rm -f "$remote" >/dev/null 2>&1 || true
   docker exec "$N8N_CONTAINER" n8n export:workflow --id="$id" --output="$remote" >/dev/null
   docker cp "$N8N_CONTAINER:$remote" "$target" >/dev/null
