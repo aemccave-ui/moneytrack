@@ -21,6 +21,8 @@ editor = read('miniapp/src/TransactionEditor.jsx')
 transfer_editor = read('miniapp/src/TransferEditor.jsx')
 smart_select = read('miniapp/src/SmartSelect.jsx')
 account_create = read('miniapp/src/AccountCreateSheet.jsx')
+reference_options = read('miniapp/src/reference-options.js')
+quick_portal = read('miniapp/src/QuickOperationPortal.jsx')
 api = read('miniapp/src/api.js')
 errors = read('miniapp/src/api-errors.js')
 quick = read('miniapp/src/quick-actions-runtime.js')
@@ -91,11 +93,18 @@ require(
     and 'money(amount, amountCurrency)' in recent,
 )
 require(
-    'account_create_uses_full_currency_catalog',
+    'account_create_uses_prioritized_full_currency_catalog',
     'getTransactionReference' in account_create
     and 'referenceCurrencies' in account_create
     and 'refs?.currencies' in account_create
-    and 'Intl.DisplayNames' in account_create,
+    and 'buildCurrencyOptions(referenceCurrencies, usedCurrencies, currencyCode)' in account_create
+    and 'orderedCurrencyCodes' in reference_options
+    and 'Intl.DisplayNames' in reference_options,
+)
+require(
+    'account_type_reference_is_shared',
+    'ACCOUNT_TYPE_OPTIONS' in reference_options
+    and 'accountTypeOptions(accountType)' in account_create,
 )
 require(
     'polished_custom_selectors',
@@ -108,7 +117,7 @@ require(
 require(
     'account_and_category_selectors_are_hierarchical',
     'hierarchyOptions(reference.accounts' in editor
-    and 'hierarchyOptions(reference.categories' in editor
+    and 'hierarchyOptions(categories' in editor
     and 'parent_category_id' in editor
     and 'disabled: (_item, children) => children.length > 0' in editor
     and 'hierarchyOptions(accounts' in account_create,
@@ -149,6 +158,13 @@ require(
     and "import './quick-actions-runtime.js'" in main,
 )
 require(
+    'quick_manual_operation_editor',
+    "<span>Операция</span>" in quick
+    and "window.dispatchEvent(new CustomEvent('moneytrack:new-operation'))" in quick
+    and "mode=\"create\"" in quick_portal
+    and 'createTransaction({ ...payload, request_id: form.request_id })' in editor,
+)
+require(
     'quick_input_ingress_wrappers',
     'UX022QuickInput202608' in quick_generator
     and 'api/v1/transaction/photo' in quick_generator
@@ -182,6 +198,13 @@ require(
     and 'Сохранить · скоро' not in editor
     and "openEditor(tx, 'repeat')" in recent
     and "openEditor(tx, 'edit')" in recent,
+)
+require(
+    'transaction_editor_datetime_contract',
+    'ДД.ММ.ГГГГ' in editor
+    and 'ЧЧ:ММ' in editor
+    and 'validTime' in editor
+    and 'localTimestamp' in editor,
 )
 require(
     'transaction_edit_domain_boundary',
