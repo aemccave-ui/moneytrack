@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createAccount, getTransactionReference } from './api.js'
 import { hierarchyOptions } from './hierarchy-options.js'
+import { accountTypeOptions, currencyOptions as buildCurrencyOptions } from './reference-options.js'
 import { SmartSelect } from './SmartSelect.jsx'
 
 const accountId = (account) => account?.id ?? account?.account_id
@@ -17,23 +18,6 @@ function flattenAccounts(accounts = []) {
   return result
 }
 
-const accountTypeLabels = {
-  cash: 'Наличные',
-  bank: 'Банковский счёт',
-  card: 'Карта',
-  savings: 'Сбережения',
-  investment: 'Инвестиции',
-  other: 'Другой',
-}
-
-function currencyName(code) {
-  try {
-    return new Intl.DisplayNames(['ru'], { type: 'currency' }).of(code) || code
-  } catch {
-    return code
-  }
-}
-
 export default function AccountCreateSheet({ accounts, baseCurrency, onClose, onSaved }) {
   const flatAccounts = useMemo(() => flattenAccounts(accounts), [accounts])
   const [referenceCurrencies, setReferenceCurrencies] = useState([])
@@ -44,23 +28,19 @@ export default function AccountCreateSheet({ accounts, baseCurrency, onClose, on
     getTransactionReference()
       .then((refs) => {
         if (!alive) return
-        setReferenceCurrencies((refs?.currencies || []).map((item) => String(item?.code || item || '').toUpperCase()).filter(Boolean))
+        setReferenceCurrencies(refs?.currencies || [])
       })
       .catch(() => {})
       .finally(() => alive && setReferenceLoading(false))
     return () => { alive = false }
   }, [])
 
-  const currencies = useMemo(() => [...new Set([
-    String(baseCurrency || 'EUR').toUpperCase(),
-    ...referenceCurrencies,
-    ...flatAccounts.map((item) => String(item.currency_code || '').toUpperCase()).filter(Boolean),
-  ])].sort(), [baseCurrency, flatAccounts, referenceCurrencies])
-
-  const accountTypes = useMemo(() => [...new Set([
-    'cash',
-    ...flatAccounts.map((item) => String(item.account_type || '').trim()).filter(Boolean),
-  ])], [flatAccounts])
+  const [name, setName] = useState('')
+  const [accountType, setAccountType] = useState('cash')
+  const [currencyCode, setCurrencyCode] = useState(String(baseCurrency || 'EUR').toUpperCase())
+  const [parentId, setParentId] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
 
   const parentOptions = useMemo(() => [
     { value: '', label: 'Без родителя', secondary: 'Верхний уровень', depth: 0 },
@@ -73,15 +53,15 @@ export default function AccountCreateSheet({ accounts, baseCurrency, onClose, on
     }),
   ], [accounts])
 
-  const [name, setName] = useState('')
-  const [accountType, setAccountType] = useState(accountTypes[0] || 'cash')
-  const [currencyCode, setCurrencyCode] = useState(String(baseCurrency || 'EUR').toUpperCase())
-  const [parentId, setParentId] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-
-  const typeOptions = accountTypes.map((type) => ({ value: type, label: accountTypeLabels[type] || type }))
-  const currencyOptions = currencies.map((code) => ({ value: code, label: code, secondary: currencyName(code) }))
+  const typeOptions = useMemo(() => accountTypeOptions(accountType), [accountType])
+  const usedCurrencies = useMemo(
+    () => flatAccounts.map((item) => item.currency_code).filter(Boolean),
+    [flatAccounts],
+  )
+  const currencyOptions = useMemo(
+    () => buildCurrencyOptions(referenceCurrencies, usedCurrencies, currencyCode),
+    [currencyCode, referenceCurrencies, usedCurrencies],
+  )
 
   const submit = async (event) => {
     event.preventDefault()
@@ -112,7 +92,7 @@ export default function AccountCreateSheet({ accounts, baseCurrency, onClose, on
         <header><strong>Добавить счёт</strong><button type="button" onClick={onClose}>×</button></header>
         <label><span>Название</span><input value={name} onChange={(event) => setName(event.target.value)} autoFocus /></label>
         <SmartSelect label="Тип" title="Тип счёта" value={accountType} options={typeOptions} onChange={setAccountType} />
-        <SmartSelect label="Валюта" title="Валюта счёта" value={currencyCode} options={currencyOptions} onChange={setCurrencyCode} disabled={referenceLoading && currencies.length === 0} />
+        <SmartSelect label="Валюта" title="Валюта счёта" value={currencyCode} options={currencyOptions} onChange={setCurrencyCode} disabled={referenceLoading && currencyOptions.length === 0} />
         <SmartSelect label="Родитель" title="Расположение счёта" value={parentId} options={parentOptions} onChange={setParentId} />
         {error && <div className="explorerInlineError" role="alert">{error}</div>}
         <button className="accountSheetPrimary" type="submit" disabled={saving || !name.trim()}>{saving ? 'Сохранение…' : 'Добавить счёт'}</button>
