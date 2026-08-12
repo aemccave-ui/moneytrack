@@ -59,6 +59,7 @@ python3 -m py_compile \
   scripts/ux022r3-generate-quick-input-workflow.py \
   scripts/ux022r3-generate-transfer-write-workflow.py \
   scripts/ux022r3-generate-category-settings-workflow.py \
+  scripts/ux022r3-patch-receipt-operation-metadata.py \
   scripts/ux022r3-patch-photo-dedup.py \
   scripts/ux022r3-patch-runtime-regressions.py
 
