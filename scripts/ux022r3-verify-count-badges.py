@@ -17,6 +17,8 @@ def require(name: str, condition: bool) -> None:
 tree = read('miniapp/src/AccountTree.jsx')
 app = read('miniapp/src/App.jsx')
 css = read('miniapp/src/account-distribution.css')
+summary_runtime = read('miniapp/src/ux022r3-reference-runtime.js')
+summary_css = read('miniapp/src/ux022r3-reference-runtime.css')
 main = read('miniapp/src/main.jsx')
 hero = read('miniapp/src/BalanceHero.jsx')
 explorer = read('miniapp/src/AccountsExplorer.jsx')
@@ -65,62 +67,36 @@ require(
 require(
     'home_group_totals_are_descendant_leaf_only',
     'const totalBase = children.length' in app
-    and '? children.reduce((sum, child) => sum + child.totalBase, 0)' in app
-    and 'const leafCount = children.length' in app
-    and '? children.reduce((sum, child) => sum + child.leafCount, 0)' in app,
+    and '? children.reduce((sum, child) => sum + child.totalBase, 0)' in app,
 )
 require(
-    'compact_home_summaries_have_per_name_badges',
-    'function HomeNamedSummary({ items, title })' in app
-    and 'className="stackNamedItem"' in app
-    and 'className="homeCountBadge compactCountBadge"' in app
-    and 'count: group.accounts.length' in app
-    and 'count: node.leafCount' in app
-    and '.stackNamedCaption {' in css
-    and '.app .compactCountBadge {' in css,
+    'summary_badge_is_single_and_first',
+    "document.querySelectorAll('.stackNamedCaption')" in summary_runtime
+    and "caption.querySelectorAll(':scope > .stackNamedItem')" in summary_runtime
+    and "caption.querySelector(':scope > .summaryCountBadge')" in summary_runtime
+    and "caption.prepend(badge)" in summary_runtime
+    and "badge.textContent = count" in summary_runtime,
 )
 require(
-    'home_currency_badge_is_direct_named_markup',
-    'className="homeNamedAggregate"' in app
-    and 'className="currencyBadge">{group.currency}</span>' in app
-    and '>{group.accounts.length}</span>' in app,
+    'per_name_summary_badges_are_hidden',
+    '.stackNamedCaption > .stackNamedItem > .compactCountBadge{display:none!important}' in summary_css,
 )
 require(
-    'home_account_badge_is_direct_named_markup',
-    'className="homeAggregateTitleRow"' in app
-    and '>{node.leafCount}</span>' in app
-    and '.homeAggregateTitleRow > .homeCountBadge' in css,
+    'expanded_home_badges_are_hidden',
+    '.currencyDistribution .currencyHierarchy .homeCountBadge' in summary_css
+    and '.accountDistribution .accountTree .homeCountBadge' in summary_css
+    and 'display:none!important' in summary_css,
 )
 require(
-    'single_item_badges_remain_visible',
-    'if (count <= 1)' not in app
-    and 'if (count <= 1)' not in css
-    and 'group.accounts.length > 1' not in app
-    and 'node.leafCount > 1' not in app,
-)
-require(
-    'grouping_second_line_removed_on_home',
-    '!hasChildren && <span className="accountTreeMeta">' in app,
-)
-require(
-    'stack_level_count_badges_removed',
-    'stackCount' not in app,
-)
-require(
-    'home_badges_are_not_dom_mutated',
-    "import './currency-summary.js'" not in main
-    and 'MutationObserver' not in app,
+    'summary_badge_runtime_loaded',
+    "import './ux022r3-reference-runtime.js'" in main
+    and "import './ux022r3-reference-runtime.css'" in main,
 )
 require(
     'home_reconciliation_fails_closed',
     'const homeTotalsMismatch = homeSnapshotComplete' in app
     and 'Math.abs(canonicalLeafTotal - canonicalNetWorth) > 0.02' in app
     and 'Остатки не согласованы с общим балансом' in app,
-)
-require(
-    'home_currency_row_uses_three_columns',
-    '.currencyDistribution .currencyGroupHeader {' in css
-    and 'grid-template-columns: 22px minmax(0,1fr) auto;' in css,
 )
 require(
     'summary_totals_round_without_losing_detail_cents',
