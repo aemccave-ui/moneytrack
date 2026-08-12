@@ -7,6 +7,7 @@ import {
   updateTransaction,
 } from './api.js'
 import { hierarchyOptions } from './hierarchy-options.js'
+import { currencyOptions as buildCurrencyOptions } from './reference-options.js'
 import { SmartSelect } from './SmartSelect.jsx'
 
 const idOf = (item) => item?.id ?? item?.account_id
@@ -15,9 +16,37 @@ const parentOf = (item) => item?.parent_id ?? item?.parent_account_id ?? item?.a
 function isoParts(value) {
   const date = value ? new Date(value) : new Date()
   const safe = Number.isNaN(date.getTime()) ? new Date() : date
-  const offset = safe.getTimezoneOffset() * 60000
-  const local = new Date(safe.getTime() - offset).toISOString()
-  return { date: local.slice(0, 10), time: local.slice(11, 16) }
+  const year = safe.getFullYear()
+  const month = String(safe.getMonth() + 1).padStart(2, '0')
+  const day = String(safe.getDate()).padStart(2, '0')
+  const hour = String(safe.getHours()).padStart(2, '0')
+  const minute = String(safe.getMinutes()).padStart(2, '0')
+  return { date: `${year}-${month}-${day}`, time: `${hour}:${minute}` }
+}
+
+function displayDate(isoDate) {
+  const match = String(isoDate || '').match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : ''
+}
+
+function parseDisplayDate(value) {
+  const match = String(value || '').trim().match(/^(\d{2})\.(\d{2})\.(\d{4})$/)
+  if (!match) return null
+  const day = Number(match[1])
+  const month = Number(match[2])
+  const year = Number(match[3])
+  const date = new Date(year, month - 1, day)
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+function validTime(value) {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value || '').trim())
+}
+
+function localTimestamp(isoDate, time) {
+  const date = new Date(`${isoDate}T${time}:00`)
+  return Number.isNaN(date.getTime()) ? null : date.toISOString()
 }
 
 function requestId() {
@@ -29,27 +58,36 @@ function showError(message) {
   else window.alert(message)
 }
 
-function currencyName(code) {
-  try {
-    return new Intl.DisplayNames(['ru'], { type: 'currency' }).of(code) || code
-  } catch {
-    return code
+function flatten(items = []) {
+  const result = []
+  const visit = (item) => {
+    if (!item) return
+    result.push(item)
+    ;(item.children || item.accounts || []).forEach(visit)
   }
+  items.forEach(visit)
+  return result
 }
 
-export default function TransactionEditor({ operation, mode, onClose, onSaved }) {
+export default function TransactionEditor({ operation = {}, mode = 'edit', onClose, onSaved }) {
+  const creating = mode === 'create'
   const repeat = mode === 'repeat'
-  const initial = useMemo(() => isoParts(repeat ? null : operation.transaction_date), [operation.transaction_date, repeat])
+  const initial = useMemo(
+    () => isoParts(creating || repeat ? null : operation.transaction_date),
+    [creating, operation.transaction_date, repeat],
+  )
   const [reference, setReference] = useState({ currencies: [], categories: [], accounts: [] })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState(() => ({
-    transaction_type: operation.transaction_type === 'adjustment' ? 'adjustment' : operation.transaction_type === 'income' ? 'income' : 'expense',
+    transaction_type: operation.transaction_type === 'adjustment'
+      ? 'adjustment'
+      : operation.transaction_type === 'income' ? 'income' : 'expense',
     amount: Math.abs(Number(operation.amount_original ?? operation.amount ?? 0)) || '',
     currency: String(operation.currency_original || operation.currency || 'EUR').toUpperCase(),
     account_id: String(operation.account_id ?? ''),
     category_id: operation.category_id == null ? '' : String(operation.category_id),
-    date: initial.date,
+    dateText: displayDate(initial.date),
     time: initial.time,
     description: operation.description || '',
     request_id: requestId(),
@@ -81,24 +119,32 @@ export default function TransactionEditor({ operation, mode, onClose, onSaved })
     disabled: (_item, children) => children.length > 0,
   }), [reference.accounts])
 
-  const categoryOptions = useMemo(() => [
-    { value: '', label: 'Без категории', secondary: 'Не классифицировать', depth: 0 },
-    ...hierarchyOptions(reference.categories, {
-      id: (item) => item?.id,
-      parent: (item) => item?.parent_id ?? item?.parent_category_id ?? null,
-      children: (item) => item?.children || item?.categories || [],
-      label: (item) => item?.name || item?.code || 'Категория',
-      secondary: (item) => item?.code && item?.name && item.code !== item.name ? item.code : '',
-    }),
-  ], [reference.categories])
+  const categoryOptions = useMemo(() => {
+    const flowType = form.transaction_type === 'income' ? 'income' : 'expense'
+    const categories = reference.categories.filter((item) => {
+      const itemFlow = String(item?.flow_type || '').toLowerCase()
+      return !itemFlow || itemFlow === flowType || String(item?.id) === form.category_id
+    })
+    return [
+      { value: '', label: 'Без категории', secondary: 'Не классифицировать', depth: 0 },
+      ...hierarchyOptions(categories, {
+        id: (item) => item?.id,
+        parent: (item) => item?.parent_id ?? item?.parent_category_id ?? null,
+        children: (item) => item?.children || item?.categories || [],
+        label: (item) => item?.name || item?.code || 'Категория',
+        secondary: (item) => item?.code && item?.name && item.code !== item.name ? item.code : '',
+      }),
+    ]
+  }, [form.category_id, form.transaction_type, reference.categories])
 
-  const currencyOptions = useMemo(() => {
-    const codes = [...new Set([
-      form.currency,
-      ...reference.currencies.map((item) => String(item?.code || item || '').toUpperCase()).filter(Boolean),
-    ])].filter(Boolean).sort()
-    return codes.map((code) => ({ value: code, label: code, secondary: currencyName(code) }))
-  }, [form.currency, reference.currencies])
+  const usedAccountCurrencies = useMemo(
+    () => flatten(reference.accounts).map((item) => item?.currency_code).filter(Boolean),
+    [reference.accounts],
+  )
+  const currencyOptions = useMemo(
+    () => buildCurrencyOptions(reference.currencies, usedAccountCurrencies, form.currency),
+    [form.currency, reference.currencies, usedAccountCurrencies],
+  )
 
   const typeOptions = [
     { value: 'expense', label: 'Расход' },
@@ -112,6 +158,12 @@ export default function TransactionEditor({ operation, mode, onClose, onSaved })
   }
 
   const setField = (key) => (value) => setForm((current) => ({ ...current, [key]: value }))
+
+  const changeType = (value) => setForm((current) => ({
+    ...current,
+    transaction_type: value,
+    category_id: '',
+  }))
 
   const changeAccount = (value) => {
     const option = accountOptions.find((item) => String(item.value) === String(value))
@@ -127,8 +179,10 @@ export default function TransactionEditor({ operation, mode, onClose, onSaved })
     event.preventDefault()
     if (saving || loading) return
     const amount = Number(form.amount)
-    if (!form.account_id || !Number.isFinite(amount) || amount <= 0 || !form.date || !form.time) {
-      showError('Заполните счёт, сумму, дату и время.')
+    const isoDate = parseDisplayDate(form.dateText)
+    const timestamp = isoDate && validTime(form.time) ? localTimestamp(isoDate, form.time) : null
+    if (!form.account_id || !Number.isFinite(amount) || amount <= 0 || !timestamp) {
+      showError('Заполните счёт, сумму, дату в формате ДД.ММ.ГГГГ и время в формате 24h ЧЧ:ММ.')
       return
     }
     const payload = {
@@ -138,17 +192,17 @@ export default function TransactionEditor({ operation, mode, onClose, onSaved })
       currency_original: form.currency,
       category_id: form.category_id ? Number(form.category_id) : null,
       description: form.description.trim() || null,
-      transaction_date: `${form.date}T${form.time}:00`,
+      transaction_date: timestamp,
     }
     setSaving(true)
     try {
-      if (repeat) {
+      if (creating || repeat) {
         await createTransaction({ ...payload, request_id: form.request_id })
       } else {
         await updateTransaction(operation.id, payload)
       }
       await onSaved?.()
-      onClose()
+      onClose?.()
     } catch (error) {
       showError(error?.message || 'Не удалось сохранить операцию')
     } finally {
@@ -156,21 +210,24 @@ export default function TransactionEditor({ operation, mode, onClose, onSaved })
     }
   }
 
+  const dialogLabel = creating ? 'Новая операция' : repeat ? 'Повторить операцию' : 'Изменить операцию'
+  const headerAction = creating ? 'Добавить' : repeat ? 'Повторить' : 'Изменить'
+
   return createPortal(
-    <div className="transactionEditorBackdrop visible" role="presentation" onClick={(event) => event.target === event.currentTarget && onClose()}>
-      <form className="transactionEditorSheet" role="dialog" aria-modal="true" aria-label={repeat ? 'Повторить операцию' : 'Изменить операцию'} onSubmit={submit}>
-        <div className="transactionEditorHeader"><div><span>{repeat ? 'Новая операция' : 'Операция'}</span><strong>{repeat ? 'Повторить' : 'Изменить'}</strong></div><button type="button" className="transactionEditorClose" onClick={onClose}>×</button></div>
+    <div className="transactionEditorBackdrop visible" role="presentation" onClick={(event) => event.target === event.currentTarget && onClose?.()}>
+      <form className="transactionEditorSheet" role="dialog" aria-modal="true" aria-label={dialogLabel} onSubmit={submit}>
+        <div className="transactionEditorHeader"><div><span>Операция</span><strong>{headerAction}</strong></div><button type="button" className="transactionEditorClose" onClick={onClose}>×</button></div>
         <div className="transactionEditorForm">
-          <SmartSelect label="Тип" title="Тип операции" value={form.transaction_type} options={typeOptions} onChange={setField('transaction_type')} />
+          <SmartSelect label="Тип" title="Тип операции" value={form.transaction_type} options={typeOptions} onChange={changeType} />
           <label className="transactionEditorField"><span>Сумма</span><input type="number" inputMode="decimal" step="0.01" value={form.amount} onChange={update('amount')} /></label>
           <SmartSelect label="Счёт" title="Счёт операции" value={form.account_id} options={accountOptions} onChange={changeAccount} placeholder="Выбрать счёт" disabled={loading} />
           <SmartSelect label="Валюта" title="Валюта операции" value={form.currency} options={currencyOptions} onChange={setField('currency')} disabled={loading} />
           <SmartSelect label="Категория" title="Категория операции" value={form.category_id} options={categoryOptions} onChange={setField('category_id')} disabled={loading} />
-          <label className="transactionEditorField"><span>Дата</span><input type="date" value={form.date} onChange={update('date')} /></label>
-          <label className="transactionEditorField"><span>Время</span><input type="time" value={form.time} onChange={update('time')} /></label>
+          <label className="transactionEditorField"><span>Дата</span><input type="text" inputMode="numeric" placeholder="ДД.ММ.ГГГГ" value={form.dateText} onChange={update('dateText')} /></label>
+          <label className="transactionEditorField"><span>Время</span><input type="text" inputMode="numeric" placeholder="ЧЧ:ММ" maxLength={5} value={form.time} onChange={update('time')} /></label>
           <label className="transactionEditorField transactionDescriptionField"><span>Описание</span><input type="text" value={form.description} onChange={update('description')} /></label>
         </div>
-        <button type="submit" className="transactionEditorSave" disabled={saving || loading}>{saving ? 'Сохранение…' : 'Сохранить'}</button>
+        <button type="submit" className="transactionEditorSave" disabled={saving || loading}>{saving ? 'Сохранение…' : creating ? 'Добавить операцию' : 'Сохранить'}</button>
       </form>
     </div>,
     document.body,
