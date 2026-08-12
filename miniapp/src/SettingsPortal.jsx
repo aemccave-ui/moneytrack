@@ -107,8 +107,11 @@ export default function SettingsPortal() {
   }, [open])
 
   const rows = useMemo(() => flattenCategories(categories), [categories])
+  // Backend capability is proven by the explicit `editable` field, not by every
+  // category already having flow_type. That lets Settings repair mixed/unused
+  // legacy rows whose migration-safe flow_type is intentionally NULL.
   const backendReady = categories.length === 0 || categories.every((category) => (
-    flowOf(category) && typeof category.editable === 'boolean'
+    typeof category.editable === 'boolean'
   ))
   if (!open) return null
 
