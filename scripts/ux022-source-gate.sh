@@ -38,7 +38,8 @@ for shell_script in \
   scripts/ux022r3-execution-data-forensic.sh \
   scripts/ux022r3-runtime-regression-repair-gate.sh \
   scripts/ux022r3-runtime-regression-repair-apply.sh \
-  scripts/ux022r3-dashboard-drift-forensic.sh
+  scripts/ux022r3-dashboard-drift-forensic.sh \
+  scripts/ux022r3-backend-6-8-forensic.sh
 do
   bash -n "$shell_script"
 done
@@ -60,6 +61,7 @@ python3 -m py_compile \
   scripts/ux022r3-generate-quick-input-workflow.py \
   scripts/ux022r3-generate-transfer-write-workflow.py \
   scripts/ux022r3-generate-category-settings-workflow.py \
+  scripts/ux022r3-patch-quick-ingress-time.py \
   scripts/ux022r3-patch-receipt-operation-metadata.py \
   scripts/ux022r3-patch-photo-dedup.py \
   scripts/ux022r3-patch-runtime-regressions.py
