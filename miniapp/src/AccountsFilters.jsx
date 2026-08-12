@@ -17,6 +17,10 @@ const sameIds = (left = [], right = []) => {
   return a.length === b.length && a.every((value, index) => value === b[index])
 }
 
+const categoryFlow = (category) => String(category?.flow_type || '').toLowerCase() === 'income'
+  ? 'income'
+  : 'expense'
+
 function flattenCategories(items = []) {
   const byId = new Map(items.map((item) => [String(item.id), { item, children: [] }]))
   const roots = []
@@ -80,13 +84,24 @@ export default function AccountsFilters({
   const [presets, setPresets] = useState([])
   const [loading, setLoading] = useState(true)
   const [sheet, setSheet] = useState(null)
-  const [draftIncome, setDraftIncome] = useState(new Set())
-  const [draftExpense, setDraftExpense] = useState(new Set())
+  const [draftCategories, setDraftCategories] = useState(new Set())
 
   const categoryRows = useMemo(() => flattenCategories(categories), [categories])
   const allCategoryIds = useMemo(() => normalizeIds(categories.map((item) => item.id)), [categories])
-  const effectiveIncomeIds = incomeCategoryIds == null ? allCategoryIds : normalizeIds(incomeCategoryIds)
-  const effectiveExpenseIds = expenseCategoryIds == null ? allCategoryIds : normalizeIds(expenseCategoryIds)
+  const allIncomeIds = useMemo(
+    () => normalizeIds(categories.filter((item) => categoryFlow(item) === 'income').map((item) => item.id)),
+    [categories],
+  )
+  const allExpenseIds = useMemo(
+    () => normalizeIds(categories.filter((item) => categoryFlow(item) === 'expense').map((item) => item.id)),
+    [categories],
+  )
+  const effectiveIncomeIds = incomeCategoryIds == null ? allIncomeIds : normalizeIds(incomeCategoryIds)
+  const effectiveExpenseIds = expenseCategoryIds == null ? allExpenseIds : normalizeIds(expenseCategoryIds)
+  const effectiveCategoryIds = useMemo(
+    () => normalizeIds([...effectiveIncomeIds, ...effectiveExpenseIds]),
+    [effectiveExpenseIds, effectiveIncomeIds],
+  )
 
   const reloadPresets = async (signal) => {
     const result = await getFilterPresets(signal)
@@ -111,8 +126,7 @@ export default function AccountsFilters({
   }, [])
 
   const allActive = sameIds(selectedAccountIds, allAccountIds)
-    && sameIds(effectiveIncomeIds, allCategoryIds)
-    && sameIds(effectiveExpenseIds, allCategoryIds)
+    && sameIds(effectiveCategoryIds, allCategoryIds)
 
   const activePresetId = useMemo(() => {
     const match = presets.find((preset) => (
@@ -123,18 +137,16 @@ export default function AccountsFilters({
     return match?.id == null ? null : String(match.id)
   }, [effectiveExpenseIds, effectiveIncomeIds, presets, selectedAccountIds])
 
-  const categorySummary = allCategoryIds.length === 0 || (
-    sameIds(effectiveIncomeIds, allCategoryIds)
-    && sameIds(effectiveExpenseIds, allCategoryIds)
-  ) ? 'Все' : `Доходы ${effectiveIncomeIds.length} · Расходы ${effectiveExpenseIds.length}`
+  const categorySummary = allCategoryIds.length === 0 || sameIds(effectiveCategoryIds, allCategoryIds)
+    ? 'Все'
+    : `${effectiveCategoryIds.length} из ${allCategoryIds.length}`
 
   const openCategories = () => {
-    setDraftIncome(new Set(effectiveIncomeIds))
-    setDraftExpense(new Set(effectiveExpenseIds))
+    setDraftCategories(new Set(effectiveCategoryIds))
     setSheet('categories')
   }
 
-  const toggleDraft = (setter, id) => setter((current) => {
+  const toggleDraft = (id) => setDraftCategories((current) => {
     const next = new Set(current)
     if (next.has(id)) next.delete(id)
     else next.add(id)
@@ -142,9 +154,14 @@ export default function AccountsFilters({
   })
 
   const applyCategories = () => {
+    const selected = new Set([...draftCategories].map(String))
     onApplyCategories({
-      incomeCategoryIds: normalizeIds([...draftIncome]),
-      expenseCategoryIds: normalizeIds([...draftExpense]),
+      incomeCategoryIds: normalizeIds(categories
+        .filter((item) => categoryFlow(item) === 'income' && selected.has(String(item.id)))
+        .map((item) => item.id)),
+      expenseCategoryIds: normalizeIds(categories
+        .filter((item) => categoryFlow(item) === 'expense' && selected.has(String(item.id)))
+        .map((item) => item.id)),
     })
     setSheet(null)
   }
@@ -212,23 +229,23 @@ export default function AccountsFilters({
 
       {sheet === 'categories' && (
         <Sheet
-          title="Категории доходов / расходов"
+          title="Категории"
           onClose={() => setSheet(null)}
           footer={<button type="button" className="accountsFilterPrimary" onClick={applyCategories}>Применить</button>}
         >
-          <div className="categoryMatrixHeader"><span>Категория</span><span>Доход</span><span>Расход</span></div>
+          <div className="categoryMatrixHeader single"><span>Категория</span><span>Выбрано</span></div>
           <div className="categoryMatrixActions">
-            <button type="button" onClick={() => { setDraftIncome(new Set(allCategoryIds)); setDraftExpense(new Set(allCategoryIds)) }}>Выбрать все</button>
-            <button type="button" onClick={() => { setDraftIncome(new Set()); setDraftExpense(new Set()) }}>Очистить</button>
+            <button type="button" onClick={() => setDraftCategories(new Set(allCategoryIds))}>Выбрать все</button>
+            <button type="button" onClick={() => setDraftCategories(new Set())}>Очистить</button>
           </div>
-          <div className="categoryMatrix">
+          <div className="categoryMatrix single">
             {categoryRows.map((category) => {
               const id = String(category.id)
+              const enabled = draftCategories.has(id)
               return (
-                <div className="categoryMatrixRow" key={id} style={{ '--category-depth': category.depth || 0 }}>
-                  <span className="categoryMatrixName">{category.name || category.code}</span>
-                  <button type="button" className={`categoryCircle ${draftIncome.has(id) ? 'isOn' : ''}`} onClick={() => toggleDraft(setDraftIncome, id)} aria-label={`${category.name || category.code}: доход`} aria-pressed={draftIncome.has(id)}><span /></button>
-                  <button type="button" className={`categoryCircle ${draftExpense.has(id) ? 'isOn' : ''}`} onClick={() => toggleDraft(setDraftExpense, id)} aria-label={`${category.name || category.code}: расход`} aria-pressed={draftExpense.has(id)}><span /></button>
+                <div className="categoryMatrixRow single" key={id} style={{ '--category-depth': category.depth || 0 }}>
+                  <span className="categoryMatrixName"><span>{category.name || category.code}</span><small>{categoryFlow(category) === 'income' ? 'Приход' : 'Расход'}</small></span>
+                  <button type="button" className={`categoryCircle ${enabled ? 'isOn' : ''}`} onClick={() => toggleDraft(id)} aria-label={`${category.name || category.code}: ${enabled ? 'выбрано' : 'не выбрано'}`} aria-pressed={enabled}><span /></button>
                 </div>
               )
             })}
@@ -249,7 +266,7 @@ export default function AccountsFilters({
             {presets.map((preset) => (
               <div className={`presetRow ${String(preset.id) === activePresetId ? 'isActive' : ''}`} key={preset.id}>
                 <button type="button" className="presetApply" onClick={() => applyPreset(preset)}>
-                  <span><strong>{preset.name}</strong><small>{(preset.account_ids || []).length} сч. · {(preset.income_category_ids || []).length}/{(preset.expense_category_ids || []).length} кат.</small></span>
+                  <span><strong>{preset.name}</strong><small>{(preset.account_ids || []).length} сч. · {normalizeIds([...(preset.income_category_ids || []), ...(preset.expense_category_ids || [])]).length} кат.</small></span>
                   <b>{String(preset.id) === activePresetId ? '✓' : ''}</b>
                 </button>
                 <button type="button" className="presetMiniAction" onClick={() => renamePreset(preset)} aria-label={`Переименовать ${preset.name}`}>✎</button>
