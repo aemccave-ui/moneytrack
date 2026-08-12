@@ -101,5 +101,15 @@ require(
     and 'local id="$1" target="$2" remote=' not in apply_script
     and 'local file="$1" id="$2" remote=' not in apply_script,
 )
+require(
+    'new_category_webhook_has_functional_rollback',
+    'CATEGORY_MUTATED=0' in apply_script
+    and 'write_inert_category "$BACKUP_DIR/category.rollback-inert.json"' in apply_script
+    and 'n8n-nodes-base.manualTrigger' in apply_script
+    and 'import_publish "$BACKUP_DIR/category.rollback-inert.json" "$CATEGORY_ID"' in apply_script
+    and 'rollback_category_workflow=PASS published_inert_replacement' in apply_script
+    and 'rollback_category_webhook_absent=PASS http=404' in apply_script
+    and 'verify_category_webhook_absent' in apply_script,
+)
 
 print('UX022R3_BACKEND_6_8_APPLY_SOURCE=PASS')
