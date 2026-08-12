@@ -2,6 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { getTransactionReference, updateCategory } from './api.js'
 import './settings-categories.css'
 
+const flowOf = (category) => {
+  const value = String(category?.flow_type || '').toLowerCase()
+  return value === 'income' || value === 'expense' ? value : ''
+}
+
 function flattenCategories(items = []) {
   const byId = new Map(items.map((item) => [String(item.id), { item, children: [] }]))
   const roots = []
@@ -28,16 +33,17 @@ function showError(message) {
   else window.alert(message)
 }
 
-function CategorySettingsRow({ category, onSaved }) {
+function CategorySettingsRow({ category, backendReady, onSaved }) {
+  const sourceFlow = flowOf(category)
   const [name, setName] = useState(category.name || category.code || '')
-  const [flowType, setFlowType] = useState(category.flow_type === 'income' ? 'income' : 'expense')
+  const [flowType, setFlowType] = useState(sourceFlow)
   const [saving, setSaving] = useState(false)
-  const editable = category.editable !== false
+  const editable = backendReady && category.editable === true
   const changed = name.trim() !== String(category.name || category.code || '').trim()
-    || flowType !== (category.flow_type === 'income' ? 'income' : 'expense')
+    || flowType !== sourceFlow
 
   const save = async () => {
-    if (!editable || !changed || !name.trim() || saving) return
+    if (!editable || !changed || !name.trim() || !flowType || saving) return
     setSaving(true)
     try {
       const result = await updateCategory({
@@ -57,13 +63,14 @@ function CategorySettingsRow({ category, onSaved }) {
     <div className="settingsCategoryRow" style={{ '--settings-category-depth': category.depth || 0 }}>
       <div className="settingsCategoryMain">
         <input aria-label={`Название категории ${category.name || category.code}`} value={name} onChange={(event) => setName(event.target.value)} disabled={!editable} />
-        <small>{category.code}{!editable ? ' · системная' : ''}</small>
+        <small>{category.code}{!editable ? ' · только чтение' : ''}</small>
       </div>
       <select aria-label={`Тип категории ${category.name || category.code}`} value={flowType} onChange={(event) => setFlowType(event.target.value)} disabled={!editable}>
+        {!sourceFlow && <option value="">Не задан</option>}
         <option value="expense">Расход</option>
         <option value="income">Приход</option>
       </select>
-      <button type="button" onClick={save} disabled={!editable || !changed || saving || !name.trim()}>{saving ? '…' : '✓'}</button>
+      <button type="button" onClick={save} disabled={!editable || !changed || saving || !name.trim() || !flowType}>{saving ? '…' : '✓'}</button>
     </div>
   )
 }
@@ -100,6 +107,9 @@ export default function SettingsPortal() {
   }, [open])
 
   const rows = useMemo(() => flattenCategories(categories), [categories])
+  const backendReady = categories.length === 0 || categories.every((category) => (
+    flowOf(category) && typeof category.editable === 'boolean'
+  ))
   if (!open) return null
 
   const updateLocal = (updated) => setCategories((current) => current.map((item) => (
@@ -114,11 +124,12 @@ export default function SettingsPortal() {
           <button type="button" onClick={() => setOpen(false)} aria-label="Закрыть">×</button>
         </header>
         <p className="settingsCategoryHint">Для каждой категории задаётся один финансовый тип. Он используется в фильтрах и в выборе категории операции.</p>
+        {!loading && !backendReady && <div className="settingsBackendNotice" role="status">Редактирование включится после применения backend-миграции справочника категорий. Текущие данные не изменяются.</div>}
         <div className="settingsCategoryHead"><span>Категория</span><span>Приход / расход</span><span /></div>
         <div className="settingsCategoryList">
           {loading && <div className="settingsCategoryEmpty">Загрузка…</div>}
           {!loading && !rows.length && <div className="settingsCategoryEmpty">Категорий пока нет</div>}
-          {rows.map((category) => <CategorySettingsRow key={category.id} category={category} onSaved={updateLocal} />)}
+          {rows.map((category) => <CategorySettingsRow key={category.id} category={category} backendReady={backendReady} onSaved={updateLocal} />)}
         </div>
       </section>
     </div>
