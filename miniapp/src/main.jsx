@@ -13,9 +13,11 @@ import './accounts-explorer.css'
 import './ux022r3-frontend.css'
 import './ux022r3-selectors.css'
 import './ux022r3-saldo.css'
+import './ux022r3-reference-runtime.css'
 import './telegram-gesture-policy.js'
 import './account-drag-ghost-runtime.js'
 import './quick-actions-runtime.js'
+import './ux022r3-reference-runtime.js'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
