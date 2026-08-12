@@ -46,6 +46,7 @@ done
 echo 'shell_syntax_validation=PASS'
 
 python3 -m py_compile \
+  scripts/be-dom-001-transform-text-write.py \
   scripts/ux022-generate-api-workflows.py \
   scripts/ux022-merge-lifecycle-into-presets.py \
   scripts/ux022-runtime-smoke.py \
