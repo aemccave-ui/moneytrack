@@ -29,9 +29,11 @@ category_sql = read('db/domain/UX-022/070_category_flow_settings.sql')
 category_bootstrap_sql = read('db/domain/UX-022/071_category_flow_bootstrap_hardening.sql')
 category_workflow = read('scripts/ux022r3-generate-category-settings-workflow.py')
 quick_workflow = read('scripts/ux022r3-generate-quick-input-workflow.py')
+quick_time_patch = read('scripts/ux022r3-patch-quick-ingress-time.py')
 text_write = read('scripts/be-dom-001-transform-text-write.py')
 receipt_metadata_sql = read('db/domain/UX-022/080_receipt_operation_metadata.sql')
 receipt_patch = read('scripts/ux022r3-patch-receipt-operation-metadata.py')
+backend_forensic = read('scripts/ux022r3-backend-6-8-forensic.sh')
 
 require(
     'used_currencies_before_catalog_tail',
@@ -92,6 +94,14 @@ require(
     and "'flow_type', cr.flow_type" in category_sql,
 )
 require(
+    'ambiguous_category_flow_is_not_guessed',
+    "set flow_type = 'expense'" not in category_sql.lower()
+    and 'alter column flow_type set not null' not in category_sql.lower()
+    and "nullif(lower(to_jsonb(c)->>'flow_type'), '') as flow_type" in category_sql
+    and 'Mixed or never-used categories deliberately stay NULL' in category_sql
+    and 'Mixed or unused codes remain NULL' in category_bootstrap_sql,
+)
+require(
     'category_flow_survives_new_user_bootstrap',
     'catalog_ensure_user_categories_v1' in category_bootstrap_sql
     and 'show_in_budget_report, budget_sort_order, flow_type' in category_bootstrap_sql
@@ -107,7 +117,8 @@ require(
     and 'draftExpense' not in filters
     and "categoryFlow(item) === 'income'" in filters
     and 'incomeCategoryIds:' in filters
-    and 'expenseCategoryIds:' in filters,
+    and 'expenseCategoryIds:' in filters
+    and 'flowMetadataReady' in filters,
 )
 require(
     'category_settings_screen_and_api',
@@ -120,13 +131,27 @@ require(
     and 'category_update_v1' in category_workflow,
 )
 require(
+    'settings_can_correct_unset_flow_after_backend_capability',
+    "typeof category.editable === 'boolean'" in settings
+    and '!sourceFlow && <option value="">Не задан</option>' in settings
+    and 'flowOf(category) && typeof category.editable' not in settings,
+)
+require(
     'text_and_voice_ingress_starts_with_current_time',
     quick_workflow.count('message_date: Math.floor(Date.now()/1000)') >= 3,
 )
 require(
-    'text_write_does_not_truncate_to_midnight',
-    "to_char(current_timestamp, 'HH24:MI:SS')" in text_write
-    and text_write.count('else current_timestamp') >= 2
+    'voice_ingress_time_survives_text_delegation',
+    "$('Voice Prepare').first().json.message_date" in quick_time_patch
+    and "changed_node={VOICE_TO_TEXT}" in quick_time_patch
+    and 'graph_topology=UNCHANGED' in quick_time_patch,
+)
+require(
+    'text_write_uses_ingress_epoch_not_midnight',
+    text_write.count("$('MoneyTrack Transaction Processor Text').first().json.message_date") >= 4
+    and 'to_timestamp(' in text_write
+    and "'HH24:MI:SS'" in text_write
+    and 'parsed_date_plus_ingress_clock_or_ingress_timestamp' in text_write
     and "current_date\n    )::timestamptz" not in text_write,
 )
 require(
@@ -145,6 +170,14 @@ require(
     and "v_category_status := 'mixed_categories'" in receipt_metadata_sql
     and 'set transaction_date = v_effective_at' in receipt_metadata_sql
     and 'category_id = v_category_id' in receipt_metadata_sql,
+)
+require(
+    'backend_6_8_has_read_only_runtime_forensic',
+    'READ_ONLY / NO_DB_OR_N8N_MUTATION' in backend_forensic
+    and 'photo_parser_time_contract=' in backend_forensic
+    and 'category_flow_unresolved_after_safe_inference=' in backend_forensic
+    and 'DB_MUTATION=NONE' in backend_forensic
+    and 'N8N_MUTATION=NONE' in backend_forensic,
 )
 
 print('UX022R3_REFERENCE_SETTINGS_GATE=PASS')
