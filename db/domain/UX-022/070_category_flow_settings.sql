@@ -6,9 +6,9 @@ begin;
 alter table moneytrack.category_catalog
     add column if not exists flow_type text;
 
--- Bootstrap the new attribute from observed financial usage. Categories that have
--- never been used (or have mixed legacy usage) default to expense and can then be
--- corrected explicitly from Settings.
+-- Bootstrap only categories whose historical financial usage proves one flow.
+-- Mixed or never-used categories deliberately stay NULL and must be corrected in
+-- Settings. Defaulting those rows to expense would silently corrupt filtering.
 with usage as (
     select
         t.category_id,
@@ -21,21 +21,21 @@ with usage as (
 update moneytrack.category_catalog c
    set flow_type = case
        when coalesce(u.income_count, 0) > 0 and coalesce(u.expense_count, 0) = 0 then 'income'
-       else 'expense'
+       when coalesce(u.expense_count, 0) > 0 and coalesce(u.income_count, 0) = 0 then 'expense'
+       else c.flow_type
    end
   from usage u
  where c.id = u.category_id
-   and nullif(btrim(c.flow_type), '') is null;
+   and nullif(btrim(c.flow_type), '') is null
+   and (
+       (coalesce(u.income_count, 0) > 0 and coalesce(u.expense_count, 0) = 0)
+       or
+       (coalesce(u.expense_count, 0) > 0 and coalesce(u.income_count, 0) = 0)
+   );
 
-update moneytrack.category_catalog
-   set flow_type = 'expense'
- where nullif(btrim(flow_type), '') is null;
-
-alter table moneytrack.category_catalog
-    alter column flow_type set default 'expense';
-alter table moneytrack.category_catalog
-    alter column flow_type set not null;
-
+-- During migration NULL means "not classified yet". The frontend category
+-- filter stays fail-closed while any returned category lacks flow_type, while
+-- Settings remains able to correct those rows explicitly.
 do $category_flow_constraint$
 begin
     if not exists (
@@ -118,7 +118,8 @@ is 'UX-022R3 Settings boundary for an owned active category: localized name + in
 
 -- Keep the public transaction-reference response shape stable while extending
 -- category JSON with flow_type/editable. User-owned rows win over template rows
--- with the same code.
+-- with the same code. NULL flow_type is intentionally exposed during migration
+-- so clients can fail closed instead of guessing expense.
 create or replace function moneytrack.api_transaction_reference_read_model_v1(
     p_telegram_user_id bigint
 )
@@ -143,13 +144,15 @@ as $function$
     currency_usage as (
         select upper(t.currency_original) as code, count(*)::bigint as usage_count
         from moneytrack.transactions t
-        join user_ctx u on u.internal_user_id = t.user_id
+        join user_ctx u
+          on u.internal_user_id = t.user_id
         group by upper(t.currency_original)
     ),
     account_currency_usage as (
         select upper(a.currency_code) as code, count(*)::bigint as account_count
         from moneytrack.accounts a
-        join user_ctx u on u.internal_user_id = a.user_id
+        join user_ctx u
+          on u.internal_user_id = a.user_id
         where coalesce(a.is_active, true) = true
         group by upper(a.currency_code)
     ),
@@ -159,8 +162,10 @@ as $function$
             coalesce(cu.usage_count, 0)::bigint as usage_count,
             coalesce(au.account_count, 0)::bigint as account_count
         from moneytrack.currencies c
-        left join currency_usage cu on cu.code = upper(c.code)
-        left join account_currency_usage au on au.code = upper(c.code)
+        left join currency_usage cu
+          on cu.code = upper(c.code)
+        left join account_currency_usage au
+          on au.code = upper(c.code)
         where coalesce(c.is_active, true) = true
     ),
     category_candidates as (
@@ -174,7 +179,7 @@ as $function$
             ) as parent_id,
             coalesce(nullif(to_jsonb(c)->>'sort_order', '')::int, 0) as sort_order,
             coalesce(t_user.name, t_en.name, c.code) as name,
-            coalesce(nullif(lower(to_jsonb(c)->>'flow_type'), ''), 'expense') as flow_type,
+            nullif(lower(to_jsonb(c)->>'flow_type'), '') as flow_type,
             (c.user_id = u.internal_user_id) as editable,
             row_number() over (
                 partition by c.code
@@ -225,6 +230,6 @@ as $function$
 $function$;
 
 comment on function moneytrack.api_transaction_reference_read_model_v1(bigint)
-is 'UX-022R3 transaction reference: used currencies first; localized categories include income/expense flow metadata and editability.';
+is 'UX-022R3 transaction reference: used currencies first; localized categories include nullable migration-safe income/expense flow metadata and editability.';
 
 commit;
