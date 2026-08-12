@@ -97,6 +97,17 @@ export async function getTransactionReference(signal) {
   return payload ?? { currencies: [], categories: [] }
 }
 
+export function updateCategory({ categoryId, name, flowType }, signal) {
+  return request('api/v1/categories', signal, {
+    method: 'PATCH',
+    body: {
+      category_id: Number(categoryId),
+      name,
+      flow_type: flowType,
+    },
+  })
+}
+
 export function deleteTransaction(id, signal) {
   return request(`api/v1/transaction?id=${encodeURIComponent(id)}`, signal, {
     method: 'DELETE',
