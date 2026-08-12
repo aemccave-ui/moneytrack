@@ -17,6 +17,10 @@ TARGETS = {
     "Insert opening balance",
 }
 
+# Text and voice ingress are interactive creates: when NLP supplies only a date,
+# preserve that date but combine it with the ingress/current clock time instead
+# of silently truncating the operation to 00:00. If no date is supplied, the
+# entire current timestamp is used.
 SIMPLE_QUERY = r'''select
     c.id,
     c.account_id
@@ -27,10 +31,15 @@ from moneytrack.finance_create_transaction_v1(
     {{ $("Parse transaction JSON").item.json.amount }}::numeric,
     '{{ String($("Parse transaction JSON").item.json.currency || "").replace(/'/g,"''") }}'::text,
     '{{ String($("Parse transaction JSON").item.json.description || "").replace(/'/g,"''") }}'::text,
-    coalesce(
-        nullif(nullif('{{ $("Parse transaction JSON").item.json.transaction_date }}','null'),'undefined')::date,
-        current_date
-    )::timestamptz,
+    case
+        when nullif(nullif('{{ $("Parse transaction JSON").item.json.transaction_date }}','null'),'undefined') is not null
+        then (
+            nullif(nullif('{{ $("Parse transaction JSON").item.json.transaction_date }}','null'),'undefined')::date::text
+            || ' '
+            || to_char(current_timestamp, 'HH24:MI:SS')
+        )::timestamp::timestamptz
+        else current_timestamp
+    end,
     null,
     null,
     null
@@ -45,10 +54,15 @@ from moneytrack.finance_create_transaction_v1(
     {{ $json.amount }}::numeric,
     '{{ String($json.currency || "").replace(/'/g,"''") }}'::text,
     '{{ String($json.description || "").replace(/'/g,"''") }}'::text,
-    coalesce(
-        nullif(nullif('{{ $json.transaction_date }}','null'),'undefined')::date,
-        current_date
-    )::timestamptz,
+    case
+        when nullif(nullif('{{ $json.transaction_date }}','null'),'undefined') is not null
+        then (
+            nullif(nullif('{{ $json.transaction_date }}','null'),'undefined')::date::text
+            || ' '
+            || to_char(current_timestamp, 'HH24:MI:SS')
+        )::timestamp::timestamptz
+        else current_timestamp
+    end,
     null,
     null,
     null
@@ -150,6 +164,7 @@ def main():
     print("BE-DOM-001 Text Processor candidate created")
     print(f"workflow_id={WORKFLOW_ID}")
     print("changed_nodes=" + ", ".join(sorted(changed)))
+    print("interactive_timestamp=parsed_date_plus_current_time_or_current_timestamp")
     print("source_idempotency=DEFERRED (no stable Telegram message/update id proven in runtime contract)")
 
 
