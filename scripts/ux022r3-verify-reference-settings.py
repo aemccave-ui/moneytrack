@@ -27,7 +27,8 @@ main = read('miniapp/src/main.jsx')
 category_sql = read('db/domain/UX-022/070_category_flow_settings.sql')
 category_workflow = read('scripts/ux022r3-generate-category-settings-workflow.py')
 quick_workflow = read('scripts/ux022r3-generate-quick-input-workflow.py')
-receipt_domain = read('db/domain/BE-DOM-002/010_receipt_catalog_domain.sql')
+receipt_metadata_sql = read('db/domain/UX-022/080_receipt_operation_metadata.sql')
+receipt_patch = read('scripts/ux022r3-patch-receipt-operation-metadata.py')
 
 require(
     'used_currencies_before_catalog_tail',
@@ -100,9 +101,21 @@ require(
     quick_workflow.count('message_date: Math.floor(Date.now()/1000)') >= 3,
 )
 require(
-    'receipt_category_forensic_is_explicit',
-    "'expense'," in receipt_domain
-    and "null,\n          null,\n          null" in receipt_domain,
+    'receipt_uses_receipt_clock_when_available',
+    'receipt_finalize_transaction_metadata_v1' in receipt_metadata_sql
+    and "v_time_status := 'receipt_time'" in receipt_metadata_sql
+    and "to_char(v_fallback_at, 'HH24:MI:SS')" in receipt_metadata_sql
+    and 'receipt.receipt_time || receipt.time' in receipt_patch
+    and 'receipt.receipt_datetime || receipt.receipt_date' in receipt_patch
+    and 'receipt_finalize_transaction_metadata_v1' in receipt_patch,
+)
+require(
+    'receipt_category_is_conservative',
+    'count(distinct ri.category_id)' in receipt_metadata_sql
+    and "v_category_status := 'single_item_category'" in receipt_metadata_sql
+    and "v_category_status := 'mixed_categories'" in receipt_metadata_sql
+    and 'set transaction_date = v_effective_at' in receipt_metadata_sql
+    and 'category_id = v_category_id' in receipt_metadata_sql,
 )
 
 print('UX022R3_REFERENCE_SETTINGS_GATE=PASS')
