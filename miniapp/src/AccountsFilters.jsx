@@ -17,9 +17,10 @@ const sameIds = (left = [], right = []) => {
   return a.length === b.length && a.every((value, index) => value === b[index])
 }
 
-const categoryFlow = (category) => String(category?.flow_type || '').toLowerCase() === 'income'
-  ? 'income'
-  : 'expense'
+const categoryFlow = (category) => {
+  const value = String(category?.flow_type || '').toLowerCase()
+  return value === 'income' || value === 'expense' ? value : null
+}
 
 function flattenCategories(items = []) {
   const byId = new Map(items.map((item) => [String(item.id), { item, children: [] }]))
@@ -88,13 +89,18 @@ export default function AccountsFilters({
 
   const categoryRows = useMemo(() => flattenCategories(categories), [categories])
   const allCategoryIds = useMemo(() => normalizeIds(categories.map((item) => item.id)), [categories])
+  const flowMetadataReady = categories.length === 0 || categories.every((item) => categoryFlow(item) != null)
   const allIncomeIds = useMemo(
-    () => normalizeIds(categories.filter((item) => categoryFlow(item) === 'income').map((item) => item.id)),
-    [categories],
+    () => flowMetadataReady
+      ? normalizeIds(categories.filter((item) => categoryFlow(item) === 'income').map((item) => item.id))
+      : allCategoryIds,
+    [allCategoryIds, categories, flowMetadataReady],
   )
   const allExpenseIds = useMemo(
-    () => normalizeIds(categories.filter((item) => categoryFlow(item) === 'expense').map((item) => item.id)),
-    [categories],
+    () => flowMetadataReady
+      ? normalizeIds(categories.filter((item) => categoryFlow(item) === 'expense').map((item) => item.id))
+      : allCategoryIds,
+    [allCategoryIds, categories, flowMetadataReady],
   )
   const effectiveIncomeIds = incomeCategoryIds == null ? allIncomeIds : normalizeIds(incomeCategoryIds)
   const effectiveExpenseIds = expenseCategoryIds == null ? allExpenseIds : normalizeIds(expenseCategoryIds)
@@ -137,11 +143,14 @@ export default function AccountsFilters({
     return match?.id == null ? null : String(match.id)
   }, [effectiveExpenseIds, effectiveIncomeIds, presets, selectedAccountIds])
 
-  const categorySummary = allCategoryIds.length === 0 || sameIds(effectiveCategoryIds, allCategoryIds)
-    ? 'Все'
-    : `${effectiveCategoryIds.length} из ${allCategoryIds.length}`
+  const categorySummary = !flowMetadataReady
+    ? 'Нужно обновить справочник'
+    : allCategoryIds.length === 0 || sameIds(effectiveCategoryIds, allCategoryIds)
+      ? 'Все'
+      : `${effectiveCategoryIds.length} из ${allCategoryIds.length}`
 
   const openCategories = () => {
+    if (!flowMetadataReady) return
     setDraftCategories(new Set(effectiveCategoryIds))
     setSheet('categories')
   }
@@ -154,6 +163,7 @@ export default function AccountsFilters({
   })
 
   const applyCategories = () => {
+    if (!flowMetadataReady) return
     const selected = new Set([...draftCategories].map(String))
     onApplyCategories({
       incomeCategoryIds: normalizeIds(categories
@@ -215,7 +225,7 @@ export default function AccountsFilters({
   return (
     <>
       <div className="accountsFilterActions">
-        <button type="button" className="accountsFilterAction" onClick={openCategories} disabled={loading}>
+        <button type="button" className="accountsFilterAction" onClick={openCategories} disabled={loading || !flowMetadataReady} title={!flowMetadataReady ? 'Требуется backend flow_type' : undefined}>
           <span className="accountsFilterIcon" aria-hidden="true">◉</span>
           <span><strong>Категории</strong><small>{loading ? 'Загрузка…' : categorySummary}</small></span>
           <span className="accountsFilterChevron" aria-hidden="true">›</span>
@@ -227,7 +237,7 @@ export default function AccountsFilters({
         </button>
       </div>
 
-      {sheet === 'categories' && (
+      {sheet === 'categories' && flowMetadataReady && (
         <Sheet
           title="Категории"
           onClose={() => setSheet(null)}
