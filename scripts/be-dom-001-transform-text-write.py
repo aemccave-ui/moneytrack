@@ -17,10 +17,12 @@ TARGETS = {
     "Insert opening balance",
 }
 
-# Text and voice ingress are interactive creates: when NLP supplies only a date,
-# preserve that date but combine it with the ingress/current clock time instead
-# of silently truncating the operation to 00:00. If no date is supplied, the
-# entire current timestamp is used.
+# Text and voice ingress are interactive creates. Their caller supplies
+# message_date as Unix epoch seconds. If NLP supplies only a calendar date,
+# preserve that date but combine it with the ingress clock rather than silently
+# truncating to 00:00. If NLP supplies no date, preserve the complete ingress
+# instant. current_timestamp is only a defensive fallback for legacy callers
+# that do not yet carry message_date.
 SIMPLE_QUERY = r'''select
     c.id,
     c.account_id
@@ -36,9 +38,18 @@ from moneytrack.finance_create_transaction_v1(
         then (
             nullif(nullif('{{ $("Parse transaction JSON").item.json.transaction_date }}','null'),'undefined')::date::text
             || ' '
-            || to_char(current_timestamp, 'HH24:MI:SS')
+            || to_char(
+                coalesce(
+                    to_timestamp({{ $('MoneyTrack Transaction Processor Text').first().json.message_date || 'null' }}::double precision),
+                    current_timestamp
+                ),
+                'HH24:MI:SS'
+            )
         )::timestamp::timestamptz
-        else current_timestamp
+        else coalesce(
+            to_timestamp({{ $('MoneyTrack Transaction Processor Text').first().json.message_date || 'null' }}::double precision),
+            current_timestamp
+        )
     end,
     null,
     null,
@@ -59,9 +70,18 @@ from moneytrack.finance_create_transaction_v1(
         then (
             nullif(nullif('{{ $json.transaction_date }}','null'),'undefined')::date::text
             || ' '
-            || to_char(current_timestamp, 'HH24:MI:SS')
+            || to_char(
+                coalesce(
+                    to_timestamp({{ $('MoneyTrack Transaction Processor Text').first().json.message_date || 'null' }}::double precision),
+                    current_timestamp
+                ),
+                'HH24:MI:SS'
+            )
         )::timestamp::timestamptz
-        else current_timestamp
+        else coalesce(
+            to_timestamp({{ $('MoneyTrack Transaction Processor Text').first().json.message_date || 'null' }}::double precision),
+            current_timestamp
+        )
     end,
     null,
     null,
@@ -164,7 +184,8 @@ def main():
     print("BE-DOM-001 Text Processor candidate created")
     print(f"workflow_id={WORKFLOW_ID}")
     print("changed_nodes=" + ", ".join(sorted(changed)))
-    print("interactive_timestamp=parsed_date_plus_current_time_or_current_timestamp")
+    print("interactive_timestamp=parsed_date_plus_ingress_clock_or_ingress_timestamp")
+    print("ingress_clock_source=message_date_epoch_with_current_timestamp_legacy_fallback")
     print("source_idempotency=DEFERRED (no stable Telegram message/update id proven in runtime contract)")
 
 
