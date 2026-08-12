@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   createTransaction,
@@ -69,6 +69,35 @@ function flatten(items = []) {
   return result
 }
 
+function showNativePicker(ref) {
+  const input = ref.current
+  if (!input) return
+  try {
+    input.focus({ preventScroll: true })
+    if (typeof input.showPicker === 'function') input.showPicker()
+    else input.click()
+  } catch {
+    input.click()
+  }
+}
+
+function CalendarIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7 3v3M17 3v3M4.5 8.5h15M5.5 5h13a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z" />
+    </svg>
+  )
+}
+
+function ClockIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 7.5V12l3 2" />
+    </svg>
+  )
+}
+
 export default function TransactionEditor({ operation = {}, mode = 'edit', onClose, onSaved }) {
   const creating = mode === 'create'
   const repeat = mode === 'repeat'
@@ -76,6 +105,8 @@ export default function TransactionEditor({ operation = {}, mode = 'edit', onClo
     () => isoParts(creating || repeat ? null : operation.transaction_date),
     [creating, operation.transaction_date, repeat],
   )
+  const datePickerRef = useRef(null)
+  const timePickerRef = useRef(null)
   const [reference, setReference] = useState({ currencies: [], categories: [], accounts: [] })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -175,6 +206,18 @@ export default function TransactionEditor({ operation = {}, mode = 'edit', onClo
     }))
   }
 
+  const selectNativeDate = (event) => {
+    const value = event.target.value
+    if (!value) return
+    setForm((current) => ({ ...current, dateText: displayDate(value) }))
+  }
+
+  const selectNativeTime = (event) => {
+    const value = event.target.value
+    if (!value) return
+    setForm((current) => ({ ...current, time: value.slice(0, 5) }))
+  }
+
   const submit = async (event) => {
     event.preventDefault()
     if (saving || loading) return
@@ -210,6 +253,8 @@ export default function TransactionEditor({ operation = {}, mode = 'edit', onClo
     }
   }
 
+  const nativeDate = parseDisplayDate(form.dateText) || ''
+  const nativeTime = validTime(form.time) ? form.time : ''
   const dialogLabel = creating ? 'Новая операция' : repeat ? 'Повторить операцию' : 'Изменить операцию'
   const headerAction = creating ? 'Добавить' : repeat ? 'Повторить' : 'Изменить'
 
@@ -223,8 +268,22 @@ export default function TransactionEditor({ operation = {}, mode = 'edit', onClo
           <SmartSelect label="Счёт" title="Счёт операции" value={form.account_id} options={accountOptions} onChange={changeAccount} placeholder="Выбрать счёт" disabled={loading} />
           <SmartSelect label="Валюта" title="Валюта операции" value={form.currency} options={currencyOptions} onChange={setField('currency')} disabled={loading} />
           <SmartSelect label="Категория" title="Категория операции" value={form.category_id} options={categoryOptions} onChange={setField('category_id')} disabled={loading} />
-          <label className="transactionEditorField"><span>Дата</span><input type="text" inputMode="numeric" placeholder="ДД.ММ.ГГГГ" value={form.dateText} onChange={update('dateText')} /></label>
-          <label className="transactionEditorField"><span>Время</span><input type="text" inputMode="numeric" placeholder="ЧЧ:ММ" maxLength={5} value={form.time} onChange={update('time')} /></label>
+          <label className="transactionEditorField transactionEditorPickerField">
+            <span>Дата</span>
+            <span className="transactionEditorPickerControl">
+              <input className="transactionEditorDisplayInput" type="text" inputMode="numeric" placeholder="ДД.ММ.ГГГГ" value={form.dateText} onChange={update('dateText')} />
+              <button type="button" className="transactionEditorPickerButton" onClick={() => showNativePicker(datePickerRef)} aria-label="Выбрать дату"><CalendarIcon /></button>
+              <input ref={datePickerRef} className="transactionEditorNativePicker" type="date" value={nativeDate} onChange={selectNativeDate} tabIndex={-1} aria-hidden="true" />
+            </span>
+          </label>
+          <label className="transactionEditorField transactionEditorPickerField">
+            <span>Время</span>
+            <span className="transactionEditorPickerControl">
+              <input className="transactionEditorDisplayInput" type="text" inputMode="numeric" placeholder="ЧЧ:ММ" maxLength={5} value={form.time} onChange={update('time')} />
+              <button type="button" className="transactionEditorPickerButton" onClick={() => showNativePicker(timePickerRef)} aria-label="Выбрать время"><ClockIcon /></button>
+              <input ref={timePickerRef} className="transactionEditorNativePicker" type="time" value={nativeTime} onChange={selectNativeTime} tabIndex={-1} aria-hidden="true" />
+            </span>
+          </label>
           <label className="transactionEditorField transactionDescriptionField"><span>Описание</span><input type="text" value={form.description} onChange={update('description')} /></label>
         </div>
         <button type="submit" className="transactionEditorSave" disabled={saving || loading}>{saving ? 'Сохранение…' : creating ? 'Добавить операцию' : 'Сохранить'}</button>
