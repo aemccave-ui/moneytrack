@@ -66,22 +66,49 @@
   letter-spacing: -.03em;
 }
 
-.receiptCurrencySelect {
-  width: 146px;
-  margin: 8px auto 0;
+.receiptAccountingControls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 128px;
+  align-items: end;
+  gap: 8px;
+  margin-top: 12px;
+  text-align: left;
 }
 
+.receiptAccountSelect,
+.receiptCurrencySelect {
+  min-width: 0;
+}
+
+.receiptAccountSelect .smartSelectLabel,
+.receiptCurrencySelect .smartSelectLabel {
+  font-size: 11px;
+}
+
+.receiptAccountSelect .smartSelectTrigger,
 .receiptCurrencySelect .smartSelectTrigger,
 .receiptCategorySelect .smartSelectTrigger {
-  min-height: 34px;
+  min-height: 36px;
   padding: 6px 10px;
   border-radius: 10px;
   background: rgba(29, 85, 89, .07);
 }
 
+.receiptAccountSelect .smartSelectTriggerText strong,
 .receiptCurrencySelect .smartSelectTriggerText strong,
 .receiptCategorySelect .smartSelectTriggerText strong {
   font-size: 12px;
+}
+
+.receiptAccountingMismatch {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(155, 67, 48, .09);
+  color: #8f3d2d;
+  text-align: left;
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .receiptPerforation {
@@ -179,10 +206,15 @@
   font-weight: 750;
 }
 
+.receiptDone:disabled {
+  opacity: .42;
+}
+
 @media (max-width: 360px) {
   .receiptModalBackdrop { padding-left: 8px; padding-right: 8px; }
   .receiptModalHeader { padding-left: 16px; padding-right: 16px; }
   .receiptItems { padding-left: 16px; padding-right: 16px; }
   .receiptTotal { font-size: 27px; }
+  .receiptAccountingControls { grid-template-columns: 1fr; }
   .receiptCategorySelect { width: 86%; }
 }
