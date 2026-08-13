@@ -4175,6 +4175,389 @@
       ],
       "id": "4d32c13e-e7f3-412f-b1be-9e1c59dd44df",
       "name": "Format Set Item Category"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Get user context').first().json;\n\nreturn [{\n  json: {\n    user_id: ctx.user_id,\n    telegram_user_id: ctx.telegram_user_id,\n    telegram_chat_id: ctx.telegram_chat_id,\n\n    telegram_username: ctx.telegram_username,\n    telegram_first_name: ctx.telegram_first_name,\n    telegram_language_code: ctx.telegram_language_code,\n\n    language_code: ctx.language_code || ctx.telegram_language_code || 'en',\n    fallback_language_code: ctx.fallback_language_code || ctx.language_code || 'en',\n\n    base_currency: ctx.base_currency || 'EUR',\n    report_currency: ctx.report_currency || ctx.base_currency || 'EUR',\n\n    message_text: ctx.message_text,\n    message_caption: ctx.message_caption || null,\n    message_date: ctx.message_date,\n    message_type: ctx.message_type || 'text',\n\n    test_mode: ctx.test_mode === true\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12704,
+        4720
+      ],
+      "id": "407f1af0-171b-417b-806b-b285c4e11b8b",
+      "name": "Prepare Text Processor Input"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $json || {};\nconst raw = data.raw_message || {};\n\nconst text = String(data.message_text || \"\").trim();\n\nconst voiceFileId =\n  data.telegram_voice_file_id ||\n  raw.voice?.file_id ||\n  raw.audio?.file_id ||\n  null;\n\nconst photoFileId =\n  data.telegram_photo_file_id ||\n  data.telegram_file_id ||\n  raw.photo?.[raw.photo.length - 1]?.file_id ||\n  null;\n\nlet messageType = \"unknown\";\nlet telegramFileId = data.telegram_file_id || null;\n\nif (voiceFileId) {\n  messageType = \"voice\";\n  telegramFileId = voiceFileId;\n} else if (photoFileId) {\n  messageType = \"photo\";\n  telegramFileId = photoFileId;\n} else if (text.startsWith(\"/\")) {\n  messageType = \"command\";\n} else if (text) {\n  messageType = \"text\";\n}\n\nreturn [{\n  json: {\n    ...data,\n    message_type: messageType,\n    telegram_file_id: telegramFileId,\n    telegram_voice_file_id: voiceFileId,\n    telegram_photo_file_id: photoFileId\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11040,
+        4368
+      ],
+      "id": "54ebb232-644d-4f04-a256-7892c759ae38",
+      "name": "Normalize Type Input"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.message_type }}",
+                    "rightValue": "photo",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "c5ae9ce4-c4d8-4b41-b1a0-831bfa223f9b"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "fda8b0a2-e8b8-46e5-b591-9ab276c0c597",
+                    "leftValue": "={{ $json.message_type }}",
+                    "rightValue": "voice",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "fd4e3b53-cb60-453e-973a-ae9707a8b6ee",
+                    "leftValue": "={{ $json.message_type }}",
+                    "rightValue": "text",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "7d676610-a413-4e96-baf5-985821ea9047",
+                    "leftValue": "={{ $json.message_type }}",
+                    "rightValue": "command",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "61337016-bc1a-44a6-9839-7ba597aa3c97",
+                    "leftValue": "={{ $json.message_type }}",
+                    "rightValue": "unknown",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        11232,
+        4320
+      ],
+      "id": "93e892b1-209c-43b0-a447-0ea3cde5fe0c",
+      "name": "Type Input"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ad71836a-7de2-449d-9435-1ee7e5ad13ae",
+              "leftValue": "={{ $('Get user context').first().json.test_mode === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        12176,
+        4336
+      ],
+      "id": "64b13e81-252a-4c3d-a040-22b4eca89e94",
+      "name": "test-mode7"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with user_lang as (\n    select\n        '{{ String($('Get user context').first().json.language_code || \"en\").replace(/'/g, \"''\") }}'::text as language_code,\n        '{{ String($('Get user context').first().json.fallback_language_code || $('Get user context').first().json.language_code || \"en\").replace(/'/g, \"''\") }}'::text as fallback_language_code\n),\nranked as (\n    select\n        m.module,\n        m.message_key,\n        m.message_text,\n        row_number() over (\n            partition by m.module, m.message_key\n            order by case\n                when m.language_code = ul.language_code then 0\n                when m.language_code = ul.fallback_language_code then 1\n                when m.language_code = 'en' then 2\n                else 3\n            end\n        ) as rn\n    from moneytrack.i18n_messages m\n    cross join user_lang ul\n    where m.module = 'processing'\n      and m.message_key in (\n          'voice.started',\n          'voice.transcribed'\n      )\n      and m.language_code in (\n          ul.language_code,\n          ul.fallback_language_code,\n          'en'\n      )\n)\nselect\n    module,\n    message_key,\n    message_text\nfrom ranked\nwhere rn = 1\norder by message_key;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        11792,
+        4336
+      ],
+      "id": "9d965bce-cdf0-4ce5-81d2-6b8c83f04f39",
+      "name": "Get Translations processing Voice",
+      "credentials": {
+        "postgres": {
+          "id": "tM27zg5m7tREo2ep",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\n\nconst messages = {};\n\nfor (const row of rows) {\n  messages[row.message_key] = row.message_text;\n}\n\nconst started =\n  messages[\"voice.started\"] ||\n  \"🎙️ Голос принят в обработку.\\n\\n⏳ Распознаю речь и добавляю операцию.\";\n\nreturn [{\n  json: {\n    ...$(\"Get user context\").first().json,\n    messages,\n    message: started\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12000,
+        4336
+      ],
+      "id": "cba64516-9457-4f8e-b640-971b08636cf6",
+      "name": "Format Processing Started Voice"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Get user context').first().json.telegram_chat_id }}",
+        "text": "={{$json.message}}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        12448,
+        4432
+      ],
+      "id": "d81d0528-da4a-4f41-8bce-522604051c1c",
+      "name": "Send Processing Started Voice",
+      "webhookId": "6ad4b6a4-6194-4a74-b5cf-6cb0901d75ad",
+      "credentials": {
+        "telegramApi": {
+          "id": "swqgAgDGt8Edv8kN",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $(\"Get user context\").first().json;\n\nconst fileId =\n  ctx.telegram_file_id ||\n  ctx.telegram_voice_file_id ||\n  ctx.raw_message?.voice?.file_id ||\n  ctx.raw_message?.audio?.file_id ||\n  null;\n\nif (!fileId) {\n  throw new Error(\"VOICE_FILE_ID_MISSING\");\n}\n\nreturn [{\n  json: {\n    user_id: ctx.user_id,\n    telegram_user_id: ctx.telegram_user_id,\n    telegram_chat_id: ctx.telegram_chat_id,\n\n    telegram_file_id: fileId,\n    message_date: ctx.message_date,\n    message_type: \"voice\",\n    source_type: \"telegram\",\n\n    language_code: ctx.language_code || ctx.telegram_language_code || \"en\",\n    fallback_language_code: ctx.fallback_language_code || ctx.language_code || \"en\",\n\n    base_currency: ctx.base_currency || \"EUR\",\n    report_currency: ctx.report_currency || ctx.base_currency || \"EUR\",\n\n    test_mode: ctx.test_mode === true\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12688,
+        4320
+      ],
+      "id": "7c5cf3b4-be53-474e-9dbf-6825bab4b778",
+      "name": "Prepare Voice Processor Input"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "f5ioJKyPTupUMV9h",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/f5ioJKyPTupUMV9h",
+          "cachedResultName": "MoneyTrack Transaction Processor Text"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        13248,
+        4720
+      ],
+      "id": "2de9085c-5d0f-42b4-867e-cde509028ec6",
+      "name": "Call 'Transaction Processor Text'"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "Td7kvvrtqQK0FTJg",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/Td7kvvrtqQK0FTJg",
+          "cachedResultName": "MoneyTrack Transaction Processor Voice"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        12928,
+        4320
+      ],
+      "id": "60cf0f8c-a9ab-45e5-a55c-611aee007a60",
+      "name": "Call 'Transaction Processor Voice'"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $(\"Get user context\").first().json;\nconst voice = $input.first().json;\n\nconst messageText = String(voice.message_text || \"\").trim();\n\nif (!messageText) {\n  throw new Error(\"VOICE_TEXT_EMPTY\");\n}\n\nreturn [{\n  json: {\n    user_id: ctx.user_id,\n    telegram_user_id: ctx.telegram_user_id,\n    telegram_chat_id: ctx.telegram_chat_id,\n\n    message_text: messageText,\n    message_type: \"text\",\n    source_type: \"voice\",\n\n    language_code: ctx.language_code || ctx.telegram_language_code || \"en\",\n    fallback_language_code: ctx.fallback_language_code || ctx.language_code || \"en\",\n\n    base_currency: ctx.base_currency || \"EUR\",\n    report_currency: ctx.report_currency || ctx.base_currency || \"EUR\",\n\n    test_mode: ctx.test_mode === true\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13152,
+        4320
+      ],
+      "id": "7ecc3106-e094-45e2-811b-7ae814226559",
+      "name": "Prepare Text (Voice) Processor Input"
+    },
+    {
+      "parameters": {
+        "jsCode": "const voiceText = String($json.message_text || \"\").trim();\n\nif (!voiceText) {\n  throw new Error(\"VOICE_TEXT_EMPTY\");\n}\n\nconst template =\n  $json.messages?.[\"voice.transcribed\"] ||\n  $json[\"voice.transcribed\"] ||\n  \"🎙️ Распознано: {text}\";\n\nreturn [{\n  json: {\n    ...$json,\n    voice_text: voiceText,\n    message: template.replace(\"{text}\", voiceText)\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13360,
+        4320
+      ],
+      "id": "ea25484c-2c34-4af1-8e4e-f83d89afd0c0",
+      "name": "Format Voice Transcribed"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $(\"Get user context\").first().json;\nconst voice = $(\"Format Voice Transcribed\").first().json;\n\nconst messageText = String(voice.voice_text || voice.message_text || \"\").trim();\n\nif (!messageText) {\n  throw new Error(\"VOICE_TEXT_EMPTY\");\n}\n\nreturn [{\n  json: {\n    user_id: ctx.user_id,\n    telegram_user_id: ctx.telegram_user_id,\n    telegram_chat_id: ctx.telegram_chat_id,\n\n    message_text: messageText,\n    voice_text: messageText,\n\n    message_type: \"text\",\n    source_type: \"voice\",\n\n    language_code: ctx.language_code || ctx.telegram_language_code || \"en\",\n    fallback_language_code: ctx.fallback_language_code || ctx.language_code || \"en\",\n\n    base_currency: ctx.base_currency || \"EUR\",\n    report_currency: ctx.report_currency || ctx.base_currency || \"EUR\",\n\n    test_mode: ctx.test_mode === true\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13744,
+        4320
+      ],
+      "id": "2d701119-ed19-48f6-accd-ff5176c68625",
+      "name": "Prepare Text Processor Input1"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Get user context').first().json.telegram_chat_id }}",
+        "text": "={{$json.message}}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        13568,
+        4320
+      ],
+      "id": "3a59ad2c-0258-44e8-8c85-78309febf79f",
+      "name": "Send a text-wait message",
+      "webhookId": "6ad4b6a4-6194-4a74-b5cf-6cb0901d75ad",
+      "credentials": {
+        "telegramApi": {
+          "id": "swqgAgDGt8Edv8kN",
+          "name": "Telegram account"
+        }
+      }
     }
   ],
   "connections": {
@@ -5295,6 +5678,11 @@
             "node": "Message type",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Normalize Type Input",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -5889,6 +6277,11 @@
             "node": "Message a model1",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Prepare Text Processor Input",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -6019,6 +6412,11 @@
         [
           {
             "node": "Message a model1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Text Processor Input",
             "type": "main",
             "index": 0
           }
@@ -6369,6 +6767,189 @@
         [
           {
             "node": "test-mode3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Translations processing Voice": {
+      "main": [
+        [
+          {
+            "node": "Format Processing Started Voice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Text Processor Input1": {
+      "main": [
+        [
+          {
+            "node": "Call 'Transaction Processor Text'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "test-mode7": {
+      "main": [
+        [
+          {
+            "node": "Prepare Voice Processor Input",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Processing Started Voice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Voice Processor Input": {
+      "main": [
+        [
+          {
+            "node": "Call 'Transaction Processor Voice'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Voice Transcribed": {
+      "main": [
+        [
+          {
+            "node": "Send a text-wait message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'Transaction Processor Voice'": {
+      "main": [
+        [
+          {
+            "node": "Prepare Text (Voice) Processor Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Text Processor Input": {
+      "main": [
+        [
+          {
+            "node": "Call 'Transaction Processor Text'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'Transaction Processor Text'": {
+      "main": [
+        [
+          {
+            "node": "test-mode2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Processing Started Voice": {
+      "main": [
+        [
+          {
+            "node": "Prepare Voice Processor Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Type Input": {
+      "main": [
+        [
+          {
+            "node": "test-mode1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Translations processing Voice",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Translations processing Text",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Switch commands",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Normalize Type Input": {
+      "main": [
+        [
+          {
+            "node": "Type Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a text-wait message": {
+      "main": [
+        [
+          {
+            "node": "Prepare Text Processor Input1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Text (Voice) Processor Input": {
+      "main": [
+        [
+          {
+            "node": "Format Voice Transcribed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Processing Started Voice": {
+      "main": [
+        [
+          {
+            "node": "test-mode7",
             "type": "main",
             "index": 0
           }
