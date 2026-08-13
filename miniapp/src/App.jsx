@@ -5,7 +5,7 @@ import AccountCreateSheet from './AccountCreateSheet.jsx'
 import AccountsExplorer from './AccountsExplorer.jsx'
 import { BalanceHero } from './BalanceHero.jsx'
 import { RecentOperations } from './RecentOperations.jsx'
-import { formatMonthLabel } from './date-format.js'
+import { localDateKey, resolvePeriod, shiftPeriod } from './date-format.js'
 
 const money = (value, currency = 'EUR') => new Intl.NumberFormat('ru-RU', {
   style: 'currency', currency, maximumFractionDigits: 0,
@@ -17,13 +17,6 @@ const todayLabel = () => new Intl.DateTimeFormat('ru-RU', {
 
 const dayLabel = (date) => new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' })
   .format(new Date(`${String(date).slice(0, 10)}T12:00:00`))
-
-const localDateKey = (date) => {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
 
 const navigationItems = [
   { id: 'home', icon: 'home', label: 'Главная' },
@@ -130,7 +123,10 @@ function App() {
   const [accounts, setAccounts] = useState([])
   const [defaultAccount, setDefaultAccount] = useState(null)
   const [homeSnapshotState, setHomeSnapshotState] = useState({ key: '', payload: null, error: '' })
+  const [homePeriodState, setHomePeriodState] = useState({ key: '', payload: null, error: '' })
   const [homeSnapshotRefresh, setHomeSnapshotRefresh] = useState(0)
+  const [homePeriod, setHomePeriod] = useState('month')
+  const [homeAnchorDate, setHomeAnchorDate] = useState(() => localDateKey(new Date()))
   const [activeScreen, setActiveScreen] = useState('home')
   const [explorerAccountId, setExplorerAccountId] = useState(null)
   const [privacy, setPrivacy] = useState(false)
@@ -212,6 +208,7 @@ function App() {
     )
     return accountItems.filter((account) => !parentIds.has(accountId(account)))
   }, [accountItems])
+  const resolvedHomePeriod = resolvePeriod(homePeriod, homeAnchorDate)
 
   const homeSnapshotRequest = useMemo(() => {
     if (!dashboard || !structuralLeafItems.length) return null
@@ -225,6 +222,17 @@ function App() {
       dateTo: today,
     }
   }, [dashboard, structuralLeafItems, homeSnapshotRefresh])
+
+  const homePeriodRequest = useMemo(() => {
+    if (!dashboard || !structuralLeafItems.length) return null
+    const selectedAccountIds = structuralLeafItems.map(accountId).sort((a, b) => Number(a) - Number(b))
+    return {
+      key: [selectedAccountIds.join(','), resolvedHomePeriod.dateFrom, resolvedHomePeriod.dateTo, homeSnapshotRefresh].join('|'),
+      selectedAccountIds,
+      dateFrom: resolvedHomePeriod.dateFrom,
+      dateTo: resolvedHomePeriod.dateTo,
+    }
+  }, [dashboard, structuralLeafItems, resolvedHomePeriod.dateFrom, resolvedHomePeriod.dateTo, homeSnapshotRefresh])
 
   useEffect(() => {
     if (!homeSnapshotRequest) return undefined
@@ -247,12 +255,44 @@ function App() {
     return () => controller.abort()
   }, [homeSnapshotRequest])
 
+  useEffect(() => {
+    if (!homePeriodRequest) return undefined
+    const controller = new AbortController()
+    getAccountsExplorerSummary({
+      selectedAccountIds: homePeriodRequest.selectedAccountIds,
+      dateFrom: homePeriodRequest.dateFrom,
+      dateTo: homePeriodRequest.dateTo,
+    }, controller.signal)
+      .then((result) => setHomePeriodState({ key: homePeriodRequest.key, payload: result, error: '' }))
+      .catch((reason) => {
+        if (reason?.name !== 'AbortError') {
+          setHomePeriodState({
+            key: homePeriodRequest.key,
+            payload: null,
+            error: reason?.message || 'Не удалось загрузить период',
+          })
+        }
+      })
+    return () => controller.abort()
+  }, [homePeriodRequest])
+
   const homeSnapshot = homeSnapshotState.key === homeSnapshotRequest?.key
     ? homeSnapshotState.payload
     : null
   const homeSnapshotError = homeSnapshotState.key === homeSnapshotRequest?.key
     ? homeSnapshotState.error
     : ''
+  const homePeriodPayload = homePeriodState.key === homePeriodRequest?.key
+    ? homePeriodState.payload
+    : null
+  const homePeriodError = homePeriodState.key === homePeriodRequest?.key
+    ? homePeriodState.error
+    : ''
+  const homePeriodSummary = homePeriodPayload?.period_summary || {
+    income: homePeriodPayload?.period_income ?? 0,
+    expense: homePeriodPayload?.period_expense ?? 0,
+    result: homePeriodPayload?.period_result ?? 0,
+  }
   const homeSnapshotById = useMemo(() => new Map(
     (homeSnapshot?.account_balances || []).map((item) => [String(item.account_id), item]),
   ), [homeSnapshot])
@@ -429,7 +469,18 @@ function App() {
       <section className="balanceHeader" aria-labelledby="balance-title"><div><div className="todayLabel">{todayLabel()}</div><div className="balanceLabel" id="balance-title">Общий баланс</div><strong className="balanceValue sensitive">{hidden(summary.net_worth, reportCurrency)}</strong></div><button className={`iconButton privacyButton ${privacy ? 'selected' : ''}`} onClick={() => setPrivacy((value) => !value)} aria-label={privacy ? 'Показать суммы' : 'Скрыть суммы'} aria-pressed={privacy}>◎</button></section>
       {error && <div className="notice" role="alert">{error}</div>}
 
-      <BalanceHero label={formatMonthLabel(dashboard?.period?.date_from)} result={summary.result_month} income={summary.income_month} expense={summary.expenses_month} privacy={privacy} baseCurrency={baseCurrency} money={money} />
+      <BalanceHero label={resolvedHomePeriod.displayLabel} result={homePeriodSummary.result} income={homePeriodSummary.income} expense={homePeriodSummary.expense} privacy={privacy} baseCurrency={baseCurrency} money={money} />
+      <div className="periodTabs homePeriodTabs" role="group" aria-label="Период Главной">
+        <button type="button" className={homePeriod === 'week' ? 'isActive' : ''} onClick={() => setHomePeriod('week')}>Неделя</button>
+        <button type="button" className={homePeriod === 'month' ? 'isActive' : ''} onClick={() => setHomePeriod('month')}>Месяц</button>
+        <button type="button" className={homePeriod === 'year' ? 'isActive' : ''} onClick={() => setHomePeriod('year')}>Год</button>
+      </div>
+      <div className="periodNavigation homePeriodNavigation" aria-label={`Выбранный период: ${resolvedHomePeriod.displayLabel}`}>
+        <button type="button" className="periodNavigationButton" onClick={() => setHomeAnchorDate((current) => shiftPeriod(homePeriod, current, -1))} aria-label="Предыдущий период">‹</button>
+        <strong className="periodNavigationLabel">{resolvedHomePeriod.displayLabel}</strong>
+        <button type="button" className="periodNavigationButton" onClick={() => setHomeAnchorDate((current) => shiftPeriod(homePeriod, current, 1))} aria-label="Следующий период">›</button>
+      </div>
+      {homePeriodError && <div className="explorerInlineError" role="alert">{homePeriodError}</div>}
 
       <section className="section balanceBreakdownSection noSectionTitle">
         <div className="sectionHeader currencyBalancesHeader"><h2>Баланс по валютам</h2></div>
