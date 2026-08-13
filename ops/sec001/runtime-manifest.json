@@ -1,0 +1,55 @@
+{
+  "contract": "SEC001-live-cutover-v1",
+  "bot": {
+    "id": "DER2Lc3dT2afyQhy",
+    "activeVersionId": "b621bc5a-76f0-4f3e-97cb-e49e56e17214",
+    "coreSha256": "e617cf19663d6f07d2c6bf3a7fd6f96fe886629d356f2853066dd0c67bd9b044"
+  },
+  "apiWorkflows": [
+    {
+      "id": "UX022Summary202608",
+      "activeVersionId": "963dcba2-27b1-4fa6-bbbc-ef864b01635e"
+    },
+    {
+      "id": "UX022CategorySettings202608",
+      "activeVersionId": "8ef67735-8703-4ec5-b8c2-a5865a541693"
+    },
+    {
+      "id": "UX022Presets202608",
+      "activeVersionId": "32c6d227-28ed-4098-870b-22453ddc66cb"
+    },
+    {
+      "id": "7TJ2xQTxLsTydXZc",
+      "activeVersionId": "bc237e36-4ee0-4d99-8726-afcb2dcbd99f"
+    },
+    {
+      "id": "MTxDel7Qp2Vn9Kc4",
+      "activeVersionId": "db5693e1-2634-4668-8d43-fa9cb9057df6"
+    },
+    {
+      "id": "UX022QuickInput202608",
+      "activeVersionId": "76700d62-774a-45fc-a92b-ba8995697576",
+      "coreSha256": "fa0a918109509751b3283592e8b7534293b04c64d5f7233dba97f2c23e31453f"
+    },
+    {
+      "id": "MTxRef4Qp8Lm2Xs6",
+      "activeVersionId": "4dbfa77c-042d-4b3f-8792-d251aeb9890c"
+    },
+    {
+      "id": "UX023ReceiptEditor202608",
+      "activeVersionId": "e707e9c2-e958-46aa-963c-4345018ac193"
+    },
+    {
+      "id": "UX022TxApi202608",
+      "activeVersionId": "bd33bcf2-3000-47c0-8590-3e932ebdb941"
+    },
+    {
+      "id": "UX022TxWrite202608",
+      "activeVersionId": "fb8bb0a6-3588-463d-90dd-3148ed86f3a2"
+    },
+    {
+      "id": "UX022TransferWrite202608",
+      "activeVersionId": "609563c5-f117-4afe-9922-b69cf80ec165"
+    }
+  ]
+}

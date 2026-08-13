@@ -45,10 +45,19 @@ jobs:
           python3 -m py_compile \
             scripts/sec001-generate-security-api.py \
             scripts/sec001-transform-class-b.py \
+            scripts/sec001-build-live-candidates.py \
             scripts/sec001-source-gate.py
 
       - name: SEC-001 shell syntax
-        run: bash -n scripts/sec001-source-gate.sh
+        run: |
+          bash -n scripts/sec001-source-gate.sh
+          bash -n scripts/sec001-runtime-apply.sh
+          bash -n scripts/prod-h2-backup-now.sh
+
+      - name: SEC-001 runtime cutover source gate
+        run: |
+          python3 -m json.tool ops/sec001/runtime-manifest.json >/dev/null
+          python3 scripts/sec001-build-live-candidates.py --self-test
 
       - name: UX-024 source gate
         run: python3 scripts/ux024-source-gate.py
