@@ -102,6 +102,17 @@ export async function getReceiptByTransaction(transactionId, signal) {
   return payload?.receipt ?? null
 }
 
+export function updateReceiptAccounting(receiptId, accountId, currency, signal) {
+  return request('api/v1/receipt/accounting', signal, {
+    method: 'PATCH',
+    body: {
+      receipt_id: Number(receiptId),
+      account_id: Number(accountId),
+      currency: String(currency || '').toUpperCase(),
+    },
+  })
+}
+
 export function updateReceiptCurrency(receiptId, currency, signal) {
   return request('api/v1/receipt/currency', signal, {
     method: 'PATCH',
