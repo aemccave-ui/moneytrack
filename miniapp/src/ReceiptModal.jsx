@@ -1,9 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { getAccounts, updateReceiptItemCategory } from './api.js'
+import { updateReceiptAccounting } from './receipt-accounting-api.js'
 import { hierarchyOptions } from './hierarchy-options.js'
 import { currencyOptions as buildCurrencyOptions } from './reference-options.js'
 import { SmartSelect } from './SmartSelect.jsx'
-import { updateReceiptCurrency, updateReceiptItemCategory } from './api.js'
+
+const idOf = (item) => item?.id ?? item?.account_id
+const parentOf = (item) => item?.parent_id ?? item?.parent_account_id ?? item?.account_parent_id ?? null
 
 function showError(message) {
   if (window.Telegram?.WebApp?.showAlert) window.Telegram.WebApp.showAlert(message)
@@ -36,8 +40,24 @@ function receiptDateTime(value, fallbackDate) {
 export default function ReceiptModal({ transaction = {}, receipt: initialReceipt, reference = {}, onClose, onChanged }) {
   const [receipt, setReceipt] = useState(initialReceipt)
   const [busy, setBusy] = useState('')
-  const currency = String(receipt?.currency || transaction.currency_original || 'EUR').toUpperCase()
+  const [accounts, setAccounts] = useState([])
+  const [accountsLoading, setAccountsLoading] = useState(true)
+  const currentCurrency = String(receipt?.currency || transaction.currency_original || 'EUR').toUpperCase()
+  const currentAccountId = String(receipt?.account_id ?? transaction.account_id ?? '')
+  const [draftCurrency, setDraftCurrency] = useState(currentCurrency)
+  const [draftAccountId, setDraftAccountId] = useState(currentAccountId)
   const categories = reference?.categories || []
+
+  useEffect(() => {
+    const controller = new AbortController()
+    getAccounts(controller.signal)
+      .then((payload) => setAccounts(payload?.accounts || payload?.items || []))
+      .catch((error) => {
+        if (error?.name !== 'AbortError') showError(error?.message || 'Не удалось загрузить счета')
+      })
+      .finally(() => setAccountsLoading(false))
+    return () => controller.abort()
+  }, [])
 
   const categoryOptions = useMemo(() => {
     const expenseCategories = categories.filter((item) => {
@@ -56,21 +76,51 @@ export default function ReceiptModal({ transaction = {}, receipt: initialReceipt
     ]
   }, [categories])
 
+  const accountOptions = useMemo(() => hierarchyOptions(accounts, {
+    id: idOf,
+    parent: parentOf,
+    children: (item) => item?.children || item?.accounts || [],
+    label: (item) => item?.name || 'Счёт',
+    secondary: (item) => String(item?.currency_code || '').toUpperCase(),
+    disabled: (_item, children) => children.length > 0,
+  }), [accounts])
+
+  const selectedAccount = useMemo(
+    () => accountOptions.find((option) => String(option.value) === String(draftAccountId))?.source || null,
+    [accountOptions, draftAccountId],
+  )
+  const selectedAccountCurrency = String(selectedAccount?.currency_code || '').toUpperCase()
+  const accountingConsistent = Boolean(selectedAccount && draftCurrency && selectedAccountCurrency === draftCurrency)
+  const accountingDirty = draftCurrency !== currentCurrency || draftAccountId !== currentAccountId
+
+  const usedAccountCurrencies = useMemo(
+    () => accountOptions.map((option) => option?.source?.currency_code).filter(Boolean),
+    [accountOptions],
+  )
   const currencyOptions = useMemo(
-    () => buildCurrencyOptions(reference?.currencies || [], [], currency),
-    [currency, reference?.currencies],
+    () => buildCurrencyOptions(reference?.currencies || [], usedAccountCurrencies, draftCurrency),
+    [draftCurrency, reference?.currencies, usedAccountCurrencies],
   )
 
-  const changeCurrency = async (value) => {
-    const next = String(value || '').toUpperCase()
-    if (!next || next === currency || busy) return
-    setBusy('currency')
+  const saveAccounting = async () => {
+    if (!accountingDirty || busy || accountsLoading) return
+    if (!accountingConsistent) {
+      showError(`Валюта чека ${draftCurrency} должна совпадать с валютой счёта ${selectedAccountCurrency || '—'}.`)
+      return
+    }
+    setBusy('accounting')
     try {
-      const result = await updateReceiptCurrency(receipt.id, next)
-      setReceipt((current) => ({ ...current, currency: result?.currency || next }))
-      await onChanged?.({ type: 'currency', receiptId: receipt.id, result })
+      const result = await updateReceiptAccounting(receipt.id, Number(draftAccountId), draftCurrency)
+      setReceipt((current) => ({
+        ...current,
+        currency: result?.currency || draftCurrency,
+        account_id: result?.account_id ?? Number(draftAccountId),
+        account_name: result?.account_name ?? selectedAccount?.name ?? current?.account_name,
+        account_currency: result?.account_currency || draftCurrency,
+      }))
+      await onChanged?.({ type: 'accounting', receiptId: receipt.id, result })
     } catch (error) {
-      showError(error?.message || 'Не удалось изменить валюту чека')
+      showError(error?.message || 'Не удалось сохранить счёт и валюту чека')
     } finally {
       setBusy('')
     }
@@ -102,6 +152,8 @@ export default function ReceiptModal({ transaction = {}, receipt: initialReceipt
   }
 
   const items = receipt?.items || []
+  const displayedCurrency = draftCurrency || currentCurrency
+  const finish = () => accountingDirty ? saveAccounting() : onClose?.()
 
   return createPortal(
     <div className="receiptModalBackdrop" role="presentation" onClick={(event) => event.target === event.currentTarget && onClose?.()}>
@@ -110,15 +162,33 @@ export default function ReceiptModal({ transaction = {}, receipt: initialReceipt
           <button type="button" className="receiptModalClose" onClick={onClose} aria-label="Закрыть">×</button>
           <div className="receiptMerchant">{receipt?.shop_name || transaction.description || 'Чек'}</div>
           <div className="receiptDate">{receiptDateTime(receipt?.transaction_date || transaction.transaction_date, receipt?.receipt_date)}</div>
-          <div className="receiptTotal">{receiptAmount(receipt?.total_amount ?? transaction.amount_original, currency)}</div>
-          <SmartSelect
-            className="receiptCurrencySelect"
-            value={currency}
-            options={currencyOptions}
-            onChange={changeCurrency}
-            title="Валюта чека"
-            disabled={busy === 'currency'}
-          />
+          <div className="receiptTotal">{receiptAmount(receipt?.total_amount ?? transaction.amount_original, displayedCurrency)}</div>
+          <div className="receiptAccountingControls">
+            <SmartSelect
+              className="receiptAccountSelect"
+              label="Счёт учёта"
+              value={draftAccountId}
+              options={accountOptions}
+              onChange={setDraftAccountId}
+              title="Счёт учёта чека"
+              placeholder="Выбрать счёт"
+              disabled={accountsLoading || busy === 'accounting'}
+            />
+            <SmartSelect
+              className="receiptCurrencySelect"
+              label="Валюта"
+              value={draftCurrency}
+              options={currencyOptions}
+              onChange={(value) => setDraftCurrency(String(value || '').toUpperCase())}
+              title="Валюта чека"
+              disabled={busy === 'accounting'}
+            />
+          </div>
+          {!accountsLoading && selectedAccount && !accountingConsistent && (
+            <div className="receiptAccountingMismatch" role="alert">
+              Валюта чека {draftCurrency} не совпадает с валютой счёта {selectedAccountCurrency}.
+            </div>
+          )}
         </header>
 
         <div className="receiptPerforation" aria-hidden="true">· · · · · · · · · · · · · · · · · ·</div>
@@ -129,7 +199,7 @@ export default function ReceiptModal({ transaction = {}, receipt: initialReceipt
             <article className="receiptItem" key={item.id} role="listitem">
               <div className="receiptItemLine">
                 <span className="receiptItemDescription">{item.description || item.item_name_original || 'Без описания'}</span>
-                <strong className="receiptItemAmount">{receiptAmount(item.amount, currency)}</strong>
+                <strong className="receiptItemAmount">{receiptAmount(item.amount, displayedCurrency)}</strong>
               </div>
               <SmartSelect
                 className="receiptCategorySelect"
@@ -138,15 +208,22 @@ export default function ReceiptModal({ transaction = {}, receipt: initialReceipt
                 onChange={(value) => changeCategory(item, value)}
                 title={`Категория: ${item.description || item.item_name_original || 'позиция'}`}
                 placeholder="Без категории"
-                disabled={busy === `item:${item.id}`}
+                disabled={busy === `item:${item.id}` || busy === 'accounting'}
               />
             </article>
           ))}
         </div>
 
         <footer className="receiptModalFooter">
-          <div className="receiptFooterTotal"><span>ИТОГО</span><strong>{receiptAmount(receipt?.total_amount ?? transaction.amount_original, currency)}</strong></div>
-          <button type="button" className="receiptDone" onClick={onClose}>Готово</button>
+          <div className="receiptFooterTotal"><span>ИТОГО</span><strong>{receiptAmount(receipt?.total_amount ?? transaction.amount_original, displayedCurrency)}</strong></div>
+          <button
+            type="button"
+            className="receiptDone"
+            onClick={finish}
+            disabled={Boolean(busy) || (accountingDirty && (!accountingConsistent || accountsLoading))}
+          >
+            {busy === 'accounting' ? 'Сохранение…' : accountingDirty ? 'Сохранить' : 'Готово'}
+          </button>
         </footer>
       </section>
     </div>,
