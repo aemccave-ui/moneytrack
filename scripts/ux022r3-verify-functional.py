@@ -68,8 +68,9 @@ require(
     'transfer_actions_use_dedicated_safe_editor',
     'import TransferEditor' in recent
     and 'deleteTransfer' in recent
-    and "kind: tx.transaction_type === 'transfer' ? 'transfer' : 'transaction'" in recent
+    and "if (tx.transaction_type === 'transfer') { setEditor({ operation: tx, mode: 'edit', kind: 'transfer' }); return }" in recent
     and "editor?.kind === 'transfer'" in recent
+    and "setEditor({ operation: tx, mode: 'edit', kind: 'transaction' })" in recent
     and 'disabled: transfer' not in recent
     and 'finance_get_transfer_v1' in transfer_sql
     and 'finance_update_transfer_v1' in transfer_sql
@@ -196,8 +197,9 @@ require(
     and 'updateTransaction(' in editor
     and 'type="submit"' in editor
     and 'Сохранить · скоро' not in editor
-    and "openEditor(tx, 'repeat')" in recent
-    and "openEditor(tx, 'edit')" in recent,
+    and "setEditor({ operation: tx, mode: 'edit', kind: 'transaction' })" in recent
+    and "label: 'Изменить'" not in recent
+    and "label: 'Повторить'" not in recent,
 )
 require(
     'transaction_editor_datetime_contract',

@@ -26,8 +26,32 @@ def require(name: str, condition: bool) -> None:
 compile(generator, 'ux023-generate-receipt-accounting-workflow.py', 'exec')
 subprocess.run(['bash', '-n', str(apply_path)], check=True)
 require('tap_fetches_receipt', 'getReceiptByTransaction(tx.id)' in recent and '<ReceiptModal' in recent)
-require('receipt_edit_cannot_bypass_modal', "mode === 'edit'" in recent and 'setReceiptView({ transaction: tx, receipt: lookup.receipt })' in recent)
-require('non_receipt_fallback_preserved', 'setExpandedId((current) => current === id ? null : id)' in recent)
+open_operation_start = recent.index("  const openOperation = async (tx) => {")
+open_operation_end = recent.index("\n  const receiptChanged", open_operation_start)
+open_operation = recent[open_operation_start:open_operation_end]
+
+receipt_source_guard = "if (sourceKind === 'photo_receipt' || sourceKind == null) {"
+receipt_modal_route = "if (lookup.receipt) { receiptRefreshPending.current = false; setReceiptView({ transaction: tx, receipt: lookup.receipt }); return }"
+receipt_missing_guard = "if (sourceKind === 'photo_receipt') { showError('Источник операции — фото чека, но связанный чек не найден.'); return }"
+generic_transaction_route = "setEditor({ operation: tx, mode: 'edit', kind: 'transaction' })"
+
+require(
+    'receipt_edit_cannot_bypass_modal',
+    receipt_source_guard in open_operation
+    and receipt_modal_route in open_operation
+    and receipt_missing_guard in open_operation
+    and generic_transaction_route in open_operation
+    and open_operation.index(receipt_source_guard)
+        < open_operation.index(receipt_modal_route)
+        < open_operation.index(receipt_missing_guard)
+        < open_operation.index(generic_transaction_route),
+)
+require(
+    'non_receipt_fallback_preserved',
+    generic_transaction_route in open_operation
+    and 'setExpandedId(' not in recent
+    and 'transactionDetails' not in recent,
+)
 require('receipt_amount_uses_parent_transaction', 'transaction.amount_original' in modal and 'receipt?.total_amount' in modal)
 require('explicit_account_selector', 'getAccounts' in modal and 'receiptAccountSelect' in modal and 'Счёт учёта' in modal)
 require('leaf_accounts_only', 'disabled: (_item, children) => children.length > 0' in modal)

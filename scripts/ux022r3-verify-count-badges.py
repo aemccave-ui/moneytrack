@@ -93,10 +93,12 @@ require(
     and "import './ux022r3-reference-runtime.css'" in main,
 )
 require(
-    'home_reconciliation_fails_closed',
-    'const homeTotalsMismatch = homeSnapshotComplete' in app
-    and 'Math.abs(canonicalLeafTotal - canonicalNetWorth) > 0.02' in app
-    and 'Остатки не согласованы с общим балансом' in app,
+    'home_reconciliation_uses_canonical_snapshot',
+    'currentNetWorth' in app
+    and 'canonicalLeafTotal' in app
+    and 'currentNetWorthCurrency' in app
+    and 'homeTotalsMismatch' not in app
+    and 'Остатки не согласованы с общим балансом' not in app,
 )
 require(
     'summary_totals_round_without_losing_detail_cents',

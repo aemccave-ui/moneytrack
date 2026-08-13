@@ -29,7 +29,7 @@ reference_runtime_css = text('miniapp/src/ux022r3-reference-runtime.css')
 source_sql = text('db/domain/UX-024/010_operation_source_and_datetime_guard.sql')
 read_sql = text('db/domain/UX-024/020_operation_source_read_models.sql')
 text_ingress = text('scripts/be-dom-001-transform-text-write.py')
-receipt_accounting = text('miniapp/src/receipt-accounting-api.js')
+common_api = text('miniapp/src/api.js')
 
 require('operation_modal_for_all_operations', "setEditor({ operation: tx, mode: 'edit', kind: 'transaction' })" in recent, 'ordinary tap routes to TransactionEditor')
 require('receipt_modal_preserved', '<ReceiptModal' in recent and 'getReceiptByTransaction' in recent, 'receipt relation still opens ReceiptModal')
@@ -62,7 +62,20 @@ require('home_current_month_summary', 'summary.result_month' in app and 'summary
 require('home_balance_uses_current_snapshot', 'currentNetWorth' in app and 'canonicalLeafTotal' in app and 'currentNetWorthCurrency' in app, 'overall balance shares account snapshot')
 require('home_legacy_networth_mismatch_removed', 'homeTotalsMismatch' not in app and 'Остатки не согласованы с общим балансом' not in app, 'legacy mismatch warning removed')
 require('home_currency_distribution_present', 'Баланс по валютам' in app and 'currencyStackBar' in app and 'currencyGroups' in app, 'currency distribution is present')
-require('existing_receipt_accounting_contract_preserved', 'updateReceiptAccounting' in receipt and 'updateReceiptAccounting' in receipt_accounting, 'UX-023 atomic receipt accounting path retained')
+require(
+    'existing_receipt_accounting_contract_preserved',
+    'updateReceiptAccounting' in receipt
+    and "from './receipt-accounting-api.js'" not in receipt
+    and 'export function updateReceiptAccounting' in common_api
+    and "request('api/v1/receipt/accounting'" in common_api,
+    'UX-023 atomic receipt accounting path retained through canonical common API client',
+)
+require(
+    'receipt_accounting_sec_class_b_client',
+    "'X-MoneyTrack-Unlock-Token'" in common_api
+    and 'getUnlockToken' in common_api,
+    'receipt accounting uses centralized SEC unlock-aware request client',
+)
 require('persisted_source_read_model', "'source_kind', x.source_kind" in read_sql and "'source_kind', t.source_kind" in read_sql, 'dashboard and account operation JSON expose persisted source')
 require('text_voice_source_ingress', 'finance_create_sourced_transaction_v1' in text_ingress and 'SOURCE_EXPR' in text_ingress and 'source_content_heuristics=NONE' in text_ingress, 'text/voice source comes from ingress contract')
 require('production_frontend_not_targeted', 'production' not in recent.lower() and 'production' not in explorer.lower() and 'production' not in app.lower(), 'UX-024 frontend source contains no deployment target mutation')
