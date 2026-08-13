@@ -50,6 +50,12 @@ jobs:
       - name: SEC-001 shell syntax
         run: bash -n scripts/sec001-source-gate.sh
 
+      - name: UX-024 source gate
+        run: python3 scripts/ux024-source-gate.py
+
+      - name: UX-024 legacy source gate
+        run: python3 scripts/ux024-legacy-source-gate.py
+
       - name: Frontend dependencies
         working-directory: miniapp
         run: npm ci
