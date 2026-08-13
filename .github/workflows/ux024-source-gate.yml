@@ -1,0 +1,35 @@
+name: UX-024 Source Gate
+
+on:
+  push:
+    branches:
+      - agent/ux-024-operation-modal-period-nav
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: miniapp/package-lock.json
+      - name: UX-024 static contract gate
+        run: python3 scripts/ux024-source-gate.py
+      - name: Install MiniApp dependencies
+        working-directory: miniapp
+        run: npm ci
+      - name: Lint MiniApp
+        working-directory: miniapp
+        run: npm run lint
+      - name: Build MiniApp
+        working-directory: miniapp
+        run: npm run build

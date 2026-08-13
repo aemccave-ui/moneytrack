@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { deleteTransaction, deleteTransfer, getReceiptByTransaction, getTransactionReference } from './api.js'
+import { operationSourceKind } from './operation-source.jsx'
 import ReceiptModal from './ReceiptModal.jsx'
 import { SwipeReveal } from './SwipeReveal.jsx'
 import TransactionEditor from './TransactionEditor.jsx'
@@ -23,24 +24,14 @@ function transferIdOf(tx) {
   return match ? Number(match[1]) : null
 }
 
-const operationTypeLabel = (type) => ({
-  income: 'Доход',
-  expense: 'Расход',
-  openingbalance: 'Начальный остаток',
-  adjustment: 'Корректировка',
-  transfer: 'Перевод',
-}[type] || type || 'Операция')
+const operationTypeLabel = (type) => ({ income: 'Доход', expense: 'Расход', openingbalance: 'Начальный остаток', adjustment: 'Корректировка', transfer: 'Перевод' }[type] || type || 'Операция')
 
-function SwipeActionIcon({ name }) {
-  if (name === 'repeat') return <svg className="swipeActionIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6.1 9a7 7 0 0 1 11.7-2L20 9M4 15l2.2 2a7 7 0 0 0 11.7-2" /></svg>
-  if (name === 'edit') return <svg className="swipeActionIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l11-11-4-4L4 16v4ZM13.5 6.5l4 4" /></svg>
+function DeleteIcon() {
   return <svg className="swipeActionIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4h6v3M8 10v7M12 10v7M16 10v7M6 7l1 13h10l1-13" /></svg>
 }
 
 function confirmAction(message) {
-  if (window.Telegram?.WebApp?.showConfirm) {
-    return new Promise((resolve) => window.Telegram.WebApp.showConfirm(message, resolve))
-  }
+  if (window.Telegram?.WebApp?.showConfirm) return new Promise((resolve) => window.Telegram.WebApp.showConfirm(message, resolve))
   return Promise.resolve(window.confirm(message))
 }
 
@@ -49,79 +40,35 @@ function showError(message) {
   else window.alert(message)
 }
 
-function DetailRow({ label, value }) {
-  return <div className="transactionDetailRow"><span>{label}</span><strong>{value ?? '—'}</strong></div>
-}
-
-function TransactionRow({ tx, privacy, baseCurrency, money, expanded, loadingReceipt, onOpen, onEdit, onRepeat, onDelete, categoryName }) {
+function TransactionRow({ tx, privacy, baseCurrency, money, loadingReceipt, onOpen, onDelete, categoryName }) {
   const transfer = tx.transaction_type === 'transfer'
   const incoming = transfer && tx.transfer_direction === 'incoming'
   const positive = tx.transaction_type === 'income' || incoming
   const amountCurrency = tx.currency_original || tx.currency || baseCurrency
   const rawAmount = Number(tx.amount_original ?? tx.amount ?? 0)
   const amount = positive ? Math.abs(rawAmount) : -Math.abs(rawAmount)
-  const transferReason = 'Перевод связан с двумя счетами и редактируется как единая парная операция.'
-
-  const actions = [
-    { key: 'repeat', label: 'Повторить', icon: <SwipeActionIcon name="repeat" />, onClick: onRepeat },
-    { key: 'edit', label: 'Изменить', icon: <SwipeActionIcon name="edit" />, onClick: onEdit },
-    { key: 'delete', label: 'Удалить', icon: <SwipeActionIcon name="delete" />, danger: true, onClick: onDelete },
-  ]
-
+  const actions = [{ key: 'delete', label: 'Удалить', icon: <DeleteIcon />, danger: true, onClick: onDelete }]
   return (
-    <article className={`transactionCard ${expanded ? 'expanded' : ''}`}>
+    <article className="transactionCard">
       <SwipeReveal id={`tx:${tx.id}`} actions={actions} actionWidth={56} className="transactionSwipeReveal">
-        {({ open }) => (
-          <button
-            type="button"
-            className="transactionRow"
-            onClick={() => { if (!open) onOpen() }}
-            aria-expanded={expanded}
-            aria-busy={loadingReceipt || undefined}
-            aria-label={`${tx.description || operationTypeLabel(tx.transaction_type)}. Смахните влево для действий.`}
-          >
-            <span className={`transactionTypeMark ${positive ? 'income' : 'expense'}`} aria-hidden="true">{positive ? '↑' : '↓'}</span>
-            <span className="transactionIdentity"><strong>{tx.description || operationTypeLabel(tx.transaction_type)}</strong><small>{loadingReceipt ? 'Открываю чек…' : (tx.account_name || categoryName || tx.category_name || operationTypeLabel(tx.transaction_type))}</small></span>
-            <strong className={`transactionAmount ${positive ? 'income' : 'expense'} sensitive`}>{privacy ? '••••' : money(amount, amountCurrency)}</strong>
-          </button>
-        )}
+        {({ open }) => <button type="button" className="transactionRow" onClick={() => { if (!open) onOpen() }} aria-busy={loadingReceipt || undefined} aria-label={`${tx.description || operationTypeLabel(tx.transaction_type)}. Нажмите, чтобы открыть. Смахните влево для удаления.`}>
+          <span className={`transactionTypeMark ${positive ? 'income' : 'expense'}`} aria-hidden="true">{positive ? '↑' : '↓'}</span>
+          <span className="transactionIdentity"><strong>{tx.description || operationTypeLabel(tx.transaction_type)}</strong><small>{loadingReceipt ? 'Открываю чек…' : (tx.account_name || categoryName || tx.category_name || operationTypeLabel(tx.transaction_type))}</small></span>
+          <strong className={`transactionAmount ${positive ? 'income' : 'expense'} sensitive`}>{privacy ? '••••' : money(amount, amountCurrency)}</strong>
+        </button>}
       </SwipeReveal>
-      {expanded && (
-        <div className="transactionDetails">
-          <DetailRow label="Тип" value={transfer ? (incoming ? 'Входящий перевод' : 'Исходящий перевод') : operationTypeLabel(tx.transaction_type)} />
-          <DetailRow label="Счёт" value={tx.account_name || tx.account_id} />
-          {!transfer && <DetailRow label="Категория" value={categoryName || tx.category_name || tx.category_code || tx.category_id} />}
-          <DetailRow label="Валюта" value={amountCurrency} />
-          <DetailRow label="Дата" value={String(tx.transaction_date || '').replace('T', ' ').slice(0, 16)} />
-          <DetailRow label="Описание" value={tx.description} />
-          {transfer && <div className="transactionTransferReason">{transferReason}</div>}
-        </div>
-      )}
     </article>
   )
 }
 
-export function RecentOperations({
-  groups,
-  transactions,
-  privacy,
-  baseCurrency,
-  money,
-  dayLabel,
-  onDeleted,
-  title = 'Последние операции',
-  emptyLabel = 'Операций пока нет',
-}) {
-  const [expandedId, setExpandedId] = useState(null)
+export function RecentOperations({ groups, transactions, privacy, baseCurrency, money, dayLabel, onDeleted, title = 'Последние операции', emptyLabel = 'Операций пока нет' }) {
   const [editor, setEditor] = useState(null)
   const [busyId, setBusyId] = useState(null)
   const [receiptLoadingId, setReceiptLoadingId] = useState(null)
   const [receiptView, setReceiptView] = useState(null)
+  const receiptRefreshPending = useRef(false)
   const [reference, setReference] = useState({ currencies: [], categories: [] })
-  const categoryNames = useMemo(
-    () => new Map((reference.categories || []).map((item) => [String(item.id), item.name || item.code || String(item.id)])),
-    [reference.categories],
-  )
+  const categoryNames = useMemo(() => new Map((reference.categories || []).map((item) => [String(item.id), item.name || item.code || String(item.id)])), [reference.categories])
 
   useEffect(() => {
     let alive = true
@@ -143,118 +90,61 @@ export function RecentOperations({
     if (busyId != null) return
     const transfer = tx.transaction_type === 'transfer'
     const transferId = transfer ? transferIdOf(tx) : null
-    if (transfer && !transferId) {
-      showError('Не удалось определить перевод.')
-      return
-    }
+    if (transfer && !transferId) { showError('Не удалось определить перевод.'); return }
     if (!(await confirmAction(transfer ? 'Удалить этот перевод целиком?' : 'Удалить эту операцию?'))) return
     setBusyId(tx.id)
     try {
       if (transfer) await deleteTransfer(transferId)
       else await deleteTransaction(tx.id)
-      setExpandedId(null)
       await onDeleted?.(tx)
     } catch (error) {
       showError(error?.message || (transfer ? 'Не удалось удалить перевод' : 'Не удалось удалить операцию'))
-    } finally {
-      setBusyId(null)
-    }
+    } finally { setBusyId(null) }
   }
 
-  const saved = async () => {
-    setExpandedId(null)
-    await onDeleted?.()
-  }
+  const saved = async () => { await onDeleted?.() }
 
   const fetchReceipt = async (tx) => {
     const id = String(tx.id)
     if (receiptLoadingId != null) return { blocked: true, receipt: null }
     setReceiptLoadingId(id)
-    try {
-      return { blocked: false, receipt: await getReceiptByTransaction(tx.id) }
-    } catch (error) {
-      showError(error?.message || 'Не удалось открыть чек')
-      return { blocked: true, receipt: null }
-    } finally {
-      setReceiptLoadingId(null)
-    }
+    try { return { blocked: false, receipt: await getReceiptByTransaction(tx.id) } }
+    catch (error) { showError(error?.message || 'Не удалось открыть чек'); return { blocked: true, receipt: null } }
+    finally { setReceiptLoadingId(null) }
   }
 
   const openOperation = async (tx) => {
-    const id = String(tx.id)
-    if (tx.transaction_type === 'transfer') {
-      setExpandedId((current) => current === id ? null : id)
-      return
-    }
-    const lookup = await fetchReceipt(tx)
-    if (lookup.blocked) return
-    if (lookup.receipt) {
-      setExpandedId(null)
-      setReceiptView({ transaction: tx, receipt: lookup.receipt })
-    } else {
-      setExpandedId((current) => current === id ? null : id)
-    }
-  }
-
-  const receiptChanged = async ({ type }) => {
-    if (type === 'currency' || type === 'category') await onDeleted?.()
-  }
-
-  const openEditor = async (tx, mode) => {
-    if (mode === 'edit' && tx.transaction_type !== 'transfer') {
+    if (tx.transaction_type === 'transfer') { setEditor({ operation: tx, mode: 'edit', kind: 'transfer' }); return }
+    const sourceKind = operationSourceKind(tx)
+    if (sourceKind === 'photo_receipt' || sourceKind == null) {
       const lookup = await fetchReceipt(tx)
       if (lookup.blocked) return
-      if (lookup.receipt) {
-        setExpandedId(null)
-        setReceiptView({ transaction: tx, receipt: lookup.receipt })
-        return
-      }
+      if (lookup.receipt) { receiptRefreshPending.current = false; setReceiptView({ transaction: tx, receipt: lookup.receipt }); return }
+      if (sourceKind === 'photo_receipt') { showError('Источник операции — фото чека, но связанный чек не найден.'); return }
     }
-    setEditor({
-      operation: tx,
-      mode,
-      kind: tx.transaction_type === 'transfer' ? 'transfer' : 'transaction',
-    })
+    setEditor({ operation: tx, mode: 'edit', kind: 'transaction' })
   }
 
-  return (
-    <>
-      <section className="section recentOperationsSection">
-        <div className="sectionHeader"><h2>{title}</h2></div>
-        {!groupList.length && <div className="emptyCard">{emptyLabel}</div>}
-        <div className="transactionGroups">
-          {groupList.map(([date, items]) => (
-            <section className="transactionGroup" key={date}>
-              <h3>{dayLabel ? dayLabel(date) : date}</h3>
-              <div className="transactionList">
-                {items.map((tx) => {
-                  const id = String(tx.id)
-                  return (
-                    <TransactionRow
-                      key={id}
-                      tx={tx}
-                      privacy={privacy}
-                      baseCurrency={baseCurrency}
-                      money={money}
-                      expanded={expandedId === id}
-                      loadingReceipt={receiptLoadingId === id}
-                      onOpen={() => openOperation(tx)}
-                      onRepeat={() => openEditor(tx, 'repeat')}
-                      onEdit={() => openEditor(tx, 'edit')}
-                      onDelete={() => remove(tx)}
-                      categoryName={tx.category_id == null ? '' : categoryNames.get(String(tx.category_id))}
-                    />
-                  )
-                })}
-              </div>
-            </section>
-          ))}
-        </div>
-      </section>
-      {receiptView && <ReceiptModal transaction={receiptView.transaction} receipt={receiptView.receipt} reference={reference} onClose={() => setReceiptView(null)} onChanged={receiptChanged} />}
-      {editor?.kind === 'transaction' && <TransactionEditor operation={editor.operation} mode={editor.mode} onClose={() => setEditor(null)} onSaved={saved} />}
-      {editor?.kind === 'transfer' && <TransferEditor operation={editor.operation} mode={editor.mode} onClose={() => setEditor(null)} onSaved={saved} />}
-      {busyId != null && <div className="transactionBusy" role="status">Удаление…</div>}
-    </>
-  )
+  const receiptChanged = () => { receiptRefreshPending.current = true }
+  const closeReceipt = async () => {
+    setReceiptView(null)
+    if (!receiptRefreshPending.current) return
+    receiptRefreshPending.current = false
+    await onDeleted?.()
+  }
+
+  return <>
+    <section className="section recentOperationsSection">
+      <div className="sectionHeader"><h2>{title}</h2></div>
+      {!groupList.length && <div className="emptyCard">{emptyLabel}</div>}
+      <div className="transactionGroups">{groupList.map(([date, items]) => <section className="transactionGroup" key={date}><h3>{dayLabel ? dayLabel(date) : date}</h3><div className="transactionList">{items.map((tx) => {
+        const id = String(tx.id)
+        return <TransactionRow key={id} tx={tx} privacy={privacy} baseCurrency={baseCurrency} money={money} loadingReceipt={receiptLoadingId === id} onOpen={() => openOperation(tx)} onDelete={() => remove(tx)} categoryName={tx.category_id == null ? '' : categoryNames.get(String(tx.category_id))} />
+      })}</div></section>)}</div>
+    </section>
+    {receiptView && <ReceiptModal transaction={receiptView.transaction} receipt={receiptView.receipt} reference={reference} onClose={closeReceipt} onChanged={receiptChanged} />}
+    {editor?.kind === 'transaction' && <TransactionEditor operation={editor.operation} mode={editor.mode} onClose={() => setEditor(null)} onSaved={saved} />}
+    {editor?.kind === 'transfer' && <TransferEditor operation={editor.operation} mode={editor.mode} onClose={() => setEditor(null)} onSaved={saved} />}
+    {busyId != null && <div className="transactionBusy" role="status">Удаление…</div>}
+  </>
 }

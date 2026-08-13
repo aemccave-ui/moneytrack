@@ -111,7 +111,14 @@ export function SwipeReveal({
 
   return (
     <div className={`swipeReveal ${open ? 'isOpen' : ''} ${className}`.trim()}>
-      <div className="swipeRevealActions" style={{ width: `${width}px` }} aria-hidden={!open && !dragging}>
+      <div
+        className="swipeRevealActions"
+        style={{
+          width: `${width}px`,
+          gridTemplateColumns: `repeat(${Math.max(actions.length, 1)}, minmax(0, 1fr))`,
+        }}
+        aria-hidden={!open && !dragging}
+      >
         {actions.map((action) => (
           <button
             key={action.key}
