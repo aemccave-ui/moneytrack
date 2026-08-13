@@ -47,6 +47,38 @@ def outgoing_names(workflow: dict, source: str) -> list[str]:
     return result
 
 
+def webhook_method(webhook_node: dict) -> str:
+    params = webhook_node.get("parameters") or {}
+    return str(params.get("httpMethod") or "GET").upper()
+
+
+def webhook_path(webhook_node: dict) -> str:
+    params = webhook_node.get("parameters") or {}
+    return str(params.get("path") or "").lstrip("/")
+
+
+def route_marker_key(workflow: dict, webhook_node: dict) -> str:
+    """Stable SEC node identity.
+
+    Keep the historical path-only identity when a path is unique.
+    When several HTTP methods share one path, include the method so
+    every route receives its own unlock boundary.
+    """
+    path = webhook_path(webhook_node)
+
+    same_path = [
+        node
+        for node in workflow.get("nodes", [])
+        if node.get("type") == WEBHOOK
+        and webhook_path(node) == path
+    ]
+
+    if len(same_path) > 1:
+        return f"{webhook_method(webhook_node)} {path}"
+
+    return path
+
+
 def find_telegram_verifier(workflow: dict, webhook_name: str) -> dict:
     nodes = node_map(workflow)
     queue = deque([webhook_name])
@@ -124,8 +156,9 @@ def transform_route(workflow: dict, webhook_node: dict, fallback_cred_id: str, f
     workflow_id = str(workflow.get("id") or "workflow")
     webhook_name = webhook_node["name"]
     path = str((webhook_node.get("parameters") or {}).get("path") or "").lstrip("/")
+    route_key = route_marker_key(workflow, webhook_node)
 
-    marker = f"SEC001 Unlock Prepare [{path}]"
+    marker = f"SEC001 Unlock Prepare [{route_key}]"
     if marker in node_map(workflow):
         return
 
@@ -141,10 +174,10 @@ def transform_route(workflow: dict, webhook_node: dict, fallback_cred_id: str, f
     x, y = (auth_gate.get("position") or [0, 0])[:2]
 
     prepare_name = marker
-    db_name = f"SEC001 Unlock Verify [{path}]"
-    decision_name = f"SEC001 Unlock Decision [{path}]"
-    if_name = f"SEC001 Unlock OK [{path}]"
-    respond_name = f"SEC001 Unlock Reject [{path}]"
+    db_name = f"SEC001 Unlock Verify [{route_key}]"
+    decision_name = f"SEC001 Unlock Decision [{route_key}]"
+    if_name = f"SEC001 Unlock OK [{route_key}]"
+    respond_name = f"SEC001 Unlock Reject [{route_key}]"
 
     webhook_ref = json.dumps(webhook_name)
     prepare_js = f'''const crypto = require("crypto");

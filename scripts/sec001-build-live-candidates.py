@@ -109,13 +109,25 @@ def transform_api(wf: dict) -> dict:
     before_nodes = node_map(wf)
     before_connections = copy.deepcopy(wf.get("connections") or {})
 
+    route_specs = []
+    for webhook_name, path in api_paths(wf):
+        webhook_node = before_nodes[webhook_name]
+        route_specs.append(
+            (
+                webhook_name,
+                path,
+                TRANS.route_marker_key(wf, webhook_node),
+            )
+        )
+
     expected_paths = [
-        path for _, path in api_paths(wf)
+        path
+        for _, path, _ in route_specs
         if path not in CLASS_A
     ]
 
     auth_gates = set()
-    for webhook_name, path in api_paths(wf):
+    for webhook_name, path, _ in route_specs:
         if path in CLASS_A:
             continue
         verifier = TRANS.find_telegram_verifier(wf, webhook_name)
@@ -144,8 +156,9 @@ def transform_api(wf: dict) -> dict:
     }
 
     expected_added = {
-        f"SEC001 Unlock {kind} [{path}]"
-        for path in expected_paths
+        f"SEC001 Unlock {kind} [{route_key}]"
+        for _, path, route_key in route_specs
+        if path not in CLASS_A
         for kind in ("Prepare", "Verify", "Decision", "OK", "Reject")
     }
 
@@ -261,7 +274,9 @@ def verify_protected_api(wf: dict) -> None:
             continue
         verifier = TRANS.find_telegram_verifier(wf, webhook_name)
         auth = TRANS.find_auth_gate(wf, verifier["name"])
-        expected = f"SEC001 Unlock Prepare [{path}]"
+        webhook_node = nodes[webhook_name]
+        route_key = TRANS.route_marker_key(wf, webhook_node)
+        expected = f"SEC001 Unlock Prepare [{route_key}]"
         true_lane = lanes(wf, auth["name"])
         actual = [
             x.get("node")
@@ -335,6 +350,40 @@ def self_test() -> None:
     quick = quick_gen.build("test-postgres", "Postgres account")
     quick_after = transform_api(quick)
     verify_protected_api(quick_after)
+
+    duplicate_route_workflow = {
+        "id": "duplicate-route-test",
+        "nodes": [
+            {
+                "name": "GET Webhook",
+                "type": "n8n-nodes-base.webhook",
+                "parameters": {"path": "api/v1/example"},
+            },
+            {
+                "name": "POST Webhook",
+                "type": "n8n-nodes-base.webhook",
+                "parameters": {
+                    "path": "api/v1/example",
+                    "httpMethod": "POST",
+                },
+            },
+        ],
+        "connections": {},
+    }
+
+    duplicate_keys = {
+        TRANS.route_marker_key(duplicate_route_workflow, node)
+        for node in duplicate_route_workflow["nodes"]
+    }
+
+    if duplicate_keys != {
+        "GET api/v1/example",
+        "POST api/v1/example",
+    }:
+        die(
+            "same_path_method_identity "
+            f"actual={sorted(duplicate_keys)}"
+        )
 
     bot = synthetic_bot()
     bot_after = transform_bot(bot)
