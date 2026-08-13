@@ -1,0 +1,72 @@
+name: MoneyTrack Source Gates
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - 'agent/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: moneytrack-source-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-gates:
+    name: Source / Build / Regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: miniapp/package-lock.json
+
+      - name: SEC-001 source gate
+        run: bash scripts/sec001-source-gate.sh
+
+      - name: SEC-001 Python syntax
+        run: |
+          python3 -m py_compile \
+            scripts/sec001-generate-security-api.py \
+            scripts/sec001-transform-class-b.py \
+            scripts/sec001-source-gate.py
+
+      - name: SEC-001 shell syntax
+        run: bash -n scripts/sec001-source-gate.sh
+
+      - name: Frontend dependencies
+        working-directory: miniapp
+        run: npm ci
+
+      - name: Frontend lint
+        working-directory: miniapp
+        run: npm run lint
+
+      - name: Frontend build
+        working-directory: miniapp
+        run: npm run build
+
+      - name: UX-023 preserved regression
+        run: python3 scripts/ux023-verify-receipt-editor.py
+
+      - name: UX-022 preserved regression
+        run: bash scripts/ux022-source-gate.sh
+
+      - name: Diff integrity
+        run: git diff --check
