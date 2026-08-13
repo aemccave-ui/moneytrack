@@ -9,6 +9,7 @@ recent = (ROOT / 'miniapp/src/RecentOperations.jsx').read_text(encoding='utf-8')
 modal = (ROOT / 'miniapp/src/ReceiptModal.jsx').read_text(encoding='utf-8')
 main = (ROOT / 'miniapp/src/main.jsx').read_text(encoding='utf-8')
 sql = (ROOT / 'db/domain/UX-023/010_receipt_editor.sql').read_text(encoding='utf-8')
+hardening = (ROOT / 'db/domain/UX-023/020_receipt_accounting_hardening.sql').read_text(encoding='utf-8')
 generator = (ROOT / 'scripts/ux023-generate-receipt-accounting-workflow.py').read_text(encoding='utf-8')
 
 
@@ -35,6 +36,7 @@ require('owned_receipt_read_model', 'api_receipt_detail_read_model_v1' in sql an
 require('read_model_exposes_account', "'account_id', rr.account_id" in sql and "'account_currency', rr.account_currency" in sql)
 require('atomic_accounting_boundary', 'receipt_update_accounting_v1' in sql and 'ACCOUNT_CURRENCY_MISMATCH' in sql and 'ACCOUNT_GROUP_NOT_POSTABLE' in sql and 'finance_fx_convert_usd_bridge_v1' in sql)
 require('no_automatic_default_account', 'user_default_accounts' not in sql and 'DEFAULT_ACCOUNT_FOR_CURRENCY_NOT_FOUND' not in sql)
+require('currency_only_boundary_removed', 'drop function if exists moneytrack.receipt_set_currency_v1(bigint,bigint,text)' in hardening)
 require('category_boundary', 'receipt_set_item_category_v2' in sql and 'product_catalog' in sql and 'transaction_category_id' in sql)
 require('immutable_parser_fields', 'set shop_name' not in sql.lower() and 'set total_amount' not in sql.lower() and 'set transaction_date' not in sql.lower())
 require('canonical_auth_fragment', 'api-3-telegram-initdata-verifier.fragment.js' in generator)
