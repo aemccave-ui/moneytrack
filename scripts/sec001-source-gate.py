@@ -211,6 +211,36 @@ req('bot_quick_capture_text_reachable', 'message_text' in serialized_reachable o
 req('class_c_bot_capture_does_not_require_unlock', not any('security_validate_unlock_v1' in node_text(bot_nodes[name]) for name in after_reachable if name in bot_nodes))
 req('bot_quick_capture_is_class_c', all(x in serialized_reachable for x in ('photo','voice')) and bool(trigger_names))
 
+# SEC-001 Class C is quick capture only. Legacy slash-command/report
+# branches may remain physically present for forensic/rollback purposes,
+# but they must be unreachable from TelegramTrigger.
+command_gate = before_bot_nodes.get('Is command')
+req(
+    'bot_command_classifier_present',
+    command_gate is not None
+)
+req(
+    'legacy_bot_command_branch_closed',
+    direct(bot_raw, 'Is command', 0) == [],
+    str(direct(bot_raw, 'Is command', 0)),
+)
+req(
+    'bot_non_command_text_capture_preserved',
+    bool(direct(bot_raw, 'Is command', 1)),
+    str(direct(bot_raw, 'Is command', 1)),
+)
+req(
+    'legacy_bot_command_router_unreachable',
+    'Switch commands' not in before_reachable
+)
+req(
+    'legacy_private_bot_commands_unreachable',
+    all(
+        marker not in serialized_reachable
+        for marker in ('/summary', '/last', '/settings')
+    )
+)
+
 # ------------------------------------------------------------------
 # Frozen cross-cutting source invariants.
 # ------------------------------------------------------------------

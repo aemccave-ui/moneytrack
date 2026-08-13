@@ -4822,13 +4822,7 @@
     },
     "Is command": {
       "main": [
-        [
-          {
-            "node": "Switch commands",
-            "type": "main",
-            "index": 0
-          }
-        ],
+        [],
         [
           {
             "node": "Get Translations processing Text",
@@ -6902,13 +6896,7 @@
             "index": 0
           }
         ],
-        [
-          {
-            "node": "Switch commands",
-            "type": "main",
-            "index": 0
-          }
-        ],
+        [],
         []
       ]
     },
