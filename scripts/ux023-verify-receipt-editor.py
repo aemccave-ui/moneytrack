@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -11,6 +12,8 @@ main = (ROOT / 'miniapp/src/main.jsx').read_text(encoding='utf-8')
 sql = (ROOT / 'db/domain/UX-023/010_receipt_editor.sql').read_text(encoding='utf-8')
 hardening = (ROOT / 'db/domain/UX-023/020_receipt_accounting_hardening.sql').read_text(encoding='utf-8')
 generator = (ROOT / 'scripts/ux023-generate-receipt-accounting-workflow.py').read_text(encoding='utf-8')
+apply_path = ROOT / 'scripts/ux023-receipt-accounting-preview-apply.sh'
+apply_script = apply_path.read_text(encoding='utf-8')
 
 
 def require(name: str, condition: bool) -> None:
@@ -20,11 +23,13 @@ def require(name: str, condition: bool) -> None:
 
 
 compile(generator, 'ux023-generate-receipt-accounting-workflow.py', 'exec')
+subprocess.run(['bash', '-n', str(apply_path)], check=True)
 require('tap_fetches_receipt', 'getReceiptByTransaction(tx.id)' in recent and '<ReceiptModal' in recent)
 require('receipt_edit_cannot_bypass_modal', "mode === 'edit'" in recent and 'setReceiptView({ transaction: tx, receipt: lookup.receipt })' in recent)
 require('non_receipt_fallback_preserved', 'setExpandedId((current) => current === id ? null : id)' in recent)
 require('receipt_amount_uses_parent_transaction', 'transaction.amount_original' in modal and 'receipt?.total_amount' in modal)
 require('explicit_account_selector', 'getAccounts' in modal and 'receiptAccountSelect' in modal and 'Счёт учёта' in modal)
+require('leaf_accounts_only', 'disabled: (_item, children) => children.length > 0' in modal)
 require('account_currency_draft_pair', 'draftAccountId' in modal and 'draftCurrency' in modal and 'selectedAccountCurrency === draftCurrency' in modal)
 require('inconsistent_save_blocked', 'accountingDirty && (!accountingConsistent || accountsLoading)' in modal and 'receiptAccountingMismatch' in modal)
 require('atomic_accounting_client', 'updateReceiptAccounting' in modal and 'api/v1/receipt/accounting' in accounting_api and 'account_id' in accounting_api)
@@ -42,5 +47,8 @@ require('immutable_parser_fields', 'set shop_name' not in sql.lower() and 'set t
 require('canonical_auth_fragment', 'api-3-telegram-initdata-verifier.fragment.js' in generator)
 require('workflow_routes', all(path in generator for path in ["'api/v1/receipt'", "'api/v1/receipt/accounting'", "'api/v1/receipt-item/category'"]))
 require('workflow_accounting_boundary', 'receipt_update_accounting_v1' in generator and 'account_id' in generator)
+require('controlled_apply_uses_new_generator', 'ux023-generate-receipt-accounting-workflow.py' in apply_script)
+require('controlled_apply_hardens_currency_only_path', '020_receipt_accounting_hardening.sql' in apply_script and 'receipt_currency_only_write=ABSENT' in apply_script and 'old_currency_route_absent=PASS' in apply_script)
+require('controlled_apply_preview_only', 'PRODUCTION_FRONTEND_MUTATION=NONE' in apply_script and 'PREVIEW_FRONTEND_MUTATION=APPLIED' in apply_script)
 
 print('UX023_RECEIPT_EDITOR=PASS')
