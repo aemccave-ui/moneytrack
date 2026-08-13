@@ -42,7 +42,8 @@ for shell_script in \
   scripts/ux022r3-backend-6-8-forensic.sh \
   scripts/ux022r3-backend-6-8-deep-forensic.sh \
   scripts/ux022r3-backend-6-8-apply-gate.sh \
-  scripts/ux022r3-backend-6-8-apply.sh
+  scripts/ux022r3-backend-6-8-apply.sh \
+  scripts/ux023-receipt-modal-preview-apply.sh
 do
   bash -n "$shell_script"
 done
