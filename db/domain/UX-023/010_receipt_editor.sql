@@ -1,6 +1,7 @@
 -- MoneyTrack — UX-023 — receipt detail/editor backend boundaries
--- UI edits are intentionally limited to receipt-item category and receipt currency.
--- Shop, total, item description/amount and receipt clock remain immutable parser output.
+-- UI edits are intentionally limited to receipt accounting (account + currency)
+-- and receipt-item category. Shop, total, item description/amount and receipt
+-- clock remain immutable parser output.
 
 begin;
 
@@ -34,12 +35,18 @@ as $function$
             r.total_amount,
             r.currency,
             r.status,
-            t.transaction_date
+            t.transaction_date,
+            t.account_id,
+            a.name as account_name,
+            upper(a.currency_code)::text as account_currency
         from moneytrack.receipts r
         join user_ctx uc on uc.internal_user_id = r.user_id
         join moneytrack.transactions t
           on t.id = r.transaction_id
          and t.user_id = r.user_id
+        join moneytrack.accounts a
+          on a.id = t.account_id
+         and a.user_id = t.user_id
         where r.transaction_id = p_transaction_id
         order by r.id desc
         limit 1
@@ -85,6 +92,9 @@ as $function$
                 'currency', rr.currency,
                 'receipt_date', rr.receipt_date,
                 'transaction_date', rr.transaction_date,
+                'account_id', rr.account_id,
+                'account_name', rr.account_name,
+                'account_currency', rr.account_currency,
                 'status', rr.status,
                 'items', ir.items
             )
@@ -94,11 +104,12 @@ as $function$
 $function$;
 
 comment on function moneytrack.api_receipt_detail_read_model_v1(bigint,bigint)
-is 'UX-023 owned receipt read model for MiniApp modal. Returns immutable parser fields plus receipt-item category IDs/names; no raw AI payload is exposed.';
+is 'UX-023 owned receipt read model for MiniApp modal. Returns immutable parser fields, accounting account/currency, and receipt-item category IDs/names; no raw AI payload is exposed.';
 
-create or replace function moneytrack.receipt_set_currency_v1(
+create or replace function moneytrack.receipt_update_accounting_v1(
     p_user_id bigint,
     p_receipt_id bigint,
+    p_account_id bigint,
     p_currency text
 )
 returns table (
@@ -106,7 +117,8 @@ returns table (
     receipt_id bigint,
     transaction_id bigint,
     account_id bigint,
-    account_changed boolean,
+    account_name text,
+    account_currency text,
     currency text,
     amount_base numeric,
     currency_base text,
@@ -118,17 +130,19 @@ as $function$
 declare
     v_currency text := upper(nullif(btrim(p_currency), ''));
     v_transaction_id bigint;
-    v_current_account_id bigint;
-    v_target_account_id bigint;
-    v_current_account_currency text;
     v_amount_original numeric;
     v_transaction_date timestamptz;
     v_base_currency text;
+    v_account_name text;
+    v_account_currency text;
     v_amount_base numeric;
     v_rate numeric;
 begin
     if p_user_id is null or p_receipt_id is null then
         raise exception 'USER_AND_RECEIPT_REQUIRED' using errcode = '22023';
+    end if;
+    if p_account_id is null then
+        raise exception 'ACCOUNT_REQUIRED' using errcode = '22023';
     end if;
     if v_currency is null then
         raise exception 'CURRENCY_REQUIRED' using errcode = '22023';
@@ -143,15 +157,11 @@ begin
 
     select
         r.transaction_id,
-        t.account_id,
-        upper(a.currency_code),
         t.amount_original,
         t.transaction_date,
         upper(coalesce(s.base_currency, u.default_currency, 'EUR'))
       into
         v_transaction_id,
-        v_current_account_id,
-        v_current_account_currency,
         v_amount_original,
         v_transaction_date,
         v_base_currency
@@ -159,9 +169,6 @@ begin
       join moneytrack.transactions t
         on t.id = r.transaction_id
        and t.user_id = r.user_id
-      join moneytrack.accounts a
-        on a.id = t.account_id
-       and a.user_id = t.user_id
       join moneytrack.app_users u on u.id = r.user_id
       left join moneytrack.user_settings s on s.user_id = u.id
      where r.id = p_receipt_id
@@ -172,29 +179,30 @@ begin
         raise exception 'RECEIPT_NOT_FOUND_OR_NOT_OWNED' using errcode = 'P0002';
     end if;
 
-    v_target_account_id := v_current_account_id;
-    if v_current_account_currency <> v_currency then
-        select uda.account_id
-          into v_target_account_id
-          from moneytrack.user_default_accounts uda
-          join moneytrack.accounts a
-            on a.id = uda.account_id
-           and a.user_id = uda.user_id
-         where uda.user_id = p_user_id
-           and upper(uda.currency_code) = v_currency
-           and upper(a.currency_code) = v_currency
-           and coalesce(a.is_active, true) = true
-           and not exists (
-               select 1 from moneytrack.accounts child
-               where child.parent_id = a.id
-                 and child.user_id = a.user_id
-                 and coalesce(child.is_active, true) = true
-           )
-         limit 1;
+    select a.name, upper(a.currency_code)
+      into v_account_name, v_account_currency
+      from moneytrack.accounts a
+     where a.id = p_account_id
+       and a.user_id = p_user_id
+       and coalesce(a.is_active, true) = true;
 
-        if v_target_account_id is null then
-            raise exception 'DEFAULT_ACCOUNT_FOR_CURRENCY_NOT_FOUND: %', v_currency using errcode = 'P0002';
-        end if;
+    if not found then
+        raise exception 'ACCOUNT_NOT_FOUND_OR_NOT_OWNED' using errcode = 'P0002';
+    end if;
+
+    if exists (
+        select 1
+          from moneytrack.accounts child
+         where child.parent_id = p_account_id
+           and child.user_id = p_user_id
+           and coalesce(child.is_active, true) = true
+    ) then
+        raise exception 'ACCOUNT_GROUP_NOT_POSTABLE' using errcode = '22023';
+    end if;
+
+    if v_account_currency <> v_currency then
+        raise exception 'ACCOUNT_CURRENCY_MISMATCH: account %, receipt %',
+            v_account_currency, v_currency using errcode = '22023';
     end if;
 
     if v_currency = v_base_currency then
@@ -208,7 +216,8 @@ begin
             v_transaction_date::date
         );
         if v_amount_base is null then
-            raise exception 'FX_RATE_NOT_FOUND: % -> % at %', v_currency, v_base_currency, v_transaction_date::date using errcode = 'P0001';
+            raise exception 'FX_RATE_NOT_FOUND: % -> % at %',
+                v_currency, v_base_currency, v_transaction_date::date using errcode = 'P0001';
         end if;
         v_rate := v_amount_base / nullif(v_amount_original, 0);
     end if;
@@ -219,7 +228,7 @@ begin
        and r.user_id = p_user_id;
 
     update moneytrack.transactions t
-       set account_id = v_target_account_id,
+       set account_id = p_account_id,
            currency_original = v_currency,
            amount_base = v_amount_base,
            currency_base = v_base_currency,
@@ -232,8 +241,9 @@ begin
         'updated'::text,
         p_receipt_id,
         v_transaction_id,
-        v_target_account_id,
-        (v_target_account_id is distinct from v_current_account_id),
+        p_account_id,
+        v_account_name,
+        v_account_currency,
         v_currency,
         v_amount_base,
         v_base_currency,
@@ -241,8 +251,8 @@ begin
 end;
 $function$;
 
-comment on function moneytrack.receipt_set_currency_v1(bigint,bigint,text)
-is 'UX-023 receipt-currency correction. Keeps amount literal, recomputes base valuation and, when currency changes, moves the derived posting to the user default active leaf account for that currency.';
+comment on function moneytrack.receipt_update_accounting_v1(bigint,bigint,bigint,text)
+is 'UX-023 atomic receipt accounting correction. Caller explicitly chooses account and currency; backend rejects inactive/group/foreign accounts and any account/receipt currency mismatch, then recomputes base valuation.';
 
 create or replace function moneytrack.receipt_set_item_category_v2(
     p_user_id bigint,
