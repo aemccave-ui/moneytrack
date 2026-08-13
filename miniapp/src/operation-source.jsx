@@ -1,4 +1,24 @@
-import { OPERATION_SOURCE_LABEL, operationSourceKind } from './operation-source.js'
+const SOURCE_KIND_BY_TYPE = Object.freeze({
+  miniapp: 'manual',
+  manual: 'manual',
+  text: 'text',
+  voice: 'voice',
+  photo_receipt: 'photo_receipt',
+})
+
+const SOURCE_LABEL = Object.freeze({
+  manual: 'Вручную',
+  text: 'Текст',
+  voice: 'Голос',
+  photo_receipt: 'Фото чека',
+})
+
+export function operationSourceKind(operation = {}) {
+  const canonical = String(operation.source_kind || '').trim().toLowerCase()
+  if (SOURCE_LABEL[canonical]) return canonical
+  const sourceType = String(operation.source_type || '').trim().toLowerCase()
+  return SOURCE_KIND_BY_TYPE[sourceType] || null
+}
 
 function SourceGlyph({ kind }) {
   if (kind === 'text') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 10h10M5 14h8M5 18h5" /></svg>
@@ -10,6 +30,6 @@ function SourceGlyph({ kind }) {
 export function OperationSourceIcon({ operation, kind: explicitKind, className = '' }) {
   const kind = explicitKind || operationSourceKind(operation)
   if (!kind) return null
-  const label = OPERATION_SOURCE_LABEL[kind]
+  const label = SOURCE_LABEL[kind]
   return <span className={`operationSourceIcon ${className}`.trim()} title={`Источник: ${label}`} aria-label={`Источник: ${label}`}><SourceGlyph kind={kind} /></span>
 }
