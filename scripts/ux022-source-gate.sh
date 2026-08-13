@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 echo '# Phase'
-echo 'UX-022 source/static'
+echo 'UX-022 / UX-023 source/static'
 echo '# Gate'
 echo 'source_static_lint_build'
 
@@ -69,7 +69,9 @@ python3 -m py_compile \
   scripts/ux022r3-patch-photo-receipt-clock.py \
   scripts/ux022r3-patch-receipt-operation-metadata.py \
   scripts/ux022r3-patch-photo-dedup.py \
-  scripts/ux022r3-patch-runtime-regressions.py
+  scripts/ux022r3-patch-runtime-regressions.py \
+  scripts/ux023-generate-receipt-editor-workflow.py \
+  scripts/ux023-verify-receipt-editor.py
 
 python3 scripts/ux022-verify-source.py
 python3 scripts/ux022r3-verify-grouping.py
@@ -78,6 +80,7 @@ python3 scripts/ux022r3-verify-functional.py
 python3 scripts/ux022r3-verify-count-badges.py
 python3 scripts/ux022r3-verify-reference-settings.py
 python3 scripts/ux022r3-verify-backend-6-8-apply-source.py
+python3 scripts/ux023-verify-receipt-editor.py
 
 cd miniapp
 npm ci
