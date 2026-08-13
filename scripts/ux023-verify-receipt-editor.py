@@ -5,7 +5,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 api = (ROOT / 'miniapp/src/api.js').read_text(encoding='utf-8')
-accounting_api = (ROOT / 'miniapp/src/receipt-accounting-api.js').read_text(encoding='utf-8')
+# Receipt accounting client is part of the canonical common API module.
+accounting_api = api
 recent = (ROOT / 'miniapp/src/RecentOperations.jsx').read_text(encoding='utf-8')
 modal = (ROOT / 'miniapp/src/ReceiptModal.jsx').read_text(encoding='utf-8')
 main = (ROOT / 'miniapp/src/main.jsx').read_text(encoding='utf-8')
