@@ -97,6 +97,25 @@ export async function getTransactionReference(signal) {
   return payload ?? { currencies: [], categories: [] }
 }
 
+export async function getReceiptByTransaction(transactionId, signal) {
+  const payload = await request(`api/v1/receipt?transaction_id=${encodeURIComponent(transactionId)}`, signal, { allowEmpty: true })
+  return payload?.receipt ?? null
+}
+
+export function updateReceiptCurrency(receiptId, currency, signal) {
+  return request('api/v1/receipt/currency', signal, {
+    method: 'PATCH',
+    body: { receipt_id: Number(receiptId), currency: String(currency || '').toUpperCase() },
+  })
+}
+
+export function updateReceiptItemCategory(receiptItemId, categoryId, signal) {
+  return request('api/v1/receipt-item/category', signal, {
+    method: 'PATCH',
+    body: { receipt_item_id: Number(receiptItemId), category_id: categoryId == null ? null : Number(categoryId) },
+  })
+}
+
 export function updateCategory({ categoryId, name, flowType }, signal) {
   return request('api/v1/categories', signal, {
     method: 'PATCH',

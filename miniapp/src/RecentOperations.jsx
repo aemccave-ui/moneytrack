@@ -1,21 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
-import { deleteTransaction, deleteTransfer, getTransactionReference } from './api.js'
+import { deleteTransaction, deleteTransfer, getReceiptByTransaction, getTransactionReference } from './api.js'
+import ReceiptModal from './ReceiptModal.jsx'
 import { SwipeReveal } from './SwipeReveal.jsx'
 import TransactionEditor from './TransactionEditor.jsx'
 import TransferEditor from './TransferEditor.jsx'
 
-let categoryNamePromise = null
+let referencePromise = null
 
-function loadCategoryNames() {
-  if (!categoryNamePromise) {
-    categoryNamePromise = getTransactionReference()
-      .then((refs) => new Map((refs?.categories || []).map((item) => [String(item.id), item.name || item.code || String(item.id)])))
-      .catch((error) => {
-        categoryNamePromise = null
-        throw error
-      })
+function loadTransactionReference() {
+  if (!referencePromise) {
+    referencePromise = getTransactionReference().catch((error) => {
+      referencePromise = null
+      throw error
+    })
   }
-  return categoryNamePromise
+  return referencePromise
 }
 
 function transferIdOf(tx) {
@@ -54,7 +53,7 @@ function DetailRow({ label, value }) {
   return <div className="transactionDetailRow"><span>{label}</span><strong>{value ?? '—'}</strong></div>
 }
 
-function TransactionRow({ tx, privacy, baseCurrency, money, expanded, onExpand, onEdit, onRepeat, onDelete, categoryName }) {
+function TransactionRow({ tx, privacy, baseCurrency, money, expanded, loadingReceipt, onOpen, onEdit, onRepeat, onDelete, categoryName }) {
   const transfer = tx.transaction_type === 'transfer'
   const incoming = transfer && tx.transfer_direction === 'incoming'
   const positive = tx.transaction_type === 'income' || incoming
@@ -76,12 +75,13 @@ function TransactionRow({ tx, privacy, baseCurrency, money, expanded, onExpand, 
           <button
             type="button"
             className="transactionRow"
-            onClick={() => { if (!open) onExpand() }}
+            onClick={() => { if (!open) onOpen() }}
             aria-expanded={expanded}
+            aria-busy={loadingReceipt || undefined}
             aria-label={`${tx.description || operationTypeLabel(tx.transaction_type)}. Смахните влево для действий.`}
           >
             <span className={`transactionTypeMark ${positive ? 'income' : 'expense'}`} aria-hidden="true">{positive ? '↑' : '↓'}</span>
-            <span className="transactionIdentity"><strong>{tx.description || operationTypeLabel(tx.transaction_type)}</strong><small>{tx.account_name || categoryName || tx.category_name || operationTypeLabel(tx.transaction_type)}</small></span>
+            <span className="transactionIdentity"><strong>{tx.description || operationTypeLabel(tx.transaction_type)}</strong><small>{loadingReceipt ? 'Открываю чек…' : (tx.account_name || categoryName || tx.category_name || operationTypeLabel(tx.transaction_type))}</small></span>
             <strong className={`transactionAmount ${positive ? 'income' : 'expense'} sensitive`}>{privacy ? '••••' : money(amount, amountCurrency)}</strong>
           </button>
         )}
@@ -115,11 +115,17 @@ export function RecentOperations({
   const [expandedId, setExpandedId] = useState(null)
   const [editor, setEditor] = useState(null)
   const [busyId, setBusyId] = useState(null)
-  const [categoryNames, setCategoryNames] = useState(() => new Map())
+  const [receiptLoadingId, setReceiptLoadingId] = useState(null)
+  const [receiptView, setReceiptView] = useState(null)
+  const [reference, setReference] = useState({ currencies: [], categories: [] })
+  const categoryNames = useMemo(
+    () => new Map((reference.categories || []).map((item) => [String(item.id), item.name || item.code || String(item.id)])),
+    [reference.categories],
+  )
 
   useEffect(() => {
     let alive = true
-    loadCategoryNames().then((names) => alive && setCategoryNames(names)).catch(() => {})
+    loadTransactionReference().then((refs) => alive && setReference(refs || { currencies: [], categories: [] })).catch(() => {})
     return () => { alive = false }
   }, [])
 
@@ -160,6 +166,33 @@ export function RecentOperations({
     await onDeleted?.()
   }
 
+  const openOperation = async (tx) => {
+    const id = String(tx.id)
+    if (tx.transaction_type === 'transfer') {
+      setExpandedId((current) => current === id ? null : id)
+      return
+    }
+    if (receiptLoadingId != null) return
+    setReceiptLoadingId(id)
+    try {
+      const receipt = await getReceiptByTransaction(tx.id)
+      if (receipt) {
+        setExpandedId(null)
+        setReceiptView({ transaction: tx, receipt })
+      } else {
+        setExpandedId((current) => current === id ? null : id)
+      }
+    } catch (error) {
+      showError(error?.message || 'Не удалось открыть чек')
+    } finally {
+      setReceiptLoadingId(null)
+    }
+  }
+
+  const receiptChanged = async ({ type }) => {
+    if (type === 'currency' || type === 'category') await onDeleted?.()
+  }
+
   const openEditor = (tx, mode) => setEditor({
     operation: tx,
     mode,
@@ -186,7 +219,8 @@ export function RecentOperations({
                       baseCurrency={baseCurrency}
                       money={money}
                       expanded={expandedId === id}
-                      onExpand={() => setExpandedId((current) => current === id ? null : id)}
+                      loadingReceipt={receiptLoadingId === id}
+                      onOpen={() => openOperation(tx)}
                       onRepeat={() => openEditor(tx, 'repeat')}
                       onEdit={() => openEditor(tx, 'edit')}
                       onDelete={() => remove(tx)}
@@ -199,6 +233,7 @@ export function RecentOperations({
           ))}
         </div>
       </section>
+      {receiptView && <ReceiptModal transaction={receiptView.transaction} receipt={receiptView.receipt} reference={reference} onClose={() => setReceiptView(null)} onChanged={receiptChanged} />}
       {editor?.kind === 'transaction' && <TransactionEditor operation={editor.operation} mode={editor.mode} onClose={() => setEditor(null)} onSaved={saved} />}
       {editor?.kind === 'transfer' && <TransferEditor operation={editor.operation} mode={editor.mode} onClose={() => setEditor(null)} onSaved={saved} />}
       {busyId != null && <div className="transactionBusy" role="status">Удаление…</div>}
