@@ -166,26 +166,33 @@ export function RecentOperations({
     await onDeleted?.()
   }
 
+  const fetchReceipt = async (tx) => {
+    const id = String(tx.id)
+    if (receiptLoadingId != null) return { blocked: true, receipt: null }
+    setReceiptLoadingId(id)
+    try {
+      return { blocked: false, receipt: await getReceiptByTransaction(tx.id) }
+    } catch (error) {
+      showError(error?.message || 'Не удалось открыть чек')
+      return { blocked: true, receipt: null }
+    } finally {
+      setReceiptLoadingId(null)
+    }
+  }
+
   const openOperation = async (tx) => {
     const id = String(tx.id)
     if (tx.transaction_type === 'transfer') {
       setExpandedId((current) => current === id ? null : id)
       return
     }
-    if (receiptLoadingId != null) return
-    setReceiptLoadingId(id)
-    try {
-      const receipt = await getReceiptByTransaction(tx.id)
-      if (receipt) {
-        setExpandedId(null)
-        setReceiptView({ transaction: tx, receipt })
-      } else {
-        setExpandedId((current) => current === id ? null : id)
-      }
-    } catch (error) {
-      showError(error?.message || 'Не удалось открыть чек')
-    } finally {
-      setReceiptLoadingId(null)
+    const lookup = await fetchReceipt(tx)
+    if (lookup.blocked) return
+    if (lookup.receipt) {
+      setExpandedId(null)
+      setReceiptView({ transaction: tx, receipt: lookup.receipt })
+    } else {
+      setExpandedId((current) => current === id ? null : id)
     }
   }
 
@@ -193,11 +200,22 @@ export function RecentOperations({
     if (type === 'currency' || type === 'category') await onDeleted?.()
   }
 
-  const openEditor = (tx, mode) => setEditor({
-    operation: tx,
-    mode,
-    kind: tx.transaction_type === 'transfer' ? 'transfer' : 'transaction',
-  })
+  const openEditor = async (tx, mode) => {
+    if (mode === 'edit' && tx.transaction_type !== 'transfer') {
+      const lookup = await fetchReceipt(tx)
+      if (lookup.blocked) return
+      if (lookup.receipt) {
+        setExpandedId(null)
+        setReceiptView({ transaction: tx, receipt: lookup.receipt })
+        return
+      }
+    }
+    setEditor({
+      operation: tx,
+      mode,
+      kind: tx.transaction_type === 'transfer' ? 'transfer' : 'transaction',
+    })
+  }
 
   return (
     <>
