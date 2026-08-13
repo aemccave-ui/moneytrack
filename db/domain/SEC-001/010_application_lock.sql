@@ -157,7 +157,7 @@ begin
         now(),
         now()
     )
-    on conflict (user_id) do update
+    on conflict on constraint user_security_pkey do update
     set
         pin_salt = excluded.pin_salt,
         pin_verifier = excluded.pin_verifier,
@@ -452,7 +452,7 @@ begin
         now(),
         null
     )
-    on conflict (user_id, device_id) do update
+    on conflict on constraint user_biometric_credentials_user_id_device_id_key do update
     set token_hash = excluded.token_hash,
         created_at = now(),
         last_used_at = null,
