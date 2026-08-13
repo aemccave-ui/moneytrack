@@ -118,7 +118,7 @@ export default function ReceiptModal({ transaction = {}, receipt: initialReceipt
         account_name: result?.account_name ?? selectedAccount?.name ?? current?.account_name,
         account_currency: result?.account_currency || draftCurrency,
       }))
-      await onChanged?.({ type: 'accounting', receiptId: receipt.id, result })
+      await onChanged?.({ type: 'currency', accounting: true, receiptId: receipt.id, result })
     } catch (error) {
       showError(error?.message || 'Не удалось сохранить счёт и валюту чека')
     } finally {
