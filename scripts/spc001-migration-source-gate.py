@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 REQUIRED = (
     ".gitignore",
+    "db/domain/SPC-001/011_same_space_trigger_dispatch_hardening.sql",
     "db/domain/SPC-001/300_migration_baseline.sql",
     "db/domain/SPC-001/301_migration_baseline_reference_repair.sql",
     "db/domain/SPC-001/305_migration_preflight.sql",
@@ -64,6 +65,7 @@ def main() -> None:
     print(f"migration_required_source_files=PASS count={len(REQUIRED)}")
 
     gitignore = read(".gitignore")
+    trigger_hardening = read("db/domain/SPC-001/011_same_space_trigger_dispatch_hardening.sql")
     baseline_v2 = read("db/domain/SPC-001/301_migration_baseline_reference_repair.sql")
     preflight = read("db/domain/SPC-001/305_migration_preflight.sql")
     diagnostic = read("db/domain/SPC-001/306_migration_cross_user_diagnostic.sql")
@@ -78,6 +80,24 @@ def main() -> None:
     require(
         "migration_python_cache_ignored",
         "__pycache__/" in gitignore and "*.py[cod]" in gitignore,
+    )
+    require(
+        "migration_trigger_dispatch_hardening_dynamic_record_safe",
+        all(x in trigger_hardening for x in (
+            "create or replace function moneytrack.spc001_assert_same_space_row_v1()",
+            "tg_table_name = 'accounts'",
+            "tg_table_name = 'transactions'",
+            "tg_table_name = 'transfers'",
+            "tg_table_name = 'receipts'",
+            "tg_table_name = 'category_catalog'",
+            "tg_table_name = 'product_catalog'",
+            "tg_table_name = 'budget_rules'",
+            "tg_table_name = 'space_default_accounts'",
+            "tg_table_name = 'space_financial_settings'",
+            "tg_table_name = 'receipt_items'",
+            "SPC001_UNSUPPORTED_SAME_SPACE_TRIGGER_TABLE",
+        ))
+        and re.search(r"tg_table_name\s*=\s*'[^']+'\s+and\s+new\.", trigger_hardening, re.I) is None,
     )
     require(
         "migration_baseline_reference_repair_guarded",
@@ -234,7 +254,15 @@ def main() -> None:
     )
 
     builder = load_builder()
-    require("migration_unit_count", len(builder.MUTATION_UNITS) == 26)
+    require("migration_unit_count", len(builder.MUTATION_UNITS) == 27)
+    require(
+        "migration_trigger_dispatch_hardening_ordered_after_foundation",
+        builder.MUTATION_UNITS[:3] == [
+            "010_tenancy_foundation.sql",
+            "011_same_space_trigger_dispatch_hardening.sql",
+            "012_tenancy_uniqueness_hardening.sql",
+        ],
+    )
     require("migration_builder_uses_reference_repair_v2", all((
         builder.BASELINE == "301_migration_baseline_reference_repair.sql",
         builder.REPAIR == "309_migration_legacy_reference_repair.sql",
@@ -257,6 +285,13 @@ def main() -> None:
         "CONTROLLED LEGACY REFERENCE REPAIR" in commit
         and commit.index("CONTROLLED LEGACY REFERENCE REPAIR")
             < commit.index("-- 6. Reconciliation MUST pass before this transaction can commit."),
+    )
+    require(
+        "migration_trigger_dispatch_hardening_embedded_after_foundation",
+        "SOURCE UNIT: 011_same_space_trigger_dispatch_hardening.sql" in commit
+        and commit.index("SOURCE UNIT: 010_tenancy_foundation.sql")
+            < commit.index("SOURCE UNIT: 011_same_space_trigger_dispatch_hardening.sql")
+            < commit.index("SOURCE UNIT: 012_tenancy_uniqueness_hardening.sql"),
     )
     require(
         "migration_baseline_and_reconcile_embedded",
