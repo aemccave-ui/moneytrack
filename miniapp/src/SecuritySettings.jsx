@@ -33,19 +33,6 @@ function showError(message) {
   else window.alert(message)
 }
 
-function confirmBiometricSettings() {
-  const message = 'Telegram уже получил запрос на доступ к биометрии, но доступ не разрешён. Открыть настройки биометрии Telegram для MoneyTrack?'
-  const webApp = window.Telegram?.WebApp
-
-  return new Promise((resolve) => {
-    if (webApp?.showConfirm) {
-      webApp.showConfirm(message, (confirmed) => resolve(confirmed === true))
-      return
-    }
-    resolve(window.confirm(message))
-  })
-}
-
 const digits = (value) => value.replace(/\D/g, '').slice(0, 6)
 
 export default function SecuritySettings() {
@@ -175,6 +162,18 @@ export default function SecuritySettings() {
     }
   }
 
+  const openBiometricSettings = () => {
+    if (!manager || busy) return
+
+    if (typeof manager.openSettings !== 'function') {
+      showError('Эта версия Telegram не предоставляет настройки биометрии. Обновите Telegram и повторите попытку.')
+      return
+    }
+
+    // Must remain synchronous with the user's button click.
+    manager.openSettings()
+  }
+
   const enableBiometric = async () => {
     if (!manager || busy || status?.pin_enabled !== true) return
     setBusy(true)
@@ -183,15 +182,7 @@ export default function SecuritySettings() {
       let granted = manager.isAccessGranted === true
 
       if (!granted && manager.isAccessRequested === true) {
-        const confirmed = await confirmBiometricSettings()
-        if (!confirmed) return
-
-        if (typeof manager.openSettings !== 'function') {
-          showError('Эта версия Telegram не предоставляет переход к настройкам биометрии. Обновите Telegram и повторите попытку.')
-          return
-        }
-
-        manager.openSettings()
+        showError('Доступ к биометрии ранее не был разрешён. Используйте кнопку «Открыть настройки биометрии Telegram».')
         return
       }
 
@@ -257,18 +248,30 @@ export default function SecuritySettings() {
   )
 
   const biometricServerEnrolled = status?.biometric_enrolled === true
+  const biometricAccessRequested = manager?.isAccessRequested === true
   const biometricAccessGranted = manager?.isAccessGranted === true
   const biometricTokenSaved = manager?.isBiometricTokenSaved === true
+
+  const biometricAccessDenied = Boolean(
+    biometricAccessRequested
+    && !biometricAccessGranted
+  )
+
+  const biometricAccessNeedsRequest = Boolean(
+    !biometricAccessRequested
+    && !biometricAccessGranted
+  )
+
+  const biometricTokenNeedsRepair = Boolean(
+    biometricServerEnrolled
+    && biometricAccessGranted
+    && !biometricTokenSaved
+  )
 
   const biometricReady = Boolean(
     biometricServerEnrolled
     && biometricAccessGranted
     && biometricTokenSaved
-  )
-
-  const biometricNeedsRepair = Boolean(
-    biometricServerEnrolled
-    && !biometricReady
   )
 
   return (
@@ -296,19 +299,43 @@ export default function SecuritySettings() {
         </div>
       )}
 
-      {status?.pin_enabled === true && biometricAvailable && !biometricServerEnrolled && (
-        <button type="button" onClick={enableBiometric} disabled={busy}>Включить биометрию</button>
+      {status?.pin_enabled === true && biometricAvailable && biometricAccessDenied && (
+        <>
+          <small>Telegram не разрешает MoneyTrack использовать биометрию.</small>
+          <button type="button" onClick={openBiometricSettings} disabled={busy}>
+            Открыть настройки биометрии Telegram
+          </button>
+        </>
       )}
 
-      {status?.pin_enabled === true && biometricAvailable && biometricNeedsRepair && (
+      {status?.pin_enabled === true && biometricAvailable && biometricAccessNeedsRequest && (
+        <button type="button" onClick={enableBiometric} disabled={busy}>
+          Разрешить и включить биометрию
+        </button>
+      )}
+
+      {status?.pin_enabled === true
+        && biometricAvailable
+        && biometricAccessGranted
+        && !biometricServerEnrolled && (
+          <button type="button" onClick={enableBiometric} disabled={busy}>
+            Включить биометрию
+          </button>
+      )}
+
+      {status?.pin_enabled === true && biometricAvailable && biometricTokenNeedsRepair && (
         <>
-          <small>Биометрия зарегистрирована, но локальная защита Telegram требует восстановления.</small>
-          <button type="button" onClick={enableBiometric} disabled={busy}>Восстановить биометрию</button>
+          <small>Доступ к биометрии разрешён, но защищённый ключ Telegram не сохранён.</small>
+          <button type="button" onClick={enableBiometric} disabled={busy}>
+            Восстановить ключ биометрии
+          </button>
         </>
       )}
 
       {status?.pin_enabled === true && biometricAvailable && biometricReady && (
-        <button type="button" onClick={disableBiometric} disabled={busy}>Отключить биометрию на этом устройстве</button>
+        <button type="button" onClick={disableBiometric} disabled={busy}>
+          Отключить биометрию на этом устройстве
+        </button>
       )}
       {status?.pin_enabled === true && !biometricAvailable && (
         <small>На этом устройстве Telegram не предоставляет биометрическую разблокировку. PIN остаётся доступен.</small>
