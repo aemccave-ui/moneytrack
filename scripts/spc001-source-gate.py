@@ -45,6 +45,7 @@ def main() -> int:
     finance = read("db/domain/SPC-001/020_space_finance_domain.sql")
     finance_hardening = read("db/domain/SPC-001/021_space_finance_hardening.sql")
     verify_a = read("db/domain/SPC-001/090_verify_tenancy_foundation.sql")
+    verify_uniqueness = read("db/domain/SPC-001/091_verify_space_uniqueness_bootstrap.sql")
     lifecycle = read("db/domain/SPC-001/110_space_lifecycle.sql")
     erasure = read("db/domain/SPC-001/120_user_erasure_guard.sql")
     capture = read("db/domain/SPC-001/210_capture_projection.sql")
@@ -60,6 +61,7 @@ def main() -> int:
         and finance
         and finance_hardening
         and verify_a
+        and verify_uniqueness
     )
     stage_b_complete = bool(lifecycle and erasure)
     stage_c_complete = bool(capture)
@@ -123,6 +125,14 @@ def main() -> int:
                 "ux_transactions_source_idempotency",
                 "ux_transfers_source_idempotency",
             )
+            and has_all(
+                verify_uniqueness,
+                "SPACE_ACCOUNT_UNIQUENESS=PASS",
+                "SPACE_CATEGORY_UNIQUENESS=PASS",
+                "SPACE_PRODUCT_UNIQUENESS=PASS",
+                "SPACE_SOURCE_IDEMPOTENCY=PASS",
+                "rollback;",
+            )
             if stage_a_complete
             else None
         ),
@@ -135,6 +145,11 @@ def main() -> int:
                 "on conflict (space_id, code) where space_id is not null",
                 "current_workspace_id",
                 "assert_space_member_v1",
+            )
+            and has_all(
+                verify_uniqueness,
+                "NEW_USER_SPACE_BOOTSTRAP=PASS",
+                "spc001_user_bootstrap_v1",
             )
             if stage_a_complete
             else None
@@ -221,6 +236,11 @@ def main() -> int:
                 "TENANT_ISOLATION=PASS",
                 "SHARED_FINANCIAL_RIGHTS=PASS",
                 "MEMBER_REMOVAL_IMMEDIATE=PASS",
+                "rollback;",
+            )
+            and has_all(
+                verify_uniqueness,
+                "Synthetic state is always rolled back",
                 "rollback;",
             )
             if stage_a_complete
