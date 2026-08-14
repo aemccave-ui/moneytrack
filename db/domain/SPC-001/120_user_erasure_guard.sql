@@ -145,16 +145,16 @@ begin
         delete from moneytrack.workspace_members wm
          where wm.workspace_id=any(v_owned_space_ids);
 
-        -- Other user preferences should not point at a solo owned Space, but
-        -- clear defensively before deleting it.
+        -- Any USER_SPACE_PREFERENCE pointer into a retiring owned Space must be
+        -- cleared before the workspace row is deleted. This includes the erased
+        -- owner itself: its user_settings row is deleted later, but its FK still
+        -- participates in referential integrity at this point in the transaction.
         update moneytrack.user_settings us
            set current_workspace_id=null,updated_at=now()
-         where us.user_id<>p_user_id
-           and us.current_workspace_id=any(v_owned_space_ids);
+         where us.current_workspace_id=any(v_owned_space_ids);
         update moneytrack.user_settings us
            set default_capture_space_id=null,updated_at=now()
-         where us.user_id<>p_user_id
-           and us.default_capture_space_id=any(v_owned_space_ids);
+         where us.default_capture_space_id=any(v_owned_space_ids);
 
         delete from moneytrack.workspaces w
          where w.id=any(v_owned_space_ids);
