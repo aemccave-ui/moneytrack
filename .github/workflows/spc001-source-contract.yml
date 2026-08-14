@@ -97,8 +97,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # SPC composes on top of the already accepted API-2C production
+          # contract: the legacy /moneytrack-test webhook is not a valid ingress.
+          python scripts/api-2c-transform-remove-test-ingress.py \
+            --before workflows/moneytrack-DER2Lc3dT2afyQhy.json \
+            --after /tmp/spc001-bot-api2c.json
           python scripts/spc001-transform-bot-capture.py \
-            workflows/moneytrack-DER2Lc3dT2afyQhy.json \
+            /tmp/spc001-bot-api2c.json \
             /tmp/spc001-bot-capture.json
           python scripts/spc001-transform-bot-receipt-category.py \
             /tmp/spc001-bot-capture.json \
@@ -110,6 +115,8 @@ jobs:
           doc=json.loads(p.read_text(encoding='utf-8'))
           w=doc[0] if isinstance(doc,list) else doc
           assert w['id']=='DER2Lc3dT2afyQhy'
+          names={n.get('name') for n in w.get('nodes',[])}
+          assert 'Webhook moneytrack-test' not in names
           text=p.read_text(encoding='utf-8')
           assert 'bot_capture_context_v1' in text
           assert 'receipt_projection_set_item_category_hint_v1' in text
