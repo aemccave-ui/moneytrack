@@ -16,6 +16,13 @@ checks = {
         "ux022_account_has_active_children_v1(fa.user_id,fa.id)" in VERIFY
         and "not moneytrack.ux022_account_has_active_children_v1(fa.user_id,fa.id)" in VERIFY
     ),
+    "capture_verifier_personal_account_matches_transaction_currency": (
+        "select upper(s.base_currency) into v_currency" in VERIFY
+        and "upper(pa.currency_code)=v_currency" in VERIFY
+    ),
+    "capture_verifier_family_account_matches_transaction_currency": (
+        "upper(fa.currency_code)=v_currency" in VERIFY
+    ),
     "capture_verifier_preserves_ux022_group_guard": (
         "ACCOUNT_GROUP_NOT_POSTABLE" in VERIFY
     ),
