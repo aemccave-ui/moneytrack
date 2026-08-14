@@ -53,14 +53,25 @@ SPACE_NATIVE_MARKERS = (
     "capture_create_projection_",
     "capture_receipt_ingest_",
     "receipt_projection_",
+    "capture_categories_space_read_v1(",
+    "capture_receipt_duplicate_probe_v1(",
     "space_resolve_default_capture_v1(",
     "bot_capture_context_v1(",
+    "user_bootstrap_v1(",
 )
 
 USER_SCOPE_PATTERNS = (
     re.compile(r"\b(?:[a-z_][a-z0-9_]*\.)?user_id\s*=", re.I),
     re.compile(r"=\s*(?:[a-z_][a-z0-9_]*\.)?user_id\b", re.I),
     re.compile(r"\buser_id\s+in\s*\(", re.I),
+)
+
+DIRECT_DML_PATTERNS = tuple(
+    re.compile(
+        r"\b(?:insert\s+into|update|delete\s+from)\s+" + re.escape(table) + r"\b",
+        re.I,
+    )
+    for table in FINANCIAL_TABLES
 )
 
 INGRESS_TYPES = {
@@ -118,6 +129,11 @@ def findings_for_sql(sql: str) -> list[str]:
     lower = sql.lower()
     findings: list[str] = []
     has_financial_table = any(table in lower for table in FINANCIAL_TABLES)
+
+    for pattern in DIRECT_DML_PATTERNS:
+        if pattern.search(sql):
+            findings.append("direct_financial_dml")
+            break
 
     for fn in LEGACY_FUNCTIONS:
         if fn in lower:
