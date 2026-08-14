@@ -145,9 +145,20 @@ export default function SecuritySettings() {
     let serverEnrolled = false
     try {
       let granted = manager.isAccessGranted === true
+
+      if (
+        !granted
+        && manager.isAccessRequested === true
+        && typeof manager.openSettings === 'function'
+      ) {
+        manager.openSettings()
+        return
+      }
+
       if (!granted) granted = await requestBiometricAccess(manager)
+
       if (!granted) {
-        showError('Telegram не дал доступ к биометрии. PIN остаётся доступен.')
+        showError('Telegram не дал доступ к биометрии. Повторите действие, чтобы открыть настройки Telegram. PIN остаётся доступен.')
         return
       }
       const result = await enrollBiometric(manager.deviceId)
@@ -177,9 +188,12 @@ export default function SecuritySettings() {
     if (!manager || busy) return
     setBusy(true)
     try {
-      // Server is authoritative: revoke first, then clear the local Telegram token.
+      // Fail closed: do not revoke the server credential until Telegram
+      // confirms that the protected on-device token was removed.
+      const removed = await updateBiometricToken(manager, '')
+      if (!removed) throw new Error('BIOMETRIC_TOKEN_REMOVE_FAILED')
+
       await revokeBiometric(manager.deviceId)
-      try { await updateBiometricToken(manager, '') } catch { /* best effort */ }
       await refresh(manager)
 
       window.dispatchEvent(new CustomEvent('moneytrack:security-changed', {
@@ -196,7 +210,26 @@ export default function SecuritySettings() {
     }
   }
 
-  const biometricAvailable = Boolean(manager?.isInited && manager?.isBiometricAvailable && manager?.deviceId)
+  const biometricAvailable = Boolean(
+    manager?.isInited
+    && manager?.isBiometricAvailable
+    && manager?.deviceId
+  )
+
+  const biometricServerEnrolled = status?.biometric_enrolled === true
+  const biometricAccessGranted = manager?.isAccessGranted === true
+  const biometricTokenSaved = manager?.isBiometricTokenSaved === true
+
+  const biometricReady = Boolean(
+    biometricServerEnrolled
+    && biometricAccessGranted
+    && biometricTokenSaved
+  )
+
+  const biometricNeedsRepair = Boolean(
+    biometricServerEnrolled
+    && !biometricReady
+  )
 
   return (
     <section className="securitySettings" aria-label="Защита приложения">
@@ -223,10 +256,18 @@ export default function SecuritySettings() {
         </div>
       )}
 
-      {status?.pin_enabled === true && biometricAvailable && !status?.biometric_enrolled && (
+      {status?.pin_enabled === true && biometricAvailable && !biometricServerEnrolled && (
         <button type="button" onClick={enableBiometric} disabled={busy}>Включить биометрию</button>
       )}
-      {status?.pin_enabled === true && biometricAvailable && status?.biometric_enrolled && (
+
+      {status?.pin_enabled === true && biometricAvailable && biometricNeedsRepair && (
+        <>
+          <small>Биометрия зарегистрирована, но локальная защита Telegram требует восстановления.</small>
+          <button type="button" onClick={enableBiometric} disabled={busy}>Восстановить биометрию</button>
+        </>
+      )}
+
+      {status?.pin_enabled === true && biometricAvailable && biometricReady && (
         <button type="button" onClick={disableBiometric} disabled={busy}>Отключить биометрию на этом устройстве</button>
       )}
       {status?.pin_enabled === true && !biometricAvailable && (
