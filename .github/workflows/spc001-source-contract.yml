@@ -60,6 +60,12 @@ jobs:
           set -euo pipefail
           python scripts/spc001-cumulative-source-gate.py
 
+      - name: SPC-001 bootstrap conflict source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-bootstrap-conflict-source-gate.py
+
       - name: SPC-001D atomic migration source gate
         shell: bash
         run: |
