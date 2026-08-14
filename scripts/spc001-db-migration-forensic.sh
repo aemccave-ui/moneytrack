@@ -34,6 +34,7 @@ mkdir -p "$OUTPUT_DIR"
 COMMIT_BUNDLE="$OUTPUT_DIR/spc001-migration-commit.sql"
 ROLLBACK_BUNDLE="$OUTPUT_DIR/spc001-migration-rollback.sql"
 DIAGNOSTIC_REPORT="$OUTPUT_DIR/db-cross-user-diagnostic.txt"
+PROVENANCE_REPORT="$OUTPUT_DIR/db-reference-provenance.txt"
 PREFLIGHT_REPORT="$OUTPUT_DIR/db-preflight.txt"
 MANIFEST="$OUTPUT_DIR/SHA256SUMS"
 
@@ -82,6 +83,14 @@ grep -Fx 'SPC001_CROSS_USER_DIAGNOSTIC=END' "$DIAGNOSTIC_REPORT" >/dev/null
 echo 'cross_user_diagnostic=PASS'
 
 echo
+echo '=== LIVE POSTGRESQL READ-ONLY REFERENCE PROVENANCE ==='
+ux022_db_psql_file "$ROOT/db/domain/SPC-001/307_migration_reference_provenance_diagnostic.sql" \
+  2>&1 | tee "$PROVENANCE_REPORT"
+grep -Fx 'SPC001_REFERENCE_PROVENANCE_DIAGNOSTIC=BEGIN' "$PROVENANCE_REPORT" >/dev/null
+grep -Fx 'SPC001_REFERENCE_PROVENANCE_DIAGNOSTIC=END' "$PROVENANCE_REPORT" >/dev/null
+echo 'reference_provenance_diagnostic=PASS'
+
+echo
 echo '=== LIVE POSTGRESQL READ-ONLY PREFLIGHT ==='
 set +e
 ux022_db_psql_file "$ROOT/db/domain/SPC-001/305_migration_preflight.sql" \
@@ -95,6 +104,7 @@ set -e
     spc001-migration-commit.sql \
     spc001-migration-rollback.sql \
     db-cross-user-diagnostic.txt \
+    db-reference-provenance.txt \
     db-preflight.txt \
     > SHA256SUMS
 )
@@ -112,7 +122,7 @@ echo 'PRODUCTION_MUTATION=NONE'
 if [[ "$PREFLIGHT_RC" -ne 0 ]]; then
   echo "SPC001_DB_PREFLIGHT_RC=$PREFLIGHT_RC"
   echo 'SPC001_DB_MIGRATION_FORENSIC=FAIL live_db_preflight'
-  echo 'NEXT=classify cross-user diagnostic and add only deterministic migration repair'
+  echo 'NEXT=classify reference provenance before any migration repair'
   exit "$PREFLIGHT_RC"
 fi
 
