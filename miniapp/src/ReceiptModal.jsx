@@ -5,6 +5,7 @@ import { hierarchyOptions } from './hierarchy-options.js'
 import { OperationSourceIcon } from './operation-source.jsx'
 import { currencyOptions as buildCurrencyOptions } from './reference-options.js'
 import { SmartSelect } from './SmartSelect.jsx'
+import { useSpace } from './space-context.js'
 
 const idOf = (item) => item?.id ?? item?.account_id
 const parentOf = (item) => item?.parent_id ?? item?.parent_account_id ?? item?.account_parent_id ?? null
@@ -29,6 +30,7 @@ function receiptDateTime(value, fallbackDate) {
 }
 
 export default function ReceiptModal({ transaction = {}, receipt: initialReceipt, reference = {}, onClose, onChanged }) {
+  const { activeSpace } = useSpace()
   const [receipt, setReceipt] = useState(initialReceipt)
   const [busy, setBusy] = useState('')
   const [accounts, setAccounts] = useState([])
@@ -118,6 +120,7 @@ export default function ReceiptModal({ transaction = {}, receipt: initialReceipt
           <button type="button" className="receiptModalClose" onClick={onClose} aria-label="Закрыть">×</button>
           <OperationSourceIcon operation={transaction} kind="photo_receipt" className="receiptSourceIcon" />
           <div className="receiptMerchant">{receipt?.shop_name || transaction.description || 'Чек'}</div>
+          {activeSpace && <div className="spaceContextPill receiptModalSpace" title={activeSpace.name}>{activeSpace.name}</div>}
           <div className="receiptDate">{receiptDateTime(receipt?.transaction_date || transaction.transaction_date, receipt?.receipt_date)}</div>
           <div className="receiptTotal">{receiptAmount(receipt?.total_amount ?? transaction.amount_original, displayedCurrency)}</div>
           <div className="receiptAccountingControls">
