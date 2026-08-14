@@ -156,7 +156,9 @@ begin
         raise exception 'BOOTSTRAP_TEMPLATE_SETTINGS_MISSING' using errcode = 'P0001';
     end if;
 
-    -- Top-level accounts.
+    -- Top-level accounts. The Space/code key is a partial unique index rather
+    -- than a named constraint, so targetless DO NOTHING avoids PL/pgSQL output
+    -- variable ambiguity while preserving idempotent bootstrap semantics.
     insert into moneytrack.accounts (
         user_id, space_id, code, name, account_type, currency_code,
         is_active, created_at, sort_order, parent_id,
@@ -170,7 +172,7 @@ begin
     where ta.user_id = 0
       and ta.space_id is null
       and ta.parent_id is null
-    on conflict (space_id, code) where space_id is not null do nothing;
+    on conflict do nothing;
 
     -- Child accounts preserve the template parent topology inside the Space.
     insert into moneytrack.accounts (
@@ -193,7 +195,7 @@ begin
     where child.user_id = 0
       and child.space_id is null
       and child.parent_id is not null
-    on conflict (space_id, code) where space_id is not null do nothing;
+    on conflict do nothing;
 
     perform 1
     from moneytrack.catalog_ensure_space_categories_v1(p_actor_user_id, p_space_id);
@@ -203,7 +205,7 @@ begin
     ) values (
         p_space_id, v_base_currency, v_report_currency, now(), now()
     )
-    on conflict (space_id) do nothing;
+    on conflict on constraint space_financial_settings_pkey do nothing;
 
     -- Per-currency defaults follow global template mappings by account code.
     insert into moneytrack.space_default_accounts(
@@ -224,7 +226,7 @@ begin
       on target.space_id = p_space_id
      and target.code = template_account.code
     where td.user_id = 0
-    on conflict (space_id, currency_code) do update
+    on conflict on constraint space_default_accounts_pkey do update
        set account_id = excluded.account_id,
            updated_at = now();
 
@@ -325,7 +327,7 @@ begin
         v_language,
         v_base
     )
-    on conflict (telegram_user_id) do update
+    on conflict on constraint app_users_telegram_user_id_key do update
        set username = excluded.username,
            first_name = excluded.first_name,
            language_code = coalesce(moneytrack.app_users.language_code, excluded.language_code),
@@ -343,7 +345,7 @@ begin
         v_user_id, v_language, v_base, v_base,
         v_personal_space, now(), now()
     )
-    on conflict (user_id) do update
+    on conflict on constraint user_settings_pkey do update
        set language_code = coalesce(moneytrack.user_settings.language_code, excluded.language_code),
            current_workspace_id = coalesce(moneytrack.user_settings.current_workspace_id, excluded.current_workspace_id),
            updated_at = now();
@@ -364,10 +366,10 @@ begin
           and coalesce(w.is_active, true) = true
     ) then
         v_current_space := v_personal_space;
-        update moneytrack.user_settings
+        update moneytrack.user_settings us
            set current_workspace_id = v_current_space,
                updated_at = now()
-         where user_id = v_user_id;
+         where us.user_id = v_user_id;
     end if;
 
     -- Personal finance is always initialized. If current Space is shared and
