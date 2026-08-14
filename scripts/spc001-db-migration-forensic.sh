@@ -33,6 +33,7 @@ mkdir -p "$OUTPUT_DIR"
 
 COMMIT_BUNDLE="$OUTPUT_DIR/spc001-migration-commit.sql"
 ROLLBACK_BUNDLE="$OUTPUT_DIR/spc001-migration-rollback.sql"
+DIAGNOSTIC_REPORT="$OUTPUT_DIR/db-cross-user-diagnostic.txt"
 PREFLIGHT_REPORT="$OUTPUT_DIR/db-preflight.txt"
 MANIFEST="$OUTPUT_DIR/SHA256SUMS"
 
@@ -73,17 +74,27 @@ print('rollback_candidate=PASS')
 PY
 
 echo
+echo '=== LIVE POSTGRESQL READ-ONLY CROSS-USER DIAGNOSTIC ==='
+ux022_db_psql_file "$ROOT/db/domain/SPC-001/306_migration_cross_user_diagnostic.sql" \
+  2>&1 | tee "$DIAGNOSTIC_REPORT"
+grep -Fx 'SPC001_CROSS_USER_DIAGNOSTIC=BEGIN' "$DIAGNOSTIC_REPORT" >/dev/null
+grep -Fx 'SPC001_CROSS_USER_DIAGNOSTIC=END' "$DIAGNOSTIC_REPORT" >/dev/null
+echo 'cross_user_diagnostic=PASS'
+
+echo
 echo '=== LIVE POSTGRESQL READ-ONLY PREFLIGHT ==='
+set +e
 ux022_db_psql_file "$ROOT/db/domain/SPC-001/305_migration_preflight.sql" \
-  | tee "$PREFLIGHT_REPORT"
-grep -Fx 'SPC001_DB_PREFLIGHT=PASS' "$PREFLIGHT_REPORT" >/dev/null
-echo 'live_db_preflight=PASS'
+  2>&1 | tee "$PREFLIGHT_REPORT"
+PREFLIGHT_RC=${PIPESTATUS[0]}
+set -e
 
 (
   cd "$OUTPUT_DIR"
   sha256sum \
     spc001-migration-commit.sql \
     spc001-migration-rollback.sql \
+    db-cross-user-diagnostic.txt \
     db-preflight.txt \
     > SHA256SUMS
 )
@@ -97,5 +108,15 @@ echo 'N8N_IMPORT=NONE'
 echo 'N8N_ACTIVATION=NONE'
 echo 'PREVIEW_MUTATION=NONE'
 echo 'PRODUCTION_MUTATION=NONE'
+
+if [[ "$PREFLIGHT_RC" -ne 0 ]]; then
+  echo "SPC001_DB_PREFLIGHT_RC=$PREFLIGHT_RC"
+  echo 'SPC001_DB_MIGRATION_FORENSIC=FAIL live_db_preflight'
+  echo 'NEXT=classify cross-user diagnostic and add only deterministic migration repair'
+  exit "$PREFLIGHT_RC"
+fi
+
+grep -Fx 'SPC001_DB_PREFLIGHT=PASS' "$PREFLIGHT_REPORT" >/dev/null
+echo 'live_db_preflight=PASS'
 echo 'SPC001_DB_MIGRATION_FORENSIC=PASS'
 echo 'NEXT=prepare controlled DB backup + atomic apply gate'
