@@ -31,6 +31,7 @@ RECONCILE = "312_migration_reconciliation_guard_reference_repair.sql"
 
 MUTATION_UNITS = [
     "010_tenancy_foundation.sql",
+    "011_same_space_trigger_dispatch_hardening.sql",
     "012_tenancy_uniqueness_hardening.sql",
     "013_actor_erasure_fk_hardening.sql",
     "014_space_bootstrap.sql",
