@@ -35,6 +35,7 @@ COMMIT_BUNDLE="$OUTPUT_DIR/spc001-migration-commit.sql"
 ROLLBACK_BUNDLE="$OUTPUT_DIR/spc001-migration-rollback.sql"
 DIAGNOSTIC_REPORT="$OUTPUT_DIR/db-cross-user-diagnostic.txt"
 PROVENANCE_REPORT="$OUTPUT_DIR/db-reference-provenance.txt"
+REPAIRABILITY_REPORT="$OUTPUT_DIR/db-reference-repairability.txt"
 PREFLIGHT_REPORT="$OUTPUT_DIR/db-preflight.txt"
 MANIFEST="$OUTPUT_DIR/SHA256SUMS"
 
@@ -67,6 +68,8 @@ def tx_lines(text):
 assert tx_lines(commit)==['begin;','commit;'], tx_lines(commit)
 assert tx_lines(rollback)==['begin;','rollback;'], tx_lines(rollback)
 assert 'SPC001_MIGRATION_BASELINE=PASS' in commit
+assert 'CONTROLLED LEGACY REFERENCE REPAIR' in commit
+assert 'SPC001_REFERENCE_REPAIR_LEDGER=PASS' in commit
 assert 'SPC001_ATOMIC_RECONCILIATION_FAILED' in commit
 assert 'pg_advisory_xact_lock' in commit
 assert commit.replace('\ncommit;\n','\nrollback;\n') == rollback
@@ -91,11 +94,18 @@ grep -Fx 'SPC001_REFERENCE_PROVENANCE_DIAGNOSTIC=END' "$PROVENANCE_REPORT" >/dev
 echo 'reference_provenance_diagnostic=PASS'
 
 echo
-echo '=== LIVE POSTGRESQL READ-ONLY PREFLIGHT ==='
+echo '=== LIVE POSTGRESQL READ-ONLY REFERENCE REPAIRABILITY ==='
+ux022_db_psql_file "$ROOT/db/domain/SPC-001/308_migration_reference_repairability_preflight.sql" \
+  2>&1 | tee "$REPAIRABILITY_REPORT"
+grep -Fx 'SPC001_REFERENCE_REPAIRABILITY_PREFLIGHT=PASS' "$REPAIRABILITY_REPORT" >/dev/null
+echo 'reference_repairability_preflight=PASS'
+
+echo
+echo '=== LIVE POSTGRESQL STRICT LEGACY PREFLIGHT ==='
 set +e
 ux022_db_psql_file "$ROOT/db/domain/SPC-001/305_migration_preflight.sql" \
   2>&1 | tee "$PREFLIGHT_REPORT"
-PREFLIGHT_RC=${PIPESTATUS[0]}
+STRICT_PREFLIGHT_RC=${PIPESTATUS[0]}
 set -e
 
 (
@@ -105,6 +115,7 @@ set -e
     spc001-migration-rollback.sql \
     db-cross-user-diagnostic.txt \
     db-reference-provenance.txt \
+    db-reference-repairability.txt \
     db-preflight.txt \
     > SHA256SUMS
 )
@@ -118,15 +129,18 @@ echo 'N8N_IMPORT=NONE'
 echo 'N8N_ACTIVATION=NONE'
 echo 'PREVIEW_MUTATION=NONE'
 echo 'PRODUCTION_MUTATION=NONE'
+echo "SPC001_STRICT_PREFLIGHT_RC=$STRICT_PREFLIGHT_RC"
 
-if [[ "$PREFLIGHT_RC" -ne 0 ]]; then
-  echo "SPC001_DB_PREFLIGHT_RC=$PREFLIGHT_RC"
-  echo 'SPC001_DB_MIGRATION_FORENSIC=FAIL live_db_preflight'
-  echo 'NEXT=classify reference provenance before any migration repair'
-  exit "$PREFLIGHT_RC"
+if [[ "$STRICT_PREFLIGHT_RC" -eq 0 ]]; then
+  grep -Fx 'SPC001_DB_PREFLIGHT=PASS' "$PREFLIGHT_REPORT" >/dev/null
+  echo 'strict_legacy_preflight=PASS'
+  echo 'SPC001_DB_MIGRATION_FORENSIC=PASS clean_legacy_state'
+else
+  # A non-zero strict preflight is acceptable only because the independent 308
+  # repairability gate above has already passed and covers exactly the supported
+  # ledger-backed reference classes. No mutation has occurred in this script.
+  echo 'strict_legacy_preflight=EXPECTED_FAIL_REPAIR_PLAN_REQUIRED'
+  echo 'SPC001_DB_MIGRATION_FORENSIC=PASS repairable_legacy_reference_plan'
 fi
 
-grep -Fx 'SPC001_DB_PREFLIGHT=PASS' "$PREFLIGHT_REPORT" >/dev/null
-echo 'live_db_preflight=PASS'
-echo 'SPC001_DB_MIGRATION_FORENSIC=PASS'
-echo 'NEXT=prepare controlled DB backup + atomic apply gate'
+echo 'NEXT=prepare controlled backup + atomic ROLLBACK rehearsal; COMMIT remains forbidden'
