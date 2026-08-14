@@ -121,7 +121,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/spc001-audit-workflow-tenancy.py /tmp/spc001-bot-final.json
+          # SEC-001 preserves disconnected legacy command/report nodes for
+          # forensic rollback. SPC audits the execution-reachable Telegram Bot
+          # surface and fails safe to all-nodes when no ingress is recognized.
+          python scripts/spc001-audit-workflow-tenancy.py \
+            --reachable-only \
+            /tmp/spc001-bot-final.json
 
       - name: State source-only boundary
         shell: bash
