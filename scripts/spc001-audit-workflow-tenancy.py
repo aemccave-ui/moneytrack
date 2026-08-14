@@ -9,7 +9,9 @@ legacy command/report nodes for forensic/rollback while proving they are
 unreachable from TelegramTrigger.
 
 If a workflow has no recognized ingress trigger, reachable-only mode fails safe by
-scanning every node instead of assuming orphaned nodes are harmless.
+scanning every node instead of assuming orphaned nodes are harmless. Failed runtime
+findings emit the complete compact SQL so a subsequent source transform can be
+based on exact live evidence rather than a truncated query fragment.
 """
 from __future__ import annotations
 
@@ -207,7 +209,7 @@ def main():
                         "workflow_name": workflow_name,
                         "node": str(node.get("name") or "<no-name>"),
                         "findings": findings,
-                        "sql": compact(sql)[:800],
+                        "sql": compact(sql),
                     })
 
     print(f"SPC001_TENANCY_AUDIT_WORKFLOWS={workflow_count}")
