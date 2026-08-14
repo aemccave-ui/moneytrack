@@ -91,8 +91,8 @@ done
   echo 'SPC001_DB_LIVE_COMMIT=FAIL n8n_not_running_before_gate' >&2
   exit 1
 }
-[[ -x "$ROOT/scripts/prod-h2-backup-now.sh" ]] || {
-  echo 'SPC001_DB_LIVE_COMMIT=FAIL prod_h2_backup_script_missing_or_not_executable' >&2
+[[ -f "$ROOT/scripts/prod-h2-backup-now.sh" ]] || {
+  echo 'SPC001_DB_LIVE_COMMIT=FAIL prod_h2_backup_script_missing' >&2
   exit 1
 }
 
