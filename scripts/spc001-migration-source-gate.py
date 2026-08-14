@@ -173,11 +173,15 @@ def main() -> None:
         )),
     )
     require(
-        "migration_forensic_has_no_apply",
+        "migration_forensic_is_read_only_repairability_gate",
         "306_migration_cross_user_diagnostic.sql" in forensic
         and "307_migration_reference_provenance_diagnostic.sql" in forensic
+        and "308_migration_reference_repairability_preflight.sql" in forensic
         and "305_migration_preflight.sql" in forensic
+        and "db-reference-repairability.txt" in forensic
+        and "SPC001_DB_MIGRATION_FORENSIC=PASS repairable_legacy_reference_plan" in forensic
         and "ux022_db_psql_file \"$COMMIT_BUNDLE\"" not in forensic
+        and "ux022_db_psql_file \"$ROLLBACK_BUNDLE\"" not in forensic
         and "DB_MUTATION=NONE" in forensic,
     )
 
