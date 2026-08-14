@@ -73,6 +73,12 @@ jobs:
             --output /tmp/spc001-migration-rollback.sql \
             --final rollback
 
+      - name: SPC-001D3 live commit source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-live-commit-source-gate.py
+
       - name: Generate financial adapter candidate
         shell: bash
         run: |
