@@ -65,6 +65,7 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/spc001-migration-source-gate.py
+          python scripts/spc001-repair-sql-static-gate.py
           python scripts/spc001-build-db-migration.py \
             --output /tmp/spc001-migration-commit.sql \
             --final commit
