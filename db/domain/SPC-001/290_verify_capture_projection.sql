@@ -51,7 +51,9 @@ begin
     select s.base_currency into v_currency
       from moneytrack.space_financial_settings s where s.space_id=v_a.space_id;
 
-    -- Select equivalent template-derived account/category codes in both Spaces.
+    -- Select equivalent template-derived POSTABLE leaf account codes in both
+    -- Spaces. UX-022 grouping accounts are structural and intentionally reject
+    -- direct transaction posting with ACCOUNT_GROUP_NOT_POSTABLE.
     select pa.id,fa.id into v_p_account,v_f_account
       from moneytrack.accounts pa
       join moneytrack.accounts fa on fa.code=pa.code
@@ -59,6 +61,8 @@ begin
        and fa.space_id=v_family
        and coalesce(pa.is_active,true)=true
        and coalesce(fa.is_active,true)=true
+       and not moneytrack.ux022_account_has_active_children_v1(pa.user_id,pa.id)
+       and not moneytrack.ux022_account_has_active_children_v1(fa.user_id,fa.id)
      order by pa.id limit 1;
 
     select pc.id,fc.id into v_p_cat,v_f_cat
