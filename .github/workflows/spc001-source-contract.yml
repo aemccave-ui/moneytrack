@@ -72,6 +72,12 @@ jobs:
           set -euo pipefail
           python scripts/spc001-erasure-pointer-source-gate.py
 
+      - name: SPC-001 capture verifier source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-capture-verifier-source-gate.py
+
       - name: SPC-001D atomic migration source gate
         shell: bash
         run: |
