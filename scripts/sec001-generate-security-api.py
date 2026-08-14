@@ -403,7 +403,7 @@ if (row.error) {
   const match=raw.match(/\b([A-Z][A-Z0-9_]+)\b/);
   return [{json:{ok:false,http_status:400,error:{code:match?match[1]:"BIOMETRIC_ENROLL_FAILED"}}}];
 }
-const prepared=$("Biometric Enroll Verify").first().json||{};
+const prepared=$("Biometric Enroll Prepare").first().json||{};
 return [{json:{ok:true,http_status:200,data:{
   device_id:prepared.device_id,
   biometric_token:prepared.biometric_token

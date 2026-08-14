@@ -114,6 +114,16 @@ security_raw = gen.build('test-postgres', 'Postgres account')
 security_candidate, protected_security = transformer.transform(security_raw, 'test-postgres', 'Postgres account')
 raw_nodes = nodes(security_raw)
 
+enroll_format_js = str(
+    (raw_nodes['Biometric Enroll Format'].get('parameters') or {}).get('jsCode') or ''
+)
+req(
+    'biometric_enroll_returns_prepared_token',
+    '$("Biometric Enroll Prepare")' in enroll_format_js
+    and '$("Biometric Enroll Verify")' not in enroll_format_js
+    and 'biometric_token:prepared.biometric_token' in enroll_format_js,
+)
+
 # ------------------------------------------------------------------
 # New-user Class A bootstrap: inspect actual generated graph.
 # ------------------------------------------------------------------
