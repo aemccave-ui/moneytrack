@@ -75,7 +75,7 @@ def main() -> None:
             "target.space_id=p.space_id",
             "target.code is not distinct from src.code",
             "set income_category_ids=",
-            "set expense_category_ids=",
+            "expense_category_ids=(",
             "order by x.ord",
             "SPC001_FILTER_PRESET_REPAIR_COVERAGE_FAILED",
             "SPC001_FILTER_PRESET_REFERENCE_REPAIR=PASS",
@@ -88,6 +88,23 @@ def main() -> None:
         "kind text not null check (kind in ('income_category','expense_category'))" in repair
         and "set account_ids=" not in repair.lower()
         and "old_target_id <> new_target_id" in repair,
+    )
+
+    repair_updates = re.findall(
+        r"\bupdate\s+moneytrack\.filter_presets\s+p\b",
+        repair,
+        flags=re.I,
+    )
+    atomic_set = re.search(
+        r"\bupdate\s+moneytrack\.filter_presets\s+p\s+"
+        r"set\s+income_category_ids\s*=.*?,\s*"
+        r"expense_category_ids\s*=.*?\s+where\s+exists\s*\(",
+        repair,
+        flags=re.I | re.S,
+    )
+    require(
+        "filter_preset_reference_repair_single_row_atomic_update",
+        len(repair_updates) == 1 and atomic_set is not None,
     )
 
     require(
