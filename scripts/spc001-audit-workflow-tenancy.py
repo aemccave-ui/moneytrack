@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
 """Fail-closed SPC-001 audit for exported/transformed n8n workflows.
 
-This is intentionally conservative. It scans PostgreSQL node SQL after all SPC
-transforms and rejects legacy financial ownership/read paths that still scope by
-user_id or access legacy receipt classification storage directly. Security/user-
-global queries are not financial findings unless they reference financial tables.
+By default every PostgreSQL node is scanned. With ``--reachable-only`` the audit
+starts from actual n8n ingress triggers (Telegram/Webhook/Execute Workflow) and
+scans only nodes reachable through workflow connections. This is required for the
+canonical Bot snapshot because SEC-001 intentionally preserves disconnected
+legacy command/report nodes for forensic/rollback while proving they are
+unreachable from TelegramTrigger.
+
+If a workflow has no recognized ingress trigger, reachable-only mode fails safe by
+scanning every node instead of assuming orphaned nodes are harmless.
 """
 from __future__ import annotations
 
 import argparse
+from collections import deque
 import json
 import re
 from pathlib import Path
@@ -57,6 +63,12 @@ USER_SCOPE_PATTERNS = (
     re.compile(r"\buser_id\s+in\s*\(", re.I),
 )
 
+INGRESS_TYPES = {
+    "n8n-nodes-base.telegramTrigger",
+    "n8n-nodes-base.webhook",
+    "n8n-nodes-base.executeWorkflowTrigger",
+}
+
 
 def unwrap_many(doc):
     if isinstance(doc, dict):
@@ -68,6 +80,38 @@ def unwrap_many(doc):
 
 def compact(sql: str) -> str:
     return re.sub(r"\s+", " ", sql).strip()
+
+
+def lanes(workflow: dict, source: str) -> list[list[dict]]:
+    return ((workflow.get("connections") or {}).get(source) or {}).get("main") or []
+
+
+def reachable_node_names(workflow: dict) -> tuple[set[str], list[str]]:
+    starts = [
+        str(node.get("name"))
+        for node in workflow.get("nodes", [])
+        if node.get("name") and node.get("type") in INGRESS_TYPES
+    ]
+    if not starts:
+        return {
+            str(node.get("name"))
+            for node in workflow.get("nodes", [])
+            if node.get("name")
+        }, []
+
+    todo = deque(starts)
+    seen: set[str] = set()
+    while todo:
+        name = todo.popleft()
+        if name in seen:
+            continue
+        seen.add(name)
+        for lane in lanes(workflow, name):
+            for edge in lane:
+                target = edge.get("node")
+                if target and target not in seen:
+                    todo.append(str(target))
+    return seen, starts
 
 
 def findings_for_sql(sql: str) -> list[str]:
@@ -87,15 +131,12 @@ def findings_for_sql(sql: str) -> list[str]:
     if has_financial_table:
         for pattern in USER_SCOPE_PATTERNS:
             if pattern.search(sql):
-                # Template sentinel user 0 is GLOBAL_PLATFORM and is allowed only
-                # when explicitly constant; dynamic user-owned predicates are not.
                 dynamic = re.sub(r"\buser_id\s*=\s*0\b", "", sql, flags=re.I)
                 dynamic = re.sub(r"\b0\s*=\s*user_id\b", "", dynamic, flags=re.I)
                 if pattern.search(dynamic):
                     findings.append("financial_user_id_predicate")
                     break
 
-    # Explicitly detect the pre-SPC default-account table as financial ownership.
     if "moneytrack.user_default_accounts" in lower and "user_id" in lower:
         findings.append("legacy_user_default_accounts")
 
@@ -104,12 +145,14 @@ def findings_for_sql(sql: str) -> list[str]:
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--reachable-only", action="store_true")
     ap.add_argument("inputs", nargs="+")
     args = ap.parse_args()
 
     all_findings = []
     workflow_count = 0
-    postgres_count = 0
+    postgres_total = 0
+    postgres_scanned = 0
 
     for raw_path in args.inputs:
         path = Path(raw_path)
@@ -118,10 +161,25 @@ def main():
             workflow_count += 1
             workflow_id = str(workflow.get("id") or "<no-id>")
             workflow_name = str(workflow.get("name") or "<no-name>")
+            reachable, ingress = reachable_node_names(workflow)
+            if args.reachable_only:
+                print(
+                    "SPC001_TENANCY_AUDIT_REACHABILITY="
+                    + json.dumps({
+                        "workflow_id": workflow_id,
+                        "ingress": ingress,
+                        "reachable_nodes": len(reachable),
+                        "fallback_scan_all": not bool(ingress),
+                    }, ensure_ascii=False, sort_keys=True)
+                )
+
             for node in workflow.get("nodes", []):
                 if node.get("type") != "n8n-nodes-base.postgres":
                     continue
-                postgres_count += 1
+                postgres_total += 1
+                if args.reachable_only and str(node.get("name") or "") not in reachable:
+                    continue
+                postgres_scanned += 1
                 sql = str(node.get("parameters", {}).get("query", ""))
                 if not sql:
                     continue
@@ -137,7 +195,9 @@ def main():
                     })
 
     print(f"SPC001_TENANCY_AUDIT_WORKFLOWS={workflow_count}")
-    print(f"SPC001_TENANCY_AUDIT_POSTGRES_NODES={postgres_count}")
+    print(f"SPC001_TENANCY_AUDIT_POSTGRES_TOTAL={postgres_total}")
+    print(f"SPC001_TENANCY_AUDIT_POSTGRES_SCANNED={postgres_scanned}")
+    print(f"SPC001_TENANCY_AUDIT_MODE={'REACHABLE_ONLY' if args.reachable_only else 'ALL_NODES'}")
     if all_findings:
         print("SPC001_TENANCY_AUDIT=FAIL")
         for finding in all_findings:
