@@ -28,11 +28,17 @@ FINANCIAL_ID = "SPC001FinancialApi202608"
 CONTROL_ID = "SPC001ControlApi202608"
 
 
-def run(cmd: list[str], *, check: bool = True, capture: bool = False) -> subprocess.CompletedProcess[str]:
+def run(
+    cmd: list[str],
+    *,
+    check: bool = True,
+    capture: bool = False,
+    cwd: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
     print("+ " + " ".join(cmd), flush=True)
     return subprocess.run(
         cmd,
-        cwd=ROOT,
+        cwd=cwd or ROOT,
         check=check,
         text=True,
         stdout=subprocess.PIPE if capture else None,
@@ -144,7 +150,8 @@ def verify_d3(evidence_dir: Path, work: Path) -> tuple[str, str]:
     meta_path = evidence_dir / "live-commit-metadata.txt"
     if not manifest.is_file() or not meta_path.is_file():
         die("d3_evidence_missing")
-    run(["sha256sum", "-c", str(manifest)], capture=True)
+    run(["sha256sum", "-c", "SHA256SUMS"], capture=True, cwd=evidence_dir)
+    print("D3_EVIDENCE_HASH_MANIFEST=PASS")
     meta = metadata(meta_path)
     required = {
         "LIVE_DB_MUTATION": "COMMIT_APPLIED",
