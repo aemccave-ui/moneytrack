@@ -14,6 +14,7 @@ REQUIRED = (
     "db/domain/SPC-001/300_migration_baseline.sql",
     "db/domain/SPC-001/305_migration_preflight.sql",
     "db/domain/SPC-001/306_migration_cross_user_diagnostic.sql",
+    "db/domain/SPC-001/307_migration_reference_provenance_diagnostic.sql",
     "db/domain/SPC-001/310_migration_reconciliation_guard.sql",
     "scripts/spc001-build-db-migration.py",
     "scripts/spc001-db-migration-forensic.sh",
@@ -60,6 +61,7 @@ def main() -> None:
     baseline = read("db/domain/SPC-001/300_migration_baseline.sql")
     preflight = read("db/domain/SPC-001/305_migration_preflight.sql")
     diagnostic = read("db/domain/SPC-001/306_migration_cross_user_diagnostic.sql")
+    provenance = read("db/domain/SPC-001/307_migration_reference_provenance_diagnostic.sql")
     reconcile = read("db/domain/SPC-001/310_migration_reconciliation_guard.sql")
     forensic = read("scripts/spc001-db-migration-forensic.sh")
 
@@ -107,6 +109,22 @@ def main() -> None:
         )),
     )
     require(
+        "migration_reference_provenance_read_only",
+        all(x in provenance for x in (
+            "begin transaction read only",
+            "SPC001_REFERENCE_PROVENANCE_DIAGNOSTIC=BEGIN",
+            "TX_PROVENANCE|",
+            "ACCOUNT_TARGET_PROVENANCE|",
+            "CATEGORY_TARGET_PROVENANCE|",
+            "RECEIPT_CATEGORY_CLUSTER|",
+            "CROSS_USER_TX_RECEIPT_OWNER_MISMATCH=",
+            "CROSS_USER_ACCOUNT_TARGET_NOT_TEMPLATE_BACKED=",
+            "CROSS_USER_CATEGORY_TARGET_NOT_TEMPLATE_BACKED=",
+            "SPC001_REFERENCE_PROVENANCE_DIAGNOSTIC=END",
+            "rollback;",
+        )),
+    )
+    require(
         "migration_reconciliation_before_commit",
         all(x in reconcile for x in (
             "legacy_business_data_changed",
@@ -119,6 +137,7 @@ def main() -> None:
     require(
         "migration_forensic_has_no_apply",
         "306_migration_cross_user_diagnostic.sql" in forensic
+        and "307_migration_reference_provenance_diagnostic.sql" in forensic
         and "305_migration_preflight.sql" in forensic
         and "ux022_db_psql_file \"$COMMIT_BUNDLE\"" not in forensic
         and "DB_MUTATION=NONE" in forensic
@@ -128,6 +147,7 @@ def main() -> None:
         "migration_forensic_preserves_failure_evidence",
         all(x in forensic for x in (
             "db-cross-user-diagnostic.txt",
+            "db-reference-provenance.txt",
             "db-preflight.txt",
             "SHA256SUMS",
             "SPC001_DB_MIGRATION_FORENSIC=FAIL live_db_preflight",
