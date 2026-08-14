@@ -8,3 +8,5 @@ backup/
 backups/
 *.zip
 *.tar.gz
+__pycache__/
+*.py[cod]
