@@ -13,6 +13,7 @@ REQUIRED = (
     ".gitignore",
     "db/domain/SPC-001/300_migration_baseline.sql",
     "db/domain/SPC-001/305_migration_preflight.sql",
+    "db/domain/SPC-001/306_migration_cross_user_diagnostic.sql",
     "db/domain/SPC-001/310_migration_reconciliation_guard.sql",
     "scripts/spc001-build-db-migration.py",
     "scripts/spc001-db-migration-forensic.sh",
@@ -58,6 +59,7 @@ def main() -> None:
     gitignore = read(".gitignore")
     baseline = read("db/domain/SPC-001/300_migration_baseline.sql")
     preflight = read("db/domain/SPC-001/305_migration_preflight.sql")
+    diagnostic = read("db/domain/SPC-001/306_migration_cross_user_diagnostic.sql")
     reconcile = read("db/domain/SPC-001/310_migration_reconciliation_guard.sql")
     forensic = read("scripts/spc001-db-migration-forensic.sh")
 
@@ -90,6 +92,21 @@ def main() -> None:
         )),
     )
     require(
+        "migration_cross_user_diagnostic_read_only",
+        all(x in diagnostic for x in (
+            "begin transaction read only",
+            "SPC001_CROSS_USER_DIAGNOSTIC=BEGIN",
+            "transaction_account",
+            "receipt_item_category",
+            "product_category",
+            "budget_category",
+            "candidate_count",
+            "SPC001_CROSS_USER_DETERMINISTIC_REMAP=",
+            "SPC001_CROSS_USER_DIAGNOSTIC=END",
+            "rollback;",
+        )),
+    )
+    require(
         "migration_reconciliation_before_commit",
         all(x in reconcile for x in (
             "legacy_business_data_changed",
@@ -101,10 +118,20 @@ def main() -> None:
     )
     require(
         "migration_forensic_has_no_apply",
-        "ux022_db_psql_file \"$ROOT/db/domain/SPC-001/305_migration_preflight.sql\"" in forensic
+        "306_migration_cross_user_diagnostic.sql" in forensic
+        and "305_migration_preflight.sql" in forensic
         and "ux022_db_psql_file \"$COMMIT_BUNDLE\"" not in forensic
         and "DB_MUTATION=NONE" in forensic
         and "SPC001_DB_MIGRATION_FORENSIC=PASS" in forensic,
+    )
+    require(
+        "migration_forensic_preserves_failure_evidence",
+        all(x in forensic for x in (
+            "db-cross-user-diagnostic.txt",
+            "db-preflight.txt",
+            "SHA256SUMS",
+            "SPC001_DB_MIGRATION_FORENSIC=FAIL live_db_preflight",
+        )),
     )
 
     builder = load_builder()
@@ -126,7 +153,6 @@ def main() -> None:
         "PRE-MUTATION BASELINE" in commit and "PRE-COMMIT RECONCILIATION" in commit,
     )
 
-    # Exercise file output too; no database connection exists in this gate.
     with tempfile.TemporaryDirectory(prefix="spc001-migration-gate-") as d:
         out = Path(d) / "candidate.sql"
         out.write_text(commit, encoding="utf-8")
