@@ -129,9 +129,9 @@ begin
 
     if exists (
         select 1
-        from moneytrack.user_security
-        where user_id = p_user_id
-          and pin_enabled = true
+        from moneytrack.user_security s
+        where s.user_id = p_user_id
+          and s.pin_enabled = true
     ) then
         raise exception 'PIN_ALREADY_ENABLED' using errcode = 'P0001';
     end if;
@@ -432,9 +432,9 @@ begin
 
     if not exists (
         select 1
-        from moneytrack.user_security
-        where user_id = p_user_id
-          and pin_enabled = true
+        from moneytrack.user_security s
+        where s.user_id = p_user_id
+          and s.pin_enabled = true
     ) then
         raise exception 'PIN_NOT_ENABLED' using errcode = 'P0001';
     end if;
