@@ -5,6 +5,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = (ROOT / "scripts/spc001-n8n-cutover-preflight.py").read_text(encoding="utf-8")
+SURVIVOR = (ROOT / "scripts/spc001-transform-global-api-survivor.py").read_text(encoding="utf-8")
 
 checks = {
     "n8n_preflight_is_export_only": (
@@ -32,19 +33,47 @@ checks = {
         "spc001-runtime-forensic-v3.py" in SRC
         and "spc001-generate-financial-api.py" in SRC
         and "spc001-generate-control-api.py" in SRC
+        and "spc001-transform-global-api-survivor.py" in SRC
     ),
-    "n8n_preflight_proves_legacy_route_coverage": (
-        "LEGACY_FINANCIAL_ROUTE_COVERAGE=PASS" in SRC
-        and "legacy_routes - financial_routes" in SRC
+    "n8n_preflight_classifies_global_survivor_routes": (
+        'SURVIVOR_ID = "7TJ2xQTxLsTydXZc"' in SRC
+        and '("GET", "api/v1/i18n")' in SRC
+        and '("GET", "api/v1/me")' in SRC
+        and "GLOBAL_SURVIVOR_ROUTE_OWNERSHIP=PASS" in SRC
+        and "GLOBAL_SURVIVOR_ROUTE_SEPARATION=PASS" in SRC
+    ),
+    "n8n_preflight_financial_coverage_excludes_global_routes": (
+        "legacy_financial_routes = legacy_routes - SURVIVOR_ROUTES" in SRC
+        and "legacy_financial_routes - financial_routes" in SRC
+        and "financial_api_claims_global_survivor_routes" in SRC
+        and "LEGACY_FINANCIAL_ROUTE_COVERAGE=PASS" in SRC
+    ),
+    "n8n_global_survivor_transform_is_file_only": (
+        'WORKFLOW_ID = "7TJ2xQTxLsTydXZc"' in SURVIVOR
+        and '("GET", "api/v1/i18n")' in SURVIVOR
+        and '("GET", "api/v1/me")' in SURVIVOR
+        and "REPLACEABLE_WEBHOOK_INGRESS_REMOVED=PASS" in SURVIVOR
+        and "KEPT_NODES_AND_CONNECTIONS_UNCHANGED=PASS" in SURVIVOR
+        and "import:workflow" not in SURVIVOR
+        and "publish:workflow" not in SURVIVOR
+        and "unpublish:workflow" not in SURVIVOR
+        and "docker" not in SURVIVOR
     ),
     "n8n_preflight_proves_published_route_conflicts_absent": (
         "--all" in SRC
         and "--published" in SRC
         and "PUBLISHED_ROUTE_CONFLICT_GATE=PASS" in SRC
     ),
+    "n8n_preflight_freezes_cutover_plan": (
+        "SPC001-E1-cutover-plan-v1" in SRC
+        and "legacy_financial_retire_workflow_ids" in SRC
+        and "candidate-global-api-survivor.json" in SRC
+        and "CUTOVER_PLAN=PASS" in SRC
+    ),
     "n8n_preflight_runs_tenancy_audit": (
         "spc001-audit-workflow-tenancy.py" in SRC
-        and "CANDIDATE_TENANCY_AUDIT=PASS workflows=7" in SRC
+        and "CANDIDATE_TENANCY_AUDIT=PASS workflows=8" in SRC
+        and "survivor_candidate" in SRC
     ),
     "n8n_preflight_states_zero_mutation": all(
         marker in SRC for marker in (
