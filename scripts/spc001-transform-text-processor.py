@@ -2,10 +2,8 @@
 """SPC-001: transform the canonical Text Processor to Space capture boundaries.
 
 The accepted Text/Voice parsing topology is preserved. Runtime-forensic financial
-writes, account resolvers and transfer write are replaced with Space-native backend
-boundaries. Parse transaction JSON1 is intentionally not guessed here: if it still
-contains a tenancy finding, the fail-closed audit prints its full SQL for an exact
-follow-up transformation.
+writes, account resolvers, raw-text account-hint inference and transfer write are
+replaced with Space-native backend boundaries.
 """
 from __future__ import annotations
 
@@ -14,8 +12,9 @@ import copy
 import json
 from pathlib import Path
 
-WORKFLOW_ID="f5ioJKyPTupUMV9h"
-TARGETS={
+WORKFLOW_ID = "f5ioJKyPTupUMV9h"
+TARGETS = {
+    "Parse transaction JSON1",
     "Resolve text account",
     "Resolve transfer accounts",
     "Insert transfer",
@@ -26,10 +25,48 @@ TARGETS={
     "Insert opening balance",
 }
 
-SOURCE_EXPR="{{ String((($('MoneyTrack Transaction Processor Text').first().json.source_type === 'voice') || ($('MoneyTrack Transaction Processor Text').first().json.message_type === 'voice')) ? 'voice' : 'text').replace(/'/g,\"''\") }}"
-REF_EXPR="{{ String($('MoneyTrack Transaction Processor Text').first().json.capture_source_ref || '').replace(/'/g,\"''\") }}"
+SOURCE_EXPR = "{{ String((($('MoneyTrack Transaction Processor Text').first().json.source_type === 'voice') || ($('MoneyTrack Transaction Processor Text').first().json.message_type === 'voice')) ? 'voice' : 'text').replace(/'/g,\"''\") }}"
+REF_EXPR = "{{ String($('MoneyTrack Transaction Processor Text').first().json.capture_source_ref || '').replace(/'/g,\"''\") }}"
 
-RESOLVE_TEXT_ACCOUNT_QUERY=r'''select
+PARSE_TRANSACTION_JSON1_QUERY = r'''with parsed as (
+    select
+        '{{ String($json.operation_type || "").replace(/'/g,"''") }}'::text as operation_type,
+        {{ $json.amount || "null" }}::numeric as amount,
+        nullif(nullif('{{ String($json.currency || "").replace(/'/g,"''") }}',''),'null')::text as currency,
+        '{{ String($json.description || "").replace(/'/g,"''") }}'::text as description,
+        nullif(nullif('{{ String($json.account_hint || "").replace(/'/g,"''") }}',''),'null')::text as account_hint,
+        nullif(nullif('{{ String($json.from_account_hint || "").replace(/'/g,"''") }}',''),'null')::text as from_account_hint,
+        nullif(nullif('{{ String($json.to_account_hint || "").replace(/'/g,"''") }}',''),'null')::text as to_account_hint,
+        {{ $json.amount_from || "null" }}::numeric as amount_from,
+        nullif(nullif('{{ String($json.currency_from || "").replace(/'/g,"''") }}',''),'null')::text as currency_from,
+        {{ $json.amount_to || "null" }}::numeric as amount_to,
+        nullif(nullif('{{ String($json.currency_to || "").replace(/'/g,"''") }}',''),'null')::text as currency_to,
+        nullif(nullif('{{ String($json.transaction_date || "").replace(/'/g,"''") }}',''),'null')::text as transaction_date,
+        '{{ String($json.raw_text || "").replace(/'/g,"''") }}'::text as raw_text
+)
+select
+    p.operation_type,
+    p.amount,
+    p.currency,
+    p.description,
+    moneytrack.capture_infer_account_hint_space_v1(
+        {{ $('MoneyTrack Transaction Processor Text').first().json.user_id }}::bigint,
+        {{ $('MoneyTrack Transaction Processor Text').first().json.space_id }}::bigint,
+        p.raw_text,
+        p.operation_type,
+        p.account_hint
+    ) as account_hint,
+    p.from_account_hint,
+    p.to_account_hint,
+    p.amount_from,
+    p.currency_from,
+    p.amount_to,
+    p.currency_to,
+    p.transaction_date,
+    p.raw_text
+from parsed p;'''
+
+RESOLVE_TEXT_ACCOUNT_QUERY = r'''select
     r.account_id,
     r.account_code,
     r.account_name,
@@ -48,7 +85,7 @@ from moneytrack.capture_resolve_account_space_v1(
     null
 ) r;'''
 
-RESOLVE_TRANSFER_ACCOUNTS_QUERY=r'''with parsed as (
+RESOLVE_TRANSFER_ACCOUNTS_QUERY = r'''with parsed as (
     select
         '{{ String($("Parse transaction JSON").first().json.operation_type || "transfer").replace(/'/g,"''") }}'::text as operation_type,
         nullif('{{ String($("Parse transaction JSON").first().json.from_account_hint || '').replace(/'/g,"''") }}','')::text as from_account_hint,
@@ -101,7 +138,7 @@ from parsed p
 cross join from_resolved f
 cross join to_resolved t;'''
 
-INSERT_TRANSFER_QUERY=r'''with r as (
+INSERT_TRANSFER_QUERY = r'''with r as (
     select
         {{ $("MoneyTrack Transaction Processor Text").first().json.user_id }}::bigint as actor_user_id,
         {{ $("MoneyTrack Transaction Processor Text").first().json.space_id }}::bigint as space_id,
@@ -146,7 +183,7 @@ select
 from r
 left join created c on true;'''
 
-RESOLVE_ADJUSTMENT_ACCOUNT_QUERY=r'''with parsed as (
+RESOLVE_ADJUSTMENT_ACCOUNT_QUERY = r'''with parsed as (
     select
         '{{ String($json.operation_type || "adjustment").replace(/'/g,"''") }}'::text as operation_type,
         {{ $json.amount || 0 }}::numeric as amount,
@@ -178,7 +215,7 @@ select
 from parsed p
 cross join resolved r;'''
 
-RESOLVE_OPENING_BALANCE_ACCOUNT_QUERY=r'''with parsed as (
+RESOLVE_OPENING_BALANCE_ACCOUNT_QUERY = r'''with parsed as (
     select
         {{ $json.amount || 0 }}::numeric as amount,
         nullif(nullif('{{ String($json.currency || '').replace(/'/g,"''") }}',''),'null')::text as currency,
@@ -210,7 +247,7 @@ select
 from parsed p
 cross join resolved r;'''
 
-SIMPLE_QUERY=r'''select
+SIMPLE_QUERY = r'''select
     c.id,
     c.account_id,
     c.capture_event_id,
@@ -234,9 +271,9 @@ from moneytrack.capture_create_projection_compat_v1(
       else coalesce(to_timestamp({{ $('MoneyTrack Transaction Processor Text').first().json.message_date || 'null' }}::double precision),current_timestamp)
     end,
     null
-) c;'''.replace('__SOURCE__',SOURCE_EXPR).replace('__REF__',REF_EXPR)
+) c;'''.replace('__SOURCE__', SOURCE_EXPR).replace('__REF__', REF_EXPR)
 
-ADJUSTMENT_QUERY=r'''select
+ADJUSTMENT_QUERY = r'''select
     c.id,
     c.capture_event_id,
     c.idempotent_replay
@@ -259,9 +296,9 @@ from moneytrack.capture_create_projection_compat_v1(
       else coalesce(to_timestamp({{ $('MoneyTrack Transaction Processor Text').first().json.message_date || 'null' }}::double precision),current_timestamp)
     end,
     null
-) c;'''.replace('__SOURCE__',SOURCE_EXPR).replace('__REF__',REF_EXPR)
+) c;'''.replace('__SOURCE__', SOURCE_EXPR).replace('__REF__', REF_EXPR)
 
-OPENING_QUERY=r'''with r as (
+OPENING_QUERY = r'''with r as (
     select
       {{ $('MoneyTrack Transaction Processor Text').first().json.user_id }}::bigint as actor_user_id,
       {{ $('MoneyTrack Transaction Processor Text').first().json.space_id }}::bigint as space_id,
@@ -302,65 +339,92 @@ select
     c.capture_event_id
 from r
 left join existing e on true
-left join created c on true;'''.replace('__SOURCE__',SOURCE_EXPR).replace('__REF__',REF_EXPR)
+left join created c on true;'''.replace('__SOURCE__', SOURCE_EXPR).replace('__REF__', REF_EXPR)
 
-REPLACEMENTS={
-  "Resolve text account":RESOLVE_TEXT_ACCOUNT_QUERY,
-  "Resolve transfer accounts":RESOLVE_TRANSFER_ACCOUNTS_QUERY,
-  "Insert transfer":INSERT_TRANSFER_QUERY,
-  "Resolve adjustment account":RESOLVE_ADJUSTMENT_ACCOUNT_QUERY,
-  "Resolve opening balance account":RESOLVE_OPENING_BALANCE_ACCOUNT_QUERY,
-  "Insert transaction text":SIMPLE_QUERY,
-  "Insert adjustment transaction":ADJUSTMENT_QUERY,
-  "Insert opening balance":OPENING_QUERY,
+REPLACEMENTS = {
+    "Parse transaction JSON1": PARSE_TRANSACTION_JSON1_QUERY,
+    "Resolve text account": RESOLVE_TEXT_ACCOUNT_QUERY,
+    "Resolve transfer accounts": RESOLVE_TRANSFER_ACCOUNTS_QUERY,
+    "Insert transfer": INSERT_TRANSFER_QUERY,
+    "Resolve adjustment account": RESOLVE_ADJUSTMENT_ACCOUNT_QUERY,
+    "Resolve opening balance account": RESOLVE_OPENING_BALANCE_ACCOUNT_QUERY,
+    "Insert transaction text": SIMPLE_QUERY,
+    "Insert adjustment transaction": ADJUSTMENT_QUERY,
+    "Insert opening balance": OPENING_QUERY,
 }
 
-FORBIDDEN_IN_TARGETS=(
-  "moneytrack.finance_create_transfer_v1(",
-  "moneytrack.user_default_accounts",
-  " a.user_id=",
-  " a.user_id =",
-  " where u.telegram_user_id",
+FORBIDDEN_IN_TARGETS = (
+    "moneytrack.finance_create_transfer_v1(",
+    "moneytrack.user_default_accounts",
+    " a.user_id=",
+    " a.user_id =",
+    " where u.telegram_user_id",
 )
 
 
 def unwrap(doc):
-    if isinstance(doc,list):
-        if len(doc)!=1: raise SystemExit(f"expected one workflow, got {len(doc)}")
-        return doc[0],True
-    if isinstance(doc,dict): return doc,False
+    if isinstance(doc, list):
+        if len(doc) != 1:
+            raise SystemExit(f"expected one workflow, got {len(doc)}")
+        return doc[0], True
+    if isinstance(doc, dict):
+        return doc, False
     raise SystemExit("input must be workflow object or one-element array")
 
 
 def main():
-    ap=argparse.ArgumentParser();ap.add_argument('input');ap.add_argument('output');args=ap.parse_args()
-    src=json.loads(Path(args.input).read_text(encoding='utf-8'));wf,was_array=unwrap(src)
-    if wf.get('id')!=WORKFLOW_ID: raise SystemExit(f"unexpected workflow id: {wf.get('id')!r}")
-    found={n.get('name') for n in wf.get('nodes',[]) if n.get('name') in TARGETS}
-    if found!=TARGETS: raise SystemExit(f"target mismatch: found={sorted(found)} expected={sorted(TARGETS)}")
-    out=copy.deepcopy(wf);changed=[]
-    for n in out['nodes']:
-        name=n.get('name')
-        if name in REPLACEMENTS:
-            p=n.setdefault('parameters',{})
-            if p.get('operation')!='executeQuery': raise SystemExit(f"{name!r} is not executeQuery")
-            p['query']=REPLACEMENTS[name];changed.append(name)
-    if set(changed)!=TARGETS: raise SystemExit(f"changed mismatch: {sorted(changed)}")
-    for n in out['nodes']:
-        if n.get('name') not in TARGETS: continue
-        query=str(n.get('parameters',{}).get('query','')).lower()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("input")
+    ap.add_argument("output")
+    args = ap.parse_args()
+
+    src = json.loads(Path(args.input).read_text(encoding="utf-8"))
+    wf, was_array = unwrap(src)
+    if wf.get("id") != WORKFLOW_ID:
+        raise SystemExit(f"unexpected workflow id: {wf.get('id')!r}")
+
+    found = {n.get("name") for n in wf.get("nodes", []) if n.get("name") in TARGETS}
+    if found != TARGETS:
+        raise SystemExit(f"target mismatch: found={sorted(found)} expected={sorted(TARGETS)}")
+
+    out = copy.deepcopy(wf)
+    changed = []
+    for node in out["nodes"]:
+        name = node.get("name")
+        if name not in REPLACEMENTS:
+            continue
+        params = node.setdefault("parameters", {})
+        if params.get("operation") != "executeQuery":
+            raise SystemExit(f"{name!r} is not executeQuery")
+        params["query"] = REPLACEMENTS[name]
+        changed.append(name)
+
+    if set(changed) != TARGETS:
+        raise SystemExit(f"changed mismatch: {sorted(changed)}")
+
+    for node in out["nodes"]:
+        if node.get("name") not in TARGETS:
+            continue
+        query = str(node.get("parameters", {}).get("query", "")).lower()
         for token in FORBIDDEN_IN_TARGETS:
             if token in query:
-                raise SystemExit(f"legacy token {token!r} remains in {n.get('name')!r}")
-    Path(args.output).write_text(json.dumps([out] if was_array else out,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-    print('SPC-001 Text Processor candidate created')
-    print(f'workflow_id={WORKFLOW_ID}')
-    print('changed_nodes='+', '.join(sorted(changed)))
-    print('financial_tenant=space_id')
-    print('account_resolution=SPACE_NATIVE')
-    print('transfer_write=finance_create_transfer_space_v1')
-    print('capture_source=text_or_voice_from_ingress')
-    print('source_ref=required_stable_capture_source_ref')
-    print('runtime_mutation=NONE')
+                raise SystemExit(f"legacy token {token!r} remains in {node.get('name')!r}")
 
-if __name__=='__main__': main()
+    Path(args.output).write_text(
+        json.dumps([out] if was_array else out, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    print("SPC-001 Text Processor candidate created")
+    print(f"workflow_id={WORKFLOW_ID}")
+    print("changed_nodes=" + ", ".join(sorted(changed)))
+    print("financial_tenant=space_id")
+    print("account_hint_inference=SPACE_NATIVE")
+    print("account_resolution=SPACE_NATIVE")
+    print("transfer_write=finance_create_transfer_space_v1")
+    print("capture_source=text_or_voice_from_ingress")
+    print("source_ref=required_stable_capture_source_ref")
+    print("runtime_mutation=NONE")
+
+
+if __name__ == "__main__":
+    main()
