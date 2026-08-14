@@ -193,11 +193,11 @@ declare
 begin
     for r in
         with recursive seeds as (
-            select distinct r.user_id as target_user_id,r.space_id as target_space_id,c.id as source_id
+            select distinct receipt_src.user_id as target_user_id,receipt_src.space_id as target_space_id,c.id as source_id
             from moneytrack.receipt_items ri
-            join moneytrack.receipts r on r.id=ri.receipt_id
+            join moneytrack.receipts receipt_src on receipt_src.id=ri.receipt_id
             join moneytrack.category_catalog c on c.id=ri.category_id
-            where ri.category_id is not null and r.space_id is distinct from c.space_id
+            where ri.category_id is not null and receipt_src.space_id is distinct from c.space_id
             union
             select distinct p.user_id,p.space_id,c.id
             from moneytrack.product_catalog p
