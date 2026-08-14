@@ -81,6 +81,17 @@ def main() -> None:
         )),
     )
     require(
+        "live_commit_requires_filter_preset_runtime_markers",
+        all(x in live for x in (
+            "SPC001_FILTER_PRESET_BASELINE=PASS",
+            "SPC001_FILTER_PRESET_REFERENCE_REPAIR=PASS",
+            "SPC001_FILTER_PRESET_REFERENCE_LEDGER=PASS",
+            "SPC001_FILTER_PRESET_REFERENCES=PASS",
+        ))
+        and live.count('spc001_require_migration_markers "$CLONE_COMMIT_REPORT"') == 1
+        and live.count('spc001_require_migration_markers "$LIVE_COMMIT_REPORT"') == 1,
+    )
+    require(
         "live_commit_uses_fresh_prod_h2_backup",
         all(x in live for x in (
             "prod-h2-backup-now.sh",
@@ -166,6 +177,8 @@ def main() -> None:
         "live_commit_program_matches_rehearsed_program_shape",
         commit.replace("\ncommit;\n", "\nrollback;\n") == rollback
         and "SPC001_REFERENCE_REPAIR_LEDGER=PASS" in commit
+        and "SPC001_FILTER_PRESET_REFERENCE_LEDGER=PASS" in commit
+        and "SPC001_FILTER_PRESET_REFERENCES=PASS" in commit
         and "SOURCE UNIT: 011_same_space_trigger_dispatch_hardening.sql" in commit,
     )
 
