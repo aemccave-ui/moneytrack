@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SPC = ROOT / "db" / "domain" / "SPC-001"
 BUILDER = ROOT / "scripts" / "spc001-build-db-migration.py"
+REHEARSAL = ROOT / "scripts" / "spc001-db-rollback-rehearsal.sh"
 
 FILES = {
     "baseline": SPC / "302_migration_filter_preset_reference_baseline.sql",
@@ -50,6 +51,7 @@ def main() -> None:
     repair = read(FILES["repair"])
     diagnostic = read(FILES["diagnostic"])
     reconcile = read(FILES["reconcile"])
+    rehearsal = read(REHEARSAL)
 
     require(
         "filter_preset_reference_baseline_fragment",
@@ -163,14 +165,20 @@ def main() -> None:
         and commit.index(filter_reconcile_marker) < commit.rindex("\ncommit;"),
     )
 
+    filter_markers = (
+        "SPC001_FILTER_PRESET_BASELINE=PASS",
+        "SPC001_FILTER_PRESET_REFERENCE_REPAIR=PASS",
+        "SPC001_FILTER_PRESET_REFERENCE_LEDGER=PASS",
+        "SPC001_FILTER_PRESET_REFERENCES=PASS",
+    )
     require(
         "filter_preset_bundle_runtime_markers",
-        all(x in commit for x in (
-            "SPC001_FILTER_PRESET_BASELINE=PASS",
-            "SPC001_FILTER_PRESET_REFERENCE_REPAIR=PASS",
-            "SPC001_FILTER_PRESET_REFERENCE_LEDGER=PASS",
-            "SPC001_FILTER_PRESET_REFERENCES=PASS",
-        )),
+        all(x in commit for x in filter_markers),
+    )
+    require(
+        "filter_preset_rollback_rehearsal_requires_runtime_markers",
+        all(x in rehearsal for x in filter_markers)
+        and "CONTROLLED FILTER PRESET REFERENCE REPAIR" in rehearsal,
     )
 
     print("SPC001_FILTER_PRESET_MIGRATION_SOURCE_GATE=PASS")
