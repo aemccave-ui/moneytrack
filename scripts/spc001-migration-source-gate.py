@@ -20,8 +20,10 @@ REQUIRED = (
     "db/domain/SPC-001/309_migration_legacy_reference_repair.sql",
     "db/domain/SPC-001/310_migration_reconciliation_guard.sql",
     "db/domain/SPC-001/312_migration_reconciliation_guard_reference_repair.sql",
+    "db/domain/SPC-001/313_runtime_table_fingerprint.sql",
     "scripts/spc001-build-db-migration.py",
     "scripts/spc001-db-migration-forensic.sh",
+    "scripts/spc001-db-rollback-rehearsal.sh",
 )
 
 
@@ -69,7 +71,9 @@ def main() -> None:
     repairability = read("db/domain/SPC-001/308_migration_reference_repairability_preflight.sql")
     repair = read("db/domain/SPC-001/309_migration_legacy_reference_repair.sql")
     reconcile_v2 = read("db/domain/SPC-001/312_migration_reconciliation_guard_reference_repair.sql")
+    fingerprint = read("db/domain/SPC-001/313_runtime_table_fingerprint.sql")
     forensic = read("scripts/spc001-db-migration-forensic.sh")
+    rehearsal = read("scripts/spc001-db-rollback-rehearsal.sh")
 
     require(
         "migration_python_cache_ignored",
@@ -173,6 +177,18 @@ def main() -> None:
         )),
     )
     require(
+        "migration_runtime_table_fingerprint_is_read_only",
+        all(x in fingerprint for x in (
+            "begin transaction read only",
+            "pg_tables",
+            "to_jsonb(t)",
+            "TABLE_FINGERPRINT|table=",
+            "SPC001_TABLE_FINGERPRINT=BEGIN",
+            "SPC001_TABLE_FINGERPRINT=END",
+            "rollback;",
+        )),
+    )
+    require(
         "migration_forensic_is_read_only_repairability_gate",
         "306_migration_cross_user_diagnostic.sql" in forensic
         and "307_migration_reference_provenance_diagnostic.sql" in forensic
@@ -183,6 +199,38 @@ def main() -> None:
         and "ux022_db_psql_file \"$COMMIT_BUNDLE\"" not in forensic
         and "ux022_db_psql_file \"$ROLLBACK_BUNDLE\"" not in forensic
         and "DB_MUTATION=NONE" in forensic,
+    )
+    require(
+        "migration_rollback_rehearsal_isolated_from_live_db",
+        all(x in rehearsal for x in (
+            "REHEARSAL_TARGET=DISPOSABLE_DATABASE_CLONE",
+            "COMMIT_FORBIDDEN=YES",
+            "unsupported_db_runtime_mode",
+            "spc001_live_backup",
+            "exec pg_restore --list",
+            "createdb",
+            "dropdb",
+            "spc001_clone_psql_file \"$ROLLBACK_BUNDLE\"",
+            "313_runtime_table_fingerprint.sql",
+            "clone_schema_after_rollback=PASS",
+            "live_table_state_unchanged=PASS",
+            "LIVE_DB_MUTATION=NONE",
+            "SPC001_DB_ROLLBACK_REHEARSAL=PASS",
+        ))
+        and "ux022_db_psql_file \"$ROLLBACK_BUNDLE\"" not in rehearsal
+        and "--final commit" not in rehearsal,
+    )
+    require(
+        "migration_rollback_rehearsal_requires_backup_evidence",
+        all(x in rehearsal for x in (
+            "--format=custom",
+            "BACKUP_SHA256",
+            "live-pre-rehearsal.dump",
+            "live-pre-rehearsal.list",
+            "SHA256SUMS",
+            "clone_restore=PASS",
+            "rollback_bundle_exact_shape=PASS",
+        )),
     )
 
     builder = load_builder()
