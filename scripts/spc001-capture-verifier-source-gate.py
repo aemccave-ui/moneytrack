@@ -6,6 +6,8 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 VERIFY = (ROOT / "db/domain/SPC-001/290_verify_capture_projection.sql").read_text(encoding="utf-8")
 BUILDER = (ROOT / "scripts/spc001-build-db-migration.py").read_text(encoding="utf-8")
+GROUP_GUARD = (ROOT / "db/domain/UX-022/040_grouping_account_invariant.sql").read_text(encoding="utf-8")
+VERIFY_LOWER = VERIFY.lower()
 
 checks = {
     "capture_verifier_personal_account_is_postable_leaf": (
@@ -24,7 +26,9 @@ checks = {
         "upper(fa.currency_code)=v_currency" in VERIFY
     ),
     "capture_verifier_preserves_ux022_group_guard": (
-        "ACCOUNT_GROUP_NOT_POSTABLE" in VERIFY
+        "ACCOUNT_GROUP_NOT_POSTABLE" in GROUP_GUARD
+        and "ux022_transactions_group_posting_guard" in GROUP_GUARD
+        and "disable trigger" not in VERIFY_LOWER
     ),
     "capture_verifier_is_synthetic_rollback_only": (
         "Synthetic state is transaction-local and always rolled back" in VERIFY
