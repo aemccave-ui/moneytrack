@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 REQUIRED = (
+    ".gitignore",
     "db/domain/SPC-001/300_migration_baseline.sql",
     "db/domain/SPC-001/305_migration_preflight.sql",
     "db/domain/SPC-001/310_migration_reconciliation_guard.sql",
@@ -54,11 +55,16 @@ def main() -> None:
         read(path)
     print(f"migration_required_source_files=PASS count={len(REQUIRED)}")
 
+    gitignore = read(".gitignore")
     baseline = read("db/domain/SPC-001/300_migration_baseline.sql")
     preflight = read("db/domain/SPC-001/305_migration_preflight.sql")
     reconcile = read("db/domain/SPC-001/310_migration_reconciliation_guard.sql")
     forensic = read("scripts/spc001-db-migration-forensic.sh")
 
+    require(
+        "migration_python_cache_ignored",
+        "__pycache__/" in gitignore and "*.py[cod]" in gitignore,
+    )
     require(
         "migration_baseline_preserves_legacy_business_rows",
         all(x in baseline for x in (
