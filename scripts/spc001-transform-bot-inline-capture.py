@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""SPC-001: deterministic cutover of the canonical Bot inline capture graph.
+"""SPC-001: deterministic cutover of legacy inline Bot capture authority.
 
-The canonical Bot JSON still contains the historical inline Text writer in
-parallel with the accepted Text Processor path, while Photo/receipt processing is
-intentionally inline. This transform:
+The accepted MoneyTrack Bot exists in two observed topologies:
 
-* replaces Get or Create User with the accepted Space-owned user_bootstrap_v1;
-* removes only the two direct edges that authorize the obsolete inline Text
-  branch, leaving the Text Processor path and response topology intact;
-* replaces every live inline Photo financial resolver/write/readback node with a
-  Space-native backend boundary while preserving AI/parser nodes and row shapes.
+* tracked legacy topology: historical inline Text and Photo graphs coexist with
+  the processor paths and must be deauthorized / Space-hardened deterministically;
+* current runtime topology: Text legacy authority and inline Photo authority have
+  already been removed, while Photo delegates to the canonical Photo Processor.
+
+This transformer is therefore topology-aware but fail-closed. It never invents
+missing legacy graphs, never treats a partial inline Photo graph as acceptable,
+and never rewires the delegated Photo processor path (that path is owned by
+spc001-transform-bot-capture.py). In either topology it preserves the accepted
+Space-compatible bootstrap boundary.
 
 No workflow is imported or activated by this script.
 """
@@ -26,6 +29,7 @@ BOOTSTRAP = "Get or Create User"
 TEXT_OLD_ENTRY = "Message a model1"
 TEXT_CANONICAL_ENTRY = "Prepare Text Processor Input"
 TEXT_SOURCES = {"Send Processing Started Text", "test-mode"}
+PHOTO_PROCESSOR = "Call 'Transaction Processor Photo'"
 
 PHOTO_TARGETS = {
     "Check duplicate receipt",
@@ -225,8 +229,7 @@ from moneytrack.receipt_projection_classified_item_read_v1(
     {{ $('Insert receipt').first().json.id }}::bigint
 );'''
 
-REPLACEMENTS = {
-    BOOTSTRAP: BOOTSTRAP_QUERY,
+PHOTO_REPLACEMENTS = {
     "Check duplicate receipt": CHECK_DUPLICATE,
     "Check semantic duplicate receipt": CHECK_SEMANTIC,
     "Resolve account": RESOLVE_ACCOUNT,
@@ -242,85 +245,128 @@ REPLACEMENTS = {
 
 
 def unwrap(doc):
-    if isinstance(doc,list):
-        if len(doc)!=1: raise SystemExit(f"expected one workflow, got {len(doc)}")
-        return doc[0],True
-    if isinstance(doc,dict): return doc,False
+    if isinstance(doc, list):
+        if len(doc) != 1:
+            raise SystemExit(f"expected one workflow, got {len(doc)}")
+        return doc[0], True
+    if isinstance(doc, dict):
+        return doc, False
     raise SystemExit("input must be workflow object or one-element array")
 
 
 def main():
-    ap=argparse.ArgumentParser()
+    ap = argparse.ArgumentParser()
     ap.add_argument("input")
     ap.add_argument("output")
-    args=ap.parse_args()
-    src=json.loads(Path(args.input).read_text(encoding="utf-8"))
-    wf,was_array=unwrap(src)
-    if wf.get("id")!=WORKFLOW_ID:
+    args = ap.parse_args()
+
+    src = json.loads(Path(args.input).read_text(encoding="utf-8"))
+    wf, was_array = unwrap(src)
+    if wf.get("id") != WORKFLOW_ID:
         raise SystemExit(f"unexpected workflow id: {wf.get('id')!r}")
 
-    names={n.get("name") for n in wf.get("nodes",[])}
-    required={BOOTSTRAP,TEXT_OLD_ENTRY,TEXT_CANONICAL_ENTRY,*TEXT_SOURCES,*PHOTO_TARGETS}
-    missing=required-names
-    if missing: raise SystemExit(f"canonical Bot topology drift: missing={sorted(missing)}")
+    names = {n.get("name") for n in wf.get("nodes", [])}
+    base_required = {BOOTSTRAP, TEXT_CANONICAL_ENTRY, *TEXT_SOURCES}
+    missing_base = base_required - names
+    if missing_base:
+        raise SystemExit(f"canonical Bot base topology drift: missing={sorted(missing_base)}")
 
-    out=copy.deepcopy(wf)
-    by_name={n.get("name"):n for n in out.get("nodes",[])}
-    changed=[]
-    for name,query in REPLACEMENTS.items():
-        node=by_name[name]
-        params=node.setdefault("parameters",{})
-        if node.get("type")!="n8n-nodes-base.postgres" or params.get("operation")!="executeQuery":
-            raise SystemExit(f"target {name!r} is not PostgreSQL executeQuery")
-        params["query"]=query
-        changed.append(name)
+    photo_present = PHOTO_TARGETS & names
+    if photo_present and photo_present != PHOTO_TARGETS:
+        missing_photo = PHOTO_TARGETS - names
+        raise SystemExit(
+            "partial inline Photo topology is unsafe: "
+            f"present={sorted(photo_present)} missing={sorted(missing_photo)}"
+        )
+    inline_photo = photo_present == PHOTO_TARGETS
+    delegated_photo = PHOTO_PROCESSOR in names
+    if inline_photo == delegated_photo:
+        raise SystemExit(
+            "Photo authority topology ambiguous: expected exactly one of "
+            f"inline_complete/delegated, inline={inline_photo} delegated={delegated_photo}"
+        )
 
-    removed_edges=0
+    legacy_text = TEXT_OLD_ENTRY in names
+
+    out = copy.deepcopy(wf)
+    by_name = {n.get("name"): n for n in out.get("nodes", [])}
+    changed = []
+
+    bootstrap = by_name[BOOTSTRAP]
+    bootstrap_params = bootstrap.setdefault("parameters", {})
+    if bootstrap.get("type") != "n8n-nodes-base.postgres" or bootstrap_params.get("operation") != "executeQuery":
+        raise SystemExit(f"target {BOOTSTRAP!r} is not PostgreSQL executeQuery")
+    bootstrap_params["query"] = BOOTSTRAP_QUERY
+    changed.append(BOOTSTRAP)
+
+    if inline_photo:
+        for name, query in PHOTO_REPLACEMENTS.items():
+            node = by_name[name]
+            params = node.setdefault("parameters", {})
+            if node.get("type") != "n8n-nodes-base.postgres" or params.get("operation") != "executeQuery":
+                raise SystemExit(f"target {name!r} is not PostgreSQL executeQuery")
+            params["query"] = query
+            changed.append(name)
+
+    removed_edges = 0
     for source in TEXT_SOURCES:
-        outputs=(out.get("connections",{}).get(source) or {}).get("main") or []
-        saw_new=False
-        saw_old=False
+        outputs = (out.get("connections", {}).get(source) or {}).get("main") or []
+        saw_new = False
+        saw_old = False
         for lane in outputs:
-            if any(edge.get("node")==TEXT_CANONICAL_ENTRY for edge in lane): saw_new=True
-            before=len(lane)
-            lane[:]=[edge for edge in lane if edge.get("node")!=TEXT_OLD_ENTRY]
-            if len(lane)!=before:
-                saw_old=True
-                removed_edges += before-len(lane)
-        if not saw_old or not saw_new:
-            raise SystemExit(f"Text authority topology mismatch at {source!r}: old={saw_old} canonical={saw_new}")
-    if removed_edges!=2:
-        raise SystemExit(f"expected exactly 2 obsolete Text authority edges, removed={removed_edges}")
+            if any(edge.get("node") == TEXT_CANONICAL_ENTRY for edge in lane):
+                saw_new = True
+            before = len(lane)
+            lane[:] = [edge for edge in lane if edge.get("node") != TEXT_OLD_ENTRY]
+            if len(lane) != before:
+                saw_old = True
+                removed_edges += before - len(lane)
+        if not saw_new:
+            raise SystemExit(f"canonical Text processor entry missing from {source!r}")
+        if legacy_text and not saw_old:
+            raise SystemExit(f"legacy Text node exists but authority edge missing at {source!r}")
+        if not legacy_text and saw_old:
+            raise SystemExit(f"impossible Text topology at {source!r}: edge targets absent legacy node")
 
-    # The historical inline Text graph may remain physically for rollback/evidence,
-    # but no canonical production source may still point directly into it.
-    for source,outputs in (out.get("connections") or {}).items():
-        for lane in (outputs or {}).get("main",[]) or []:
-            if source in TEXT_SOURCES and any(edge.get("node")==TEXT_OLD_ENTRY for edge in lane):
+    expected_removed = len(TEXT_SOURCES) if legacy_text else 0
+    if removed_edges != expected_removed:
+        raise SystemExit(
+            f"unexpected obsolete Text authority edge count: removed={removed_edges} expected={expected_removed}"
+        )
+
+    for source, outputs in (out.get("connections") or {}).items():
+        for lane in (outputs or {}).get("main", []) or []:
+            if source in TEXT_SOURCES and any(edge.get("node") == TEXT_OLD_ENTRY for edge in lane):
                 raise SystemExit(f"obsolete Text authority remains reachable from {source!r}")
 
-    forbidden=(
+    forbidden = (
         "moneytrack.receipts",
         "moneytrack.receipt_items",
         "moneytrack.user_default_accounts",
         "on conflict (user_id, product_key)",
     )
-    for name in PHOTO_TARGETS|{BOOTSTRAP}:
-        query=str(by_name[name].get("parameters",{}).get("query","")).lower()
+    scan_names = {BOOTSTRAP} | (PHOTO_TARGETS if inline_photo else set())
+    for name in scan_names:
+        query = str(by_name[name].get("parameters", {}).get("query", "")).lower()
         for token in forbidden:
             if token in query:
                 raise SystemExit(f"legacy token {token!r} remains in transformed node {name!r}")
 
-    Path(args.output).write_text(json.dumps([out] if was_array else out,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+    Path(args.output).write_text(
+        json.dumps([out] if was_array else out, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     print("SPC-001 Bot inline capture candidate created")
     print(f"workflow_id={WORKFLOW_ID}")
     print("text_authority=PROCESSOR_ONLY")
+    print(f"legacy_text_topology={'present' if legacy_text else 'absent'}")
     print(f"removed_inline_text_edges={removed_edges}")
-    print("photo_authority=SPACE_NATIVE_INLINE")
+    print(f"photo_topology={'inline' if inline_photo else 'delegated'}")
+    print(f"photo_authority={'SPACE_NATIVE_INLINE' if inline_photo else 'DELEGATED_PROCESSOR'}")
     print("bootstrap=user_bootstrap_v1_space_compat")
-    print("changed_nodes="+", ".join(sorted(changed)))
+    print("changed_nodes=" + ", ".join(sorted(changed)))
     print("runtime_mutation=NONE")
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     main()
