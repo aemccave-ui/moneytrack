@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""SPC-001: fail-closed transform of the canonical trusted Telegram Bot workflow.
+"""SPC-001: fail-closed transform of canonical trusted Telegram Bot context.
 
-The accepted command/AI graph is preserved. Get user context is cut over to the
-explicit default_capture_space_id backend resolver. A generated context node is
-inserted immediately before each Text/Voice/Photo processor call so downstream
-processor workflows receive actor + destination Space + stable capture source
-without depending on upstream object-shaping details.
+The tracked Bot graph delegates Text and Voice to processor subworkflows but keeps
+Photo/receipt handling inline. This transform therefore changes only the shared
+Get user context boundary and inserts Space context immediately before the actual
+Text/Voice processor calls. Inline photo tenancy is intentionally left for the
+separate fail-closed tenancy audit/transform; it is never falsely claimed here.
 """
 from __future__ import annotations
 
@@ -20,7 +20,6 @@ GET_CONTEXT = "Get user context"
 PROCESSORS = {
     "Call 'Transaction Processor Text'": "text",
     "Call 'Transaction Processor Voice'": "voice",
-    "Call 'Transaction Processor Photo'": "photo_receipt",
 }
 NS = uuid.UUID("d6e26a49-d2ff-44ba-a2bd-809139df69db")
 
@@ -112,6 +111,23 @@ def main():
     if missing:
         raise SystemExit(f"missing canonical Bot nodes: {sorted(missing)}")
 
+    # Canonical source evidence: Photo is inline and must not silently turn into
+    # an invented subworkflow call. The dedicated inline-photo transform/audit
+    # owns those nodes.
+    if "Call 'Transaction Processor Photo'" in names:
+        raise SystemExit("unexpected Photo processor call: canonical Bot topology changed; re-forensic required")
+    inline_photo_required = {
+        "Analyze image",
+        "Parse receipt JSON",
+        "Resolve account",
+        "Insert transaction",
+        "Insert receipt",
+        "Create products",
+    }
+    missing_inline = inline_photo_required - names
+    if missing_inline:
+        raise SystemExit(f"inline Photo topology drift: missing={sorted(missing_inline)}")
+
     out = copy.deepcopy(workflow)
     by_name = {n.get("name"): n for n in out.get("nodes", [])}
     context_node = by_name[GET_CONTEXT]
@@ -140,7 +156,7 @@ def main():
         inserted.append(gate_name)
 
         incoming = 0
-        for source_name, outputs in out.get("connections", {}).items():
+        for _source_name, outputs in out.get("connections", {}).items():
             for output_group in outputs.get("main", []):
                 for edge in output_group:
                     if edge.get("node") == processor_name:
@@ -153,9 +169,6 @@ def main():
             "main": [[{"node": processor_name, "type": "main", "index": 0}]]
         }
 
-    # The legacy private commands must remain unavailable. This transform never
-    # introduces command handlers and refuses a source snapshot that lacks the
-    # accepted explicit restriction markers.
     source_text = json.dumps(workflow, ensure_ascii=False).lower()
     for command in ("/summary", "/last", "/settings"):
         if command not in source_text:
@@ -170,6 +183,8 @@ def main():
     print(f"workflow_id={WORKFLOW_ID}")
     print("context_query=bot_capture_context_v1")
     print("default_capture_space=explicit_only")
+    print("processor_context=text_voice")
+    print("inline_photo=DELEGATED_TO_INLINE_PHOTO_TRANSFORM")
     print("inserted_nodes=" + ", ".join(sorted(inserted)))
     print("legacy_private_commands=preserved_unavailable")
     print("runtime_mutation=NONE")
