@@ -85,8 +85,8 @@ def main() -> None:
 
     require(
         "filter_preset_reference_repair_preserves_legacy_contract",
-        "account_ids remain unchanged" in repair
-        and "User-local category ids and all account" in repair
+        "kind text not null check (kind in ('income_category','expense_category'))" in repair
+        and "set account_ids=" not in repair.lower()
         and "old_target_id <> new_target_id" in repair,
     )
 
