@@ -14,3 +14,82 @@
 .securitySettingsPin{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .securitySettingsPin input{font-size:16px;letter-spacing:.12em}
 .securitySettingsPin button{grid-column:1/-1}
+
+/* SEC-001 acceptance hardening: narrow Telegram viewports */
+.securityGate,
+.securityCard,
+.securityCard *,
+.securitySettings,
+.securitySettings * {
+  box-sizing: border-box;
+}
+
+.securityGate {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 100dvh;
+  padding: 16px;
+  overflow-x: hidden;
+}
+
+.securityCard {
+  width: 100%;
+  max-width: 360px;
+  min-width: 0;
+}
+
+.securityPinForm,
+.securitySettings,
+.securitySettingsPin {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.securityPinForm input,
+.securitySettingsPin input {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.securitySettings {
+  overflow-x: hidden;
+}
+
+.securitySettingsTitle {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.securitySettingsTitle span {
+  min-width: 0;
+  margin-left: auto;
+}
+
+.securitySettingsPin {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.securitySettingsPin > strong,
+.securitySettingsPin > label {
+  grid-column: 1 / -1;
+}
+
+.securitySettings button {
+  width: 100%;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 420px) {
+  .securitySettingsPin {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .securitySettingsPin > * {
+    grid-column: 1 / -1;
+  }
+}

@@ -126,7 +126,11 @@ export default function SecuritySettings() {
       setDisableConfirmed(false)
       setStatus((current) => ({ ...(current || {}), protection_enabled: false, pin_enabled: false, biometric_enrolled: false }))
       window.dispatchEvent(new CustomEvent('moneytrack:security-changed', {
-        detail: { protection_enabled: false },
+        detail: {
+          protection_enabled: false,
+          biometric_enrolled: false,
+          biometric_token_saved: false,
+        },
       }))
     } catch (error) {
       showError(error?.message || 'Не удалось отключить защиту.')
@@ -151,6 +155,14 @@ export default function SecuritySettings() {
       const stored = await updateBiometricToken(manager, result?.biometric_token || '')
       if (!stored) throw new Error('BIOMETRIC_TOKEN_STORE_FAILED')
       await refresh(manager)
+
+      window.dispatchEvent(new CustomEvent('moneytrack:security-changed', {
+        detail: {
+          protection_enabled: true,
+          biometric_enrolled: true,
+          biometric_token_saved: true,
+        },
+      }))
     } catch (error) {
       if (serverEnrolled && manager?.deviceId) {
         try { await revokeBiometric(manager.deviceId) } catch { /* best effort rollback */ }
@@ -169,6 +181,14 @@ export default function SecuritySettings() {
       await revokeBiometric(manager.deviceId)
       try { await updateBiometricToken(manager, '') } catch { /* best effort */ }
       await refresh(manager)
+
+      window.dispatchEvent(new CustomEvent('moneytrack:security-changed', {
+        detail: {
+          protection_enabled: true,
+          biometric_enrolled: false,
+          biometric_token_saved: false,
+        },
+      }))
     } catch (error) {
       showError(error?.message || 'Не удалось отключить биометрию.')
     } finally {
@@ -187,8 +207,8 @@ export default function SecuritySettings() {
 
       {status?.pin_enabled !== true && (
         <div className="securitySettingsPin">
-          <input aria-label="Новый PIN" inputMode="numeric" autoComplete="off" maxLength={6} placeholder="6 цифр" value={pin} onChange={(event) => setPin(digits(event.target.value))} disabled={busy} />
-          <input aria-label="Повторите PIN" inputMode="numeric" autoComplete="off" maxLength={6} placeholder="Повторите PIN" value={pinAgain} onChange={(event) => setPinAgain(digits(event.target.value))} disabled={busy} />
+          <input type="password" aria-label="Новый PIN" inputMode="numeric" autoComplete="off" maxLength={6} placeholder="6 цифр" value={pin} onChange={(event) => setPin(digits(event.target.value))} disabled={busy} />
+          <input type="password" aria-label="Повторите PIN" inputMode="numeric" autoComplete="off" maxLength={6} placeholder="Повторите PIN" value={pinAgain} onChange={(event) => setPinAgain(digits(event.target.value))} disabled={busy} />
           <button type="button" onClick={enablePin} disabled={busy || pin.length !== 6 || pinAgain.length !== 6}>Включить PIN</button>
         </div>
       )}
@@ -196,9 +216,9 @@ export default function SecuritySettings() {
       {status?.pin_enabled === true && (
         <div className="securitySettingsPin">
           <strong>Изменить PIN</strong>
-          <input aria-label="Текущий PIN" inputMode="numeric" autoComplete="off" maxLength={6} placeholder="Текущий PIN" value={currentPin} onChange={(event) => setCurrentPin(digits(event.target.value))} disabled={busy} />
-          <input aria-label="Новый PIN" inputMode="numeric" autoComplete="off" maxLength={6} placeholder="Новый PIN" value={newPin} onChange={(event) => setNewPin(digits(event.target.value))} disabled={busy} />
-          <input aria-label="Повторите новый PIN" inputMode="numeric" autoComplete="off" maxLength={6} placeholder="Повторите новый PIN" value={newPinAgain} onChange={(event) => setNewPinAgain(digits(event.target.value))} disabled={busy} />
+          <input type="password" aria-label="Текущий PIN" inputMode="numeric" autoComplete="off" maxLength={6} placeholder="Текущий PIN" value={currentPin} onChange={(event) => setCurrentPin(digits(event.target.value))} disabled={busy} />
+          <input type="password" aria-label="Новый PIN" inputMode="numeric" autoComplete="off" maxLength={6} placeholder="Новый PIN" value={newPin} onChange={(event) => setNewPin(digits(event.target.value))} disabled={busy} />
+          <input type="password" aria-label="Повторите новый PIN" inputMode="numeric" autoComplete="off" maxLength={6} placeholder="Повторите новый PIN" value={newPinAgain} onChange={(event) => setNewPinAgain(digits(event.target.value))} disabled={busy} />
           <button type="button" onClick={changePin} disabled={busy || currentPin.length !== 6 || newPin.length !== 6 || newPinAgain.length !== 6}>Изменить PIN</button>
         </div>
       )}
@@ -216,7 +236,7 @@ export default function SecuritySettings() {
       {status?.pin_enabled === true && (
         <div className="securitySettingsPin">
           <strong>Отключить защиту приложения</strong>
-          <input aria-label="PIN для отключения защиты" inputMode="numeric" autoComplete="off" maxLength={6} placeholder="Текущий PIN" value={disablePin} onChange={(event) => setDisablePin(digits(event.target.value))} disabled={busy} />
+          <input type="password" aria-label="PIN для отключения защиты" inputMode="numeric" autoComplete="off" maxLength={6} placeholder="Текущий PIN" value={disablePin} onChange={(event) => setDisablePin(digits(event.target.value))} disabled={busy} />
           <label>
             <input type="checkbox" checked={disableConfirmed} onChange={(event) => setDisableConfirmed(event.target.checked)} disabled={busy} />
             Подтверждаю отключение PIN и биометрии на всех устройствах

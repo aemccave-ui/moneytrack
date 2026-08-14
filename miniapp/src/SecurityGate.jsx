@@ -43,7 +43,11 @@ export default function SecurityGate({ children }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [protectionEnabled, setProtectionEnabled] = useState(false)
-  const [biometric, setBiometric] = useState({ manager: null, enrolled: false })
+  const [biometric, setBiometric] = useState({
+    manager: null,
+    enrolled: false,
+    tokenSaved: false,
+  })
   const [sessionExpiresAt, setSessionExpiresAt] = useState(0)
   const hiddenAt = useRef(0)
 
@@ -66,6 +70,7 @@ export default function SecurityGate({ children }) {
       setBiometric({
         manager,
         enrolled: status?.biometric_enrolled === true,
+        tokenSaved: manager?.isBiometricTokenSaved === true,
       })
       if (enabled) {
         clearUnlockSession()
@@ -91,20 +96,69 @@ export default function SecurityGate({ children }) {
   }, [bootstrap])
 
   useEffect(() => {
+    const manager = biometric.manager
+    const webApp = window.Telegram?.WebApp
+
+    if (!manager || !webApp?.onEvent || !webApp?.offEvent) {
+      return undefined
+    }
+
+    const syncBiometricManager = () => {
+      setBiometric((current) => ({
+        ...current,
+        manager,
+        tokenSaved: manager.isBiometricTokenSaved === true,
+      }))
+    }
+
+    webApp.onEvent('biometricManagerUpdated', syncBiometricManager)
+
+    return () => {
+      webApp.offEvent('biometricManagerUpdated', syncBiometricManager)
+    }
+  }, [biometric.manager])
+
+  useEffect(() => {
     const onLocked = () => {
       if (protectionEnabled) lockNow()
     }
     const onSecurityChanged = (event) => {
-      const enabled = event?.detail?.protection_enabled === true
-      setProtectionEnabled(enabled)
-      if (event?.detail?.expires_at) {
-        const expires = new Date(event.detail.expires_at).getTime()
-        setSessionExpiresAt(Number.isFinite(expires) ? expires : 0)
+      const detail = event?.detail || {}
+
+      if (typeof detail.protection_enabled === 'boolean') {
+        const enabled = detail.protection_enabled
+        setProtectionEnabled(enabled)
+
+        if (!enabled) {
+          clearUnlockSession()
+          setSessionExpiresAt(0)
+          setBiometric((current) => ({
+            ...current,
+            enrolled: false,
+            tokenSaved: false,
+          }))
+          setMode('open')
+        }
       }
-      if (!enabled) {
-        clearUnlockSession()
-        setSessionExpiresAt(0)
-        setMode('open')
+
+      if (
+        typeof detail.biometric_enrolled === 'boolean'
+        || typeof detail.biometric_token_saved === 'boolean'
+      ) {
+        setBiometric((current) => ({
+          ...current,
+          enrolled: typeof detail.biometric_enrolled === 'boolean'
+            ? detail.biometric_enrolled
+            : current.enrolled,
+          tokenSaved: typeof detail.biometric_token_saved === 'boolean'
+            ? detail.biometric_token_saved
+            : current.tokenSaved,
+        }))
+      }
+
+      if (detail.expires_at) {
+        const expires = new Date(detail.expires_at).getTime()
+        setSessionExpiresAt(Number.isFinite(expires) ? expires : 0)
       }
     }
     window.addEventListener('moneytrack:locked', onLocked)
@@ -206,7 +260,7 @@ export default function SecurityGate({ children }) {
     && biometric.manager?.isInited
     && biometric.manager?.isBiometricAvailable
     && biometric.manager?.isAccessGranted
-    && biometric.manager?.isBiometricTokenSaved
+    && biometric.tokenSaved
     && biometric.manager?.deviceId
   )
 
@@ -218,6 +272,7 @@ export default function SecurityGate({ children }) {
         <p>Введите 6-значный PIN.</p>
         <form onSubmit={submitPin} className="securityPinForm">
           <input
+            type="password"
             value={pin}
             onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, 6))}
             inputMode="numeric"
