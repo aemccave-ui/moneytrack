@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """SPC-001: fail-closed transform of canonical trusted Telegram Bot context.
 
-The tracked Bot graph delegates Text and Voice to processor subworkflows but keeps
-Photo/receipt handling inline. This transform therefore changes only the shared
-Get user context boundary and inserts Space context immediately before the actual
-Text/Voice processor calls. Inline photo tenancy is intentionally left for the
-separate fail-closed tenancy audit/transform; it is never falsely claimed here.
+The accepted MoneyTrack runtime delegates Text and Voice to processor
+subworkflows and may delegate Photo to the accepted Photo processor while the
+tracked rollback/evidence source can still retain the older inline Photo graph.
+This transform therefore changes the shared Get user context boundary and
+inserts Space context immediately before every delegated capture processor call
+that is actually present. Inline Photo tenancy remains owned by the separate
+inline transform/audit when no delegated Photo call exists.
 """
 from __future__ import annotations
 
@@ -14,6 +16,7 @@ import copy
 import json
 import uuid
 from pathlib import Path
+from typing import Any
 
 WORKFLOW_ID = "DER2Lc3dT2afyQhy"
 GET_CONTEXT = "Get user context"
@@ -21,6 +24,8 @@ PROCESSORS = {
     "Call 'Transaction Processor Text'": "text",
     "Call 'Transaction Processor Voice'": "voice",
 }
+PHOTO_PROCESSOR = "Call 'Transaction Processor Photo'"
+EXPECTED_PHOTO_WORKFLOW_ID = "5VC0EcFB21rwTfoI"
 NS = uuid.UUID("d6e26a49-d2ff-44ba-a2bd-809139df69db")
 
 BOT_CONTEXT_QUERY = r'''select
@@ -94,6 +99,34 @@ def unwrap(doc):
     raise SystemExit("input must be a workflow object or one-element workflow array")
 
 
+def workflow_id_from_parameter(value: Any) -> str | None:
+    if isinstance(value, str):
+        text = value.strip()
+        return text or None
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, dict):
+        for key in ("value", "id", "workflowId"):
+            if key in value:
+                found = workflow_id_from_parameter(value[key])
+                if found:
+                    return found
+    return None
+
+
+def delegated_workflow_id(node: dict[str, Any]) -> str:
+    if node.get("type") != "n8n-nodes-base.executeWorkflow":
+        raise SystemExit(
+            f"delegated processor {node.get('name')!r} has unexpected type={node.get('type')!r}"
+        )
+    params = node.get("parameters", {})
+    for candidate in (params.get("workflowId"), params.get("workflow"), params.get("id")):
+        found = workflow_id_from_parameter(candidate)
+        if found:
+            return found
+    raise SystemExit(f"delegated processor workflow id unresolved: {node.get('name')!r}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("input")
@@ -105,28 +138,36 @@ def main():
     if workflow.get("id") != WORKFLOW_ID:
         raise SystemExit(f"unexpected workflow id: {workflow.get('id')!r}")
 
-    names = {n.get("name") for n in workflow.get("nodes", [])}
+    by_source_name = {n.get("name"): n for n in workflow.get("nodes", [])}
+    names = set(by_source_name)
     required = {GET_CONTEXT, *PROCESSORS.keys()}
     missing = required - names
     if missing:
         raise SystemExit(f"missing canonical Bot nodes: {sorted(missing)}")
 
-    # Canonical source evidence: Photo is inline and must not silently turn into
-    # an invented subworkflow call. The dedicated inline-photo transform/audit
-    # owns those nodes.
-    if "Call 'Transaction Processor Photo'" in names:
-        raise SystemExit("unexpected Photo processor call: canonical Bot topology changed; re-forensic required")
-    inline_photo_required = {
-        "Analyze image",
-        "Parse receipt JSON",
-        "Resolve account",
-        "Insert transaction",
-        "Insert receipt",
-        "Create products",
-    }
-    missing_inline = inline_photo_required - names
-    if missing_inline:
-        raise SystemExit(f"inline Photo topology drift: missing={sorted(missing_inline)}")
+    processors = dict(PROCESSORS)
+    if PHOTO_PROCESSOR in names:
+        photo_workflow_id = delegated_workflow_id(by_source_name[PHOTO_PROCESSOR])
+        if photo_workflow_id != EXPECTED_PHOTO_WORKFLOW_ID:
+            raise SystemExit(
+                "Photo processor workflow id drift: "
+                f"expected={EXPECTED_PHOTO_WORKFLOW_ID} actual={photo_workflow_id}"
+            )
+        processors[PHOTO_PROCESSOR] = "photo"
+        photo_topology = "delegated"
+    else:
+        inline_photo_required = {
+            "Analyze image",
+            "Parse receipt JSON",
+            "Resolve account",
+            "Insert transaction",
+            "Insert receipt",
+            "Create products",
+        }
+        missing_inline = inline_photo_required - names
+        if missing_inline:
+            raise SystemExit(f"inline Photo topology drift: missing={sorted(missing_inline)}")
+        photo_topology = "inline"
 
     out = copy.deepcopy(workflow)
     by_name = {n.get("name"): n for n in out.get("nodes", [])}
@@ -137,8 +178,12 @@ def main():
     params["query"] = BOT_CONTEXT_QUERY
 
     inserted = []
-    for processor_name, kind in PROCESSORS.items():
+    for processor_name, kind in processors.items():
         processor = by_name[processor_name]
+        if processor.get("type") != "n8n-nodes-base.executeWorkflow":
+            raise SystemExit(
+                f"processor node type drift name={processor_name!r} type={processor.get('type')!r}"
+            )
         x, y = processor.get("position", [0, 0])
         gate_name = f"SPC001 Bot {kind} Space Context"
         if gate_name in by_name:
@@ -183,8 +228,13 @@ def main():
     print(f"workflow_id={WORKFLOW_ID}")
     print("context_query=bot_capture_context_v1")
     print("default_capture_space=explicit_only")
-    print("processor_context=text_voice")
-    print("inline_photo=DELEGATED_TO_INLINE_PHOTO_TRANSFORM")
+    print("processor_context=" + "_".join(sorted(processors.values())))
+    print(f"photo_topology={photo_topology}")
+    if photo_topology == "inline":
+        print("inline_photo=DELEGATED_TO_INLINE_PHOTO_TRANSFORM")
+    else:
+        print(f"photo_processor_id={EXPECTED_PHOTO_WORKFLOW_ID}")
+        print("inline_photo=LEGACY_GRAPH_LEFT_FOR_REACHABILITY_AUDIT")
     print("inserted_nodes=" + ", ".join(sorted(inserted)))
     print("legacy_private_commands=preserved_unavailable")
     print("runtime_mutation=NONE")
