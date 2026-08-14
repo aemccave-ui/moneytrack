@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { getAccounts, updateReceiptItemCategory } from './api.js'
-import { updateReceiptAccounting } from './receipt-accounting-api.js'
+import { getAccounts, updateReceiptAccounting, updateReceiptItemCategory } from './api.js'
 import { hierarchyOptions } from './hierarchy-options.js'
 import { OperationSourceIcon } from './operation-source.jsx'
 import { currencyOptions as buildCurrencyOptions } from './reference-options.js'

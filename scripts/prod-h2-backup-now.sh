@@ -57,6 +57,7 @@ config_inputs=()
 for p in \
   /root/stack/n8n/docker-compose.yml \
   /root/stack/n8n/docker-compose.prod-h.yml \
+  /root/stack/n8n/docker-compose.sec001.yml \
   /root/stack/n8n/compose-interpolation.prod-h.sh \
   /opt/moneytrack/postgres/docker-compose.yml \
   /opt/moneytrack/postgres/docker-compose.prod-h.yml \

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getTransactionReference, updateCategory } from './api.js'
+import SecuritySettings from './SecuritySettings.jsx'
 import './settings-categories.css'
 
 const flowOf = (category) => {
@@ -126,6 +127,7 @@ export default function SettingsPortal() {
           <div><span>Настройки</span><strong>Категории</strong></div>
           <button type="button" onClick={() => setOpen(false)} aria-label="Закрыть">×</button>
         </header>
+        <SecuritySettings />
         <p className="settingsCategoryHint">Для каждой категории задаётся один финансовый тип. Он используется в фильтрах и в выборе категории операции.</p>
         {!loading && !backendReady && <div className="settingsBackendNotice" role="status">Редактирование включится после применения backend-миграции справочника категорий. Текущие данные не изменяются.</div>}
         <div className="settingsCategoryHead"><span>Категория</span><span>Приход / расход</span><span /></div>

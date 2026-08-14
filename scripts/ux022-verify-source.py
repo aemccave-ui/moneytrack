@@ -84,7 +84,13 @@ require(
 require(
     "responsive_operation_swipe_with_icons",
     "SwipeReveal" in recent
-    and "SwipeActionIcon" in recent
+    and "function DeleteIcon()" in recent
+    and 'className="swipeActionIcon"' in recent
+    and "key: 'delete'" in recent
+    and "label: 'Удалить'" in recent
+    and "icon: <DeleteIcon />" in recent
+    and "label: 'Изменить'" not in recent
+    and "label: 'Повторить'" not in recent
     and "setPointerCapture" in swipe_reveal
     and "Math.abs(dx) < 7 || Math.abs(dx) <= Math.abs(dy)" in swipe_reveal
     and "width * .34" in swipe_reveal
