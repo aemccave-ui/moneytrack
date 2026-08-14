@@ -4,6 +4,11 @@
 Proves that the already-committed Space tenancy DB is compatible with a complete
 set of runtime workflow candidates before any n8n import/publish/unpublish.
 Only n8n export:workflow is used against runtime state.
+
+The legacy MiniApp API is a mixed surface: GET /api/v1/i18n and GET /api/v1/me
+are canonical user-global survivor routes, while its financial routes are
+replaced by the Space-native Financial API. E1 classifies ownership per route,
+not per workflow, and builds a deterministic survivor candidate before E2.
 """
 from __future__ import annotations
 
@@ -22,10 +27,16 @@ FORENSIC = ROOT / "scripts/spc001-runtime-forensic-v3.py"
 AUDIT = ROOT / "scripts/spc001-audit-workflow-tenancy.py"
 FIN_GEN = ROOT / "scripts/spc001-generate-financial-api.py"
 CONTROL_GEN = ROOT / "scripts/spc001-generate-control-api.py"
+SURVIVOR_TRANSFORM = ROOT / "scripts/spc001-transform-global-api-survivor.py"
 
 QUICK_ID = "UX022QuickInput202608"
 FINANCIAL_ID = "SPC001FinancialApi202608"
 CONTROL_ID = "SPC001ControlApi202608"
+SURVIVOR_ID = "7TJ2xQTxLsTydXZc"
+SURVIVOR_ROUTES = {
+    ("GET", "api/v1/i18n"),
+    ("GET", "api/v1/me"),
+}
 
 
 def run(
@@ -99,8 +110,18 @@ def routes(workflow: dict) -> set[tuple[str, str]]:
         if not path:
             continue
         method = str(params.get("httpMethod") or "GET").strip().upper()
-        result.add((method, path))
+        route = (method, path)
+        if route in result:
+            die(f"duplicate_route_inside_workflow id={workflow.get('id')} route={route!r}")
+        result.add(route)
     return result
+
+
+def route_json(items: set[tuple[str, str]] | list[tuple[str, str]]) -> list[dict[str, str]]:
+    return [
+        {"method": method, "path": path}
+        for method, path in sorted(items)
+    ]
 
 
 def export_one(container: str, workflow_id: str, out: Path, *, published: bool) -> None:
@@ -199,7 +220,7 @@ def main() -> int:
         shutil.rmtree(out)
     out.mkdir(parents=True)
     forensic = out / "forensic"
-    legacy_dir = out / "legacy-financial-published"
+    legacy_dir = out / "legacy-api-published"
     legacy_dir.mkdir()
 
     evidence_dir = args.db_commit_evidence_dir.resolve()
@@ -227,24 +248,72 @@ def main() -> int:
 
     runtime_manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     legacy_ids = [x["id"] for x in runtime_manifest["apiWorkflows"] if x["id"] != QUICK_ID]
+    if SURVIVOR_ID not in legacy_ids:
+        die("global_survivor_workflow_missing_from_runtime_manifest")
+
     legacy_routes: set[tuple[str, str]] = set()
+    workflow_routes: dict[str, set[tuple[str, str]]] = {}
+    route_owners: dict[tuple[str, str], set[str]] = {}
     for workflow_id in legacy_ids:
         path = legacy_dir / f"{workflow_id}.json"
         export_one(args.n8n_container, workflow_id, path, published=True)
-        legacy_routes |= routes(load_one(path))
+        owned = routes(load_one(path))
+        workflow_routes[workflow_id] = owned
+        legacy_routes |= owned
+        for route in owned:
+            route_owners.setdefault(route, set()).add(workflow_id)
+
+    survivor_owner_errors = {
+        f"{method} /{path}": sorted(route_owners.get((method, path), set()))
+        for method, path in sorted(SURVIVOR_ROUTES)
+        if route_owners.get((method, path), set()) != {SURVIVOR_ID}
+    }
+    if survivor_owner_errors:
+        die("global_survivor_route_ownership=" + json.dumps(survivor_owner_errors, sort_keys=True))
+    print(
+        "GLOBAL_SURVIVOR_ROUTE_OWNERSHIP=PASS "
+        f"workflow={SURVIVOR_ID} routes={len(SURVIVOR_ROUTES)}"
+    )
+
+    survivor_candidate = out / "candidate-global-api-survivor.json"
+    run([
+        sys.executable, str(SURVIVOR_TRANSFORM),
+        str(legacy_dir / f"{SURVIVOR_ID}.json"),
+        str(survivor_candidate),
+    ])
+    if routes(load_one(survivor_candidate)) != SURVIVOR_ROUTES:
+        die("global_survivor_candidate_route_drift")
+    print("GLOBAL_SURVIVOR_CANDIDATE=PASS")
 
     financial_routes = routes(load_one(financial))
     control_routes = routes(load_one(control))
-    missing = sorted(legacy_routes - financial_routes)
+    legacy_financial_routes = legacy_routes - SURVIVOR_ROUTES
+
+    survivor_overlap = sorted(financial_routes & SURVIVOR_ROUTES)
+    if survivor_overlap:
+        die("financial_api_claims_global_survivor_routes=" + json.dumps(survivor_overlap))
+
+    missing = sorted(legacy_financial_routes - financial_routes)
     if missing:
         die("legacy_financial_routes_not_covered=" + json.dumps(missing))
     if financial_routes & control_routes:
         die("financial_control_route_overlap=" + json.dumps(sorted(financial_routes & control_routes)))
     print(
-        f"LEGACY_FINANCIAL_ROUTE_COVERAGE=PASS legacy_routes={len(legacy_routes)} "
+        f"LEGACY_FINANCIAL_ROUTE_COVERAGE=PASS legacy_financial_routes={len(legacy_financial_routes)} "
         f"financial_routes={len(financial_routes)}"
     )
+    print(f"GLOBAL_SURVIVOR_ROUTE_SEPARATION=PASS survivor_routes={len(SURVIVOR_ROUTES)}")
     print(f"CONTROL_ROUTE_SEPARATION=PASS control_routes={len(control_routes)}")
+
+    retire_ids = sorted(workflow_id for workflow_id in legacy_ids if workflow_id != SURVIVOR_ID)
+    for workflow_id in retire_ids:
+        unexpected = workflow_routes[workflow_id] & SURVIVOR_ROUTES
+        if unexpected:
+            die(
+                f"retire_workflow_owns_survivor_route id={workflow_id} "
+                + json.dumps(sorted(unexpected))
+            )
+    print(f"LEGACY_FINANCIAL_RETIRE_SET=PASS workflows={len(retire_ids)}")
 
     all_published = out / "all-published.json"
     export_all_published(args.n8n_container, all_published)
@@ -258,6 +327,8 @@ def main() -> int:
                 conflicts.append((method, path, workflow_id))
             if route in control_routes:
                 conflicts.append((method, path, workflow_id))
+            if route in SURVIVOR_ROUTES and workflow_id != SURVIVOR_ID:
+                conflicts.append((method, path, workflow_id))
     if conflicts:
         die("published_route_conflicts=" + json.dumps(sorted(conflicts)))
     print("PUBLISHED_ROUTE_CONFLICT_GATE=PASS")
@@ -270,6 +341,7 @@ def main() -> int:
         forensic / "candidate-bot.json",
         financial,
         control,
+        survivor_candidate,
     ]
     for path in audit_inputs:
         if not path.is_file():
@@ -278,7 +350,43 @@ def main() -> int:
     audit = run(audit_cmd, check=False)
     if audit.returncode != 0:
         die("candidate_tenancy_audit_failed")
-    print("CANDIDATE_TENANCY_AUDIT=PASS workflows=7")
+    print("CANDIDATE_TENANCY_AUDIT=PASS workflows=8")
+
+    cutover_plan = out / "cutover-plan.json"
+    cutover_plan.write_text(
+        json.dumps({
+            "contract": "SPC001-E1-cutover-plan-v1",
+            "source_head": head,
+            "d3_commit_bundle_sha256": commit_sha,
+            "d3_rollback_bundle_sha256": rollback_sha,
+            "global_survivor": {
+                "workflow_id": SURVIVOR_ID,
+                "routes": route_json(SURVIVOR_ROUTES),
+                "candidate": survivor_candidate.name,
+            },
+            "legacy_financial_retire_workflow_ids": retire_ids,
+            "legacy_financial_routes": route_json(legacy_financial_routes),
+            "financial_candidate": {
+                "workflow_id": FINANCIAL_ID,
+                "routes": route_json(financial_routes),
+                "candidate": financial.name,
+            },
+            "control_candidate": {
+                "workflow_id": CONTROL_ID,
+                "routes": route_json(control_routes),
+                "candidate": control.name,
+            },
+            "capture_candidates": {
+                "quick_input": "forensic/candidate-quick-input.json",
+                "text_processor": "forensic/candidate-text-processor.json",
+                "voice_processor": "forensic/live-voice-processor.json",
+                "photo_processor": "forensic/candidate-photo-processor.json",
+                "bot": "forensic/candidate-bot.json",
+            },
+        }, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    print("CUTOVER_PLAN=PASS path=cutover-plan.json")
 
     meta = out / "preflight-metadata.txt"
     meta.write_text(
@@ -288,8 +396,11 @@ def main() -> int:
             f"D3_ROLLBACK_BUNDLE_SHA256={rollback_sha}",
             f"D3_EVIDENCE_DIR={evidence_dir}",
             f"N8N_CONTAINER={args.n8n_container}",
-            f"LEGACY_FINANCIAL_WORKFLOW_COUNT={len(legacy_ids)}",
-            f"LEGACY_FINANCIAL_ROUTE_COUNT={len(legacy_routes)}",
+            f"LEGACY_API_WORKFLOW_COUNT={len(legacy_ids)}",
+            f"LEGACY_FINANCIAL_RETIRE_WORKFLOW_COUNT={len(retire_ids)}",
+            f"LEGACY_FINANCIAL_ROUTE_COUNT={len(legacy_financial_routes)}",
+            f"GLOBAL_SURVIVOR_WORKFLOW_ID={SURVIVOR_ID}",
+            f"GLOBAL_SURVIVOR_ROUTE_COUNT={len(SURVIVOR_ROUTES)}",
             f"FINANCIAL_CANDIDATE_ROUTE_COUNT={len(financial_routes)}",
             f"CONTROL_CANDIDATE_ROUTE_COUNT={len(control_routes)}",
             "DB_MUTATION=NONE",
