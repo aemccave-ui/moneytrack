@@ -1,8 +1,11 @@
 import { MoneyTrackApiError } from './api-errors.js'
+import { clearUnlockSession, getUnlockToken } from './security-session.js'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://n8n.moneytrackapp.xyz/webhook'
 
 let lastAccountMoveResult = null
+
+const LOCK_ERROR_CODES = new Set(['UNLOCK_REQUIRED', 'UNLOCK_INVALID', 'UNLOCK_EXPIRED', 'MONEYTRACK_LOCKED'])
 
 function telegramInitData() {
   return window.Telegram?.WebApp?.initData || ''
@@ -47,6 +50,8 @@ async function request(path, signal, {
     ...extraHeaders,
   }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
+  const unlockToken = getUnlockToken()
+  if (unlockToken) headers['X-MoneyTrack-Unlock-Token'] = unlockToken
 
   const response = await fetch(`${API_BASE}/${path}`, {
     method,
@@ -59,6 +64,10 @@ async function request(path, signal, {
 
   if (!response.ok) {
     const code = errorCode(payload) || `HTTP_${response.status}`
+    if (LOCK_ERROR_CODES.has(code)) {
+      clearUnlockSession()
+      window.dispatchEvent(new CustomEvent('moneytrack:locked', { detail: { code } }))
+    }
     throw new MoneyTrackApiError(code, errorMessage(payload), response.status)
   }
 
@@ -78,6 +87,50 @@ function setOptionalIdFilter(params, key, ids) {
   params.set(key, ids.map(String).join(','))
 }
 
+
+export function getSecurityStatus(deviceId = '', signal) {
+  const params = new URLSearchParams()
+  if (deviceId) params.set('device_id', deviceId)
+  const suffix = params.toString() ? `?${params.toString()}` : ''
+  return request(`api/v1/security/status${suffix}`, signal)
+}
+
+export function setupSecurityPin(pin, signal) {
+  return request('api/v1/security/pin/setup', signal, { method: 'POST', body: { pin } })
+}
+
+export function unlockWithPin(pin, signal) {
+  return request('api/v1/security/pin/unlock', signal, { method: 'POST', body: { pin } })
+}
+
+export function changeSecurityPin(currentPin, newPin, newPinRepeat, signal) {
+  return request('api/v1/security/pin/change', signal, {
+    method: 'POST',
+    body: { current_pin: currentPin, new_pin: newPin, new_pin_repeat: newPinRepeat },
+  })
+}
+
+export function disableSecurity(currentPin, confirm, signal) {
+  return request('api/v1/security/disable', signal, {
+    method: 'POST',
+    body: { current_pin: currentPin, confirm: confirm === true },
+  })
+}
+
+export function unlockWithBiometric({ deviceId, biometricToken }, signal) {
+  return request('api/v1/security/biometric/unlock', signal, {
+    method: 'POST', body: { device_id: deviceId, biometric_token: biometricToken },
+  })
+}
+
+export function enrollBiometric(deviceId, signal) {
+  return request('api/v1/security/biometric/enroll', signal, { method: 'POST', body: { device_id: deviceId } })
+}
+
+export function revokeBiometric(deviceId, signal) {
+  return request('api/v1/security/biometric/revoke', signal, { method: 'POST', body: { device_id: deviceId } })
+}
+
 export function getDashboard(signal) {
   return request('api/v1/dashboard', signal)
 }
@@ -95,6 +148,29 @@ export async function getArchivedAccounts(signal) {
 export async function getTransactionReference(signal) {
   const payload = await request('api/v1/transaction-reference', signal, { allowEmpty: true })
   return payload ?? { currencies: [], categories: [] }
+}
+
+export async function getReceiptByTransaction(transactionId, signal) {
+  const payload = await request(`api/v1/receipt?transaction_id=${encodeURIComponent(transactionId)}`, signal, { allowEmpty: true })
+  return payload?.receipt ?? null
+}
+
+export function updateReceiptAccounting(receiptId, accountId, currency, signal) {
+  return request('api/v1/receipt/accounting', signal, {
+    method: 'PATCH',
+    body: {
+      receipt_id: Number(receiptId),
+      account_id: Number(accountId),
+      currency: String(currency || '').toUpperCase(),
+    },
+  })
+}
+
+export function updateReceiptItemCategory(receiptItemId, categoryId, signal) {
+  return request('api/v1/receipt-item/category', signal, {
+    method: 'PATCH',
+    body: { receipt_item_id: Number(receiptItemId), category_id: categoryId == null ? null : Number(categoryId) },
+  })
 }
 
 export function updateCategory({ categoryId, name, flowType }, signal) {

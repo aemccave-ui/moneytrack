@@ -7,6 +7,7 @@ import {
   updateTransaction,
 } from './api.js'
 import { hierarchyOptions } from './hierarchy-options.js'
+import { OperationSourceIcon } from './operation-source.jsx'
 import { currencyOptions as buildCurrencyOptions } from './reference-options.js'
 import { SmartSelect } from './SmartSelect.jsx'
 
@@ -190,20 +191,12 @@ export default function TransactionEditor({ operation = {}, mode = 'edit', onClo
 
   const setField = (key) => (value) => setForm((current) => ({ ...current, [key]: value }))
 
-  const changeType = (value) => setForm((current) => ({
-    ...current,
-    transaction_type: value,
-    category_id: '',
-  }))
+  const changeType = (value) => setForm((current) => ({ ...current, transaction_type: value, category_id: '' }))
 
   const changeAccount = (value) => {
     const option = accountOptions.find((item) => String(item.value) === String(value))
     const account = option?.source
-    setForm((current) => ({
-      ...current,
-      account_id: value,
-      currency: account?.currency_code ? String(account.currency_code).toUpperCase() : current.currency,
-    }))
+    setForm((current) => ({ ...current, account_id: value, currency: account?.currency_code ? String(account.currency_code).toUpperCase() : current.currency }))
   }
 
   const selectNativeDate = (event) => {
@@ -239,11 +232,8 @@ export default function TransactionEditor({ operation = {}, mode = 'edit', onClo
     }
     setSaving(true)
     try {
-      if (creating || repeat) {
-        await createTransaction({ ...payload, request_id: form.request_id })
-      } else {
-        await updateTransaction(operation.id, payload)
-      }
+      if (creating || repeat) await createTransaction({ ...payload, request_id: form.request_id })
+      else await updateTransaction(operation.id, payload)
       await onSaved?.()
       onClose?.()
     } catch (error) {
@@ -261,29 +251,15 @@ export default function TransactionEditor({ operation = {}, mode = 'edit', onClo
   return createPortal(
     <div className="transactionEditorBackdrop visible" role="presentation" onClick={(event) => event.target === event.currentTarget && onClose?.()}>
       <form className="transactionEditorSheet" role="dialog" aria-modal="true" aria-label={dialogLabel} onSubmit={submit}>
-        <div className="transactionEditorHeader"><div><span>Операция</span><strong>{headerAction}</strong></div><button type="button" className="transactionEditorClose" onClick={onClose}>×</button></div>
+        <div className="transactionEditorHeader"><OperationSourceIcon operation={operation} kind={creating ? 'manual' : undefined} /><div><span>Операция</span><strong>{headerAction}</strong></div><button type="button" className="transactionEditorClose" onClick={onClose}>×</button></div>
         <div className="transactionEditorForm">
           <SmartSelect label="Тип" title="Тип операции" value={form.transaction_type} options={typeOptions} onChange={changeType} />
           <label className="transactionEditorField"><span>Сумма</span><input type="number" inputMode="decimal" step="0.01" value={form.amount} onChange={update('amount')} /></label>
           <SmartSelect label="Счёт" title="Счёт операции" value={form.account_id} options={accountOptions} onChange={changeAccount} placeholder="Выбрать счёт" disabled={loading} />
           <SmartSelect label="Валюта" title="Валюта операции" value={form.currency} options={currencyOptions} onChange={setField('currency')} disabled={loading} />
           <SmartSelect label="Категория" title="Категория операции" value={form.category_id} options={categoryOptions} onChange={setField('category_id')} disabled={loading} />
-          <label className="transactionEditorField transactionEditorPickerField">
-            <span>Дата</span>
-            <span className="transactionEditorPickerControl">
-              <input className="transactionEditorDisplayInput" type="text" inputMode="numeric" placeholder="ДД.ММ.ГГГГ" value={form.dateText} onChange={update('dateText')} />
-              <button type="button" className="transactionEditorPickerButton" onClick={() => showNativePicker(datePickerRef)} aria-label="Выбрать дату"><CalendarIcon /></button>
-              <input ref={datePickerRef} className="transactionEditorNativePicker" type="date" value={nativeDate} onChange={selectNativeDate} tabIndex={-1} aria-hidden="true" />
-            </span>
-          </label>
-          <label className="transactionEditorField transactionEditorPickerField">
-            <span>Время</span>
-            <span className="transactionEditorPickerControl">
-              <input className="transactionEditorDisplayInput" type="text" inputMode="numeric" placeholder="ЧЧ:ММ" maxLength={5} value={form.time} onChange={update('time')} />
-              <button type="button" className="transactionEditorPickerButton" onClick={() => showNativePicker(timePickerRef)} aria-label="Выбрать время"><ClockIcon /></button>
-              <input ref={timePickerRef} className="transactionEditorNativePicker" type="time" value={nativeTime} onChange={selectNativeTime} tabIndex={-1} aria-hidden="true" />
-            </span>
-          </label>
+          <label className="transactionEditorField transactionEditorPickerField"><span>Дата</span><span className="transactionEditorPickerControl"><input className="transactionEditorDisplayInput" type="text" inputMode="numeric" placeholder="ДД.ММ.ГГГГ" value={form.dateText} onChange={update('dateText')} /><button type="button" className="transactionEditorPickerButton" onClick={() => showNativePicker(datePickerRef)} aria-label="Выбрать дату"><CalendarIcon /></button><input ref={datePickerRef} className="transactionEditorNativePicker" type="date" value={nativeDate} onChange={selectNativeDate} tabIndex={-1} aria-hidden="true" /></span></label>
+          <label className="transactionEditorField transactionEditorPickerField"><span>Время</span><span className="transactionEditorPickerControl"><input className="transactionEditorDisplayInput" type="text" inputMode="numeric" placeholder="ЧЧ:ММ" maxLength={5} value={form.time} onChange={update('time')} /><button type="button" className="transactionEditorPickerButton" onClick={() => showNativePicker(timePickerRef)} aria-label="Выбрать время"><ClockIcon /></button><input ref={timePickerRef} className="transactionEditorNativePicker" type="time" value={nativeTime} onChange={selectNativeTime} tabIndex={-1} aria-hidden="true" /></span></label>
           <label className="transactionEditorField transactionDescriptionField"><span>Описание</span><input type="text" value={form.description} onChange={update('description')} /></label>
         </div>
         <button type="submit" className="transactionEditorSave" disabled={saving || loading}>{saving ? 'Сохранение…' : creating ? 'Добавить операцию' : 'Сохранить'}</button>

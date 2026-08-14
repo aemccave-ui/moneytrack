@@ -1,0 +1,220 @@
+.receiptModalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  background: rgba(8, 25, 27, .62);
+  backdrop-filter: blur(8px);
+}
+
+.receiptModalSheet {
+  width: min(100%, 430px);
+  max-height: min(88vh, 760px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 24px 24px 14px 14px;
+  background: #fffdf7;
+  color: #1f2929;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .28);
+}
+
+.receiptModalHeader {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 24px 22px 10px;
+  text-align: center;
+}
+
+.receiptModalClose {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font-size: 30px;
+  line-height: 1;
+}
+
+.receiptMerchant {
+  max-width: calc(100% - 42px);
+  margin: 0 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: .02em;
+}
+
+.receiptDate {
+  margin-top: 5px;
+  color: #6e7978;
+  font-size: 12px;
+}
+
+.receiptTotal {
+  margin-top: 16px;
+  font-size: 31px;
+  font-weight: 850;
+  letter-spacing: -.03em;
+}
+
+.receiptAccountingControls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 128px;
+  align-items: end;
+  gap: 8px;
+  margin-top: 12px;
+  text-align: left;
+}
+
+.receiptAccountSelect,
+.receiptCurrencySelect {
+  min-width: 0;
+}
+
+.receiptAccountSelect .smartSelectLabel,
+.receiptCurrencySelect .smartSelectLabel {
+  font-size: 11px;
+}
+
+.receiptAccountSelect .smartSelectTrigger,
+.receiptCurrencySelect .smartSelectTrigger,
+.receiptCategorySelect .smartSelectTrigger {
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(29, 85, 89, .07);
+}
+
+.receiptAccountSelect .smartSelectTriggerText strong,
+.receiptCurrencySelect .smartSelectTriggerText strong,
+.receiptCategorySelect .smartSelectTriggerText strong {
+  font-size: 12px;
+}
+
+.receiptAccountingMismatch {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(155, 67, 48, .09);
+  color: #8f3d2d;
+  text-align: left;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.receiptPerforation {
+  flex: 0 0 auto;
+  height: 18px;
+  overflow: hidden;
+  color: #aeb5b2;
+  text-align: center;
+  font-size: 18px;
+  line-height: 12px;
+  letter-spacing: 3px;
+  white-space: nowrap;
+}
+
+.receiptItems {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px 20px 12px;
+  scrollbar-gutter: stable;
+}
+
+.receiptItem {
+  padding: 12px 0 13px;
+  border-bottom: 1px dashed rgba(67, 85, 84, .25);
+}
+
+.receiptItemLine {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+}
+
+.receiptItemDescription {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.receiptItemAmount {
+  white-space: nowrap;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.receiptCategorySelect {
+  width: min(230px, 78%);
+  margin-top: 7px;
+}
+
+.receiptEmpty {
+  padding: 34px 10px;
+  color: #77817f;
+  text-align: center;
+  font-size: 13px;
+}
+
+.receiptModalFooter {
+  flex: 0 0 auto;
+  padding: 12px 20px 18px;
+  border-top: 1px solid rgba(67, 85, 84, .16);
+  background: #fffdf7;
+}
+
+.receiptFooterTotal {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.receiptFooterTotal span {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .16em;
+}
+
+.receiptFooterTotal strong {
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+}
+
+.receiptDone {
+  width: 100%;
+  min-height: 46px;
+  border: 0;
+  border-radius: 14px;
+  background: #1d5559;
+  color: white;
+  font-size: 15px;
+  font-weight: 750;
+}
+
+.receiptDone:disabled {
+  opacity: .42;
+}
+
+@media (max-width: 360px) {
+  .receiptModalBackdrop { padding-left: 8px; padding-right: 8px; }
+  .receiptModalHeader { padding-left: 16px; padding-right: 16px; }
+  .receiptItems { padding-left: 16px; padding-right: 16px; }
+  .receiptTotal { font-size: 27px; }
+  .receiptAccountingControls { grid-template-columns: 1fr; }
+  .receiptCategorySelect { width: 86%; }
+}

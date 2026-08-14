@@ -1,0 +1,4 @@
+services:
+  n8n:
+    environment:
+      MONEYTRACK_PIN_PEPPER: ${MONEYTRACK_PIN_PEPPER:?MONEYTRACK_PIN_PEPPER is required}

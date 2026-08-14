@@ -17,7 +17,7 @@ import { AccountTree } from './AccountTree.jsx'
 import AccountsFilters from './AccountsFilters.jsx'
 import { BalanceHero } from './BalanceHero.jsx'
 import { RecentOperations } from './RecentOperations.jsx'
-import { formatMonthLabel } from './date-format.js'
+import { localDateKey, resolvePeriod, shiftPeriod } from './date-format.js'
 
 const accountId = (account) => String(account.id ?? account.account_id)
 const accountParentId = (account) => account.parent_account_id
@@ -37,13 +37,6 @@ const money = (value, currency = 'EUR') => new Intl.NumberFormat('ru-RU', {
 const todayLabel = () => new Intl.DateTimeFormat('ru-RU', {
   day: 'numeric', month: 'long', weekday: 'long',
 }).format(new Date()).replace(/^./, (char) => char.toUpperCase())
-
-function localDateKey(date) {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
 
 function flattenAccounts(accounts = []) {
   const byId = new Map()
@@ -111,30 +104,6 @@ function selectedTotal(selectedIds, snapshotById) {
     total += value
   }
   return total
-}
-
-function periodDates(period, dateFrom, dateTo) {
-  const today = new Date()
-  if (period === 'range') return { dateFrom, dateTo }
-  const from = new Date(today)
-  if (period === 'week') from.setDate(from.getDate() - 6)
-  else from.setDate(1)
-  return { dateFrom: localDateKey(from), dateTo: localDateKey(today) }
-}
-
-function selectedPeriodLabel(period, dateFrom, dateTo) {
-  if (period === 'month') return formatMonthLabel(`${dateFrom}T12:00:00`)
-  if (period === 'week') {
-    const from = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short' })
-      .format(new Date(`${dateFrom}T12:00:00`))
-    const to = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })
-      .format(new Date(`${dateTo}T12:00:00`))
-    return `${from} — ${to}`
-  }
-  const format = (value) => new Intl.DateTimeFormat('ru-RU', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-  }).format(new Date(`${value}T12:00:00`))
-  return `${format(dateFrom)} — ${format(dateTo)}`
 }
 
 function groupTransactions(transactions) {
@@ -433,6 +402,7 @@ export default function AccountsExplorer({
   const [incomeCategoryIds, setIncomeCategoryIds] = useState(null)
   const [expenseCategoryIds, setExpenseCategoryIds] = useState(null)
   const [period, setPeriod] = useState('month')
+  const [anchorDate, setAnchorDate] = useState(() => localDateKey(new Date()))
   const today = new Date()
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
   const [dateFrom, setDateFrom] = useState(localDateKey(monthStart))
@@ -459,7 +429,7 @@ export default function AccountsExplorer({
     return () => window.clearTimeout(timer)
   }, [snackbar])
 
-  const resolvedPeriod = periodDates(period, dateFrom, dateTo)
+  const resolvedPeriod = resolvePeriod(period, anchorDate, { dateFrom, dateTo })
   const invalidRange = resolvedPeriod.dateFrom > resolvedPeriod.dateTo
   const selectedAccountIds = useMemo(() => [...selectedIds].sort((a, b) => Number(a) - Number(b)), [selectedIds])
   const aggregateKey = [
@@ -623,6 +593,11 @@ export default function AccountsExplorer({
     }
   }
 
+  const shiftSelectedPeriod = (direction) => {
+    if (period === 'range') return
+    setAnchorDate((current) => shiftPeriod(period, current, direction))
+  }
+
   return (
     <section className="accountsExplorer">
       <section className="balanceHeader" aria-labelledby="accounts-balance-title">
@@ -635,7 +610,7 @@ export default function AccountsExplorer({
       {totalMismatch && <div className="explorerInlineError" role="alert">Баланс строк не согласован с серверным итогом.</div>}
 
       <BalanceHero
-        label={selectedPeriodLabel(period, resolvedPeriod.dateFrom, resolvedPeriod.dateTo)}
+        label={resolvedPeriod.displayLabel}
         result={periodSummary.result}
         income={periodSummary.income}
         expense={periodSummary.expense}
@@ -647,9 +622,11 @@ export default function AccountsExplorer({
       <div className="periodTabs" role="group" aria-label="Период операций">
         <button type="button" className={period === 'week' ? 'isActive' : ''} onClick={() => setPeriod('week')}>Неделя</button>
         <button type="button" className={period === 'month' ? 'isActive' : ''} onClick={() => setPeriod('month')}>Месяц</button>
+        <button type="button" className={period === 'year' ? 'isActive' : ''} onClick={() => setPeriod('year')}>Год</button>
         <button type="button" className={period === 'range' ? 'isActive' : ''} onClick={() => setPeriod('range')}>Диапазон</button>
       </div>
 
+      {period !== 'range' && <div className="periodNavigation" aria-label={`Выбранный период: ${resolvedPeriod.displayLabel}`}><button type="button" className="periodNavigationButton" onClick={() => shiftSelectedPeriod(-1)} aria-label="Предыдущий период">‹</button><strong className="periodNavigationLabel">{resolvedPeriod.displayLabel}</strong><button type="button" className="periodNavigationButton" onClick={() => shiftSelectedPeriod(1)} aria-label="Следующий период">›</button></div>}
       {period === 'range' && <div className="dateRange"><input aria-label="Дата начала" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /><span>—</span><input aria-label="Дата окончания" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div>}
       {invalidRange && <div className="explorerInlineError" role="alert">Дата начала должна быть раньше даты окончания.</div>}
 

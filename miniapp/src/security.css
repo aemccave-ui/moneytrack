@@ -1,0 +1,95 @@
+.securityGate{min-height:100vh;display:grid;place-items:center;padding:24px;background:var(--tg-theme-bg-color,#f4f5f7);color:var(--tg-theme-text-color,#111827)}
+.securityCard{width:min(100%,360px);display:grid;gap:14px;padding:24px;border-radius:22px;background:var(--tg-theme-secondary-bg-color,#fff);box-shadow:0 12px 40px rgba(0,0,0,.08);text-align:center}
+.securityCard h1,.securityCard p{margin:0}
+.securityLockMark{width:52px;height:52px;margin:0 auto;border-radius:50%;display:grid;place-items:center;background:var(--tg-theme-button-color,#2481cc);color:var(--tg-theme-button-text-color,#fff);font-size:20px}
+.securityPinForm{display:grid;gap:10px}
+.securityPinForm input,.securitySettingsPin input{font:inherit;font-size:22px;letter-spacing:.28em;text-align:center;padding:12px 14px;border:1px solid rgba(127,127,127,.25);border-radius:12px;background:var(--tg-theme-bg-color,#fff);color:inherit}
+.securityCard button,.securitySettings button{font:inherit;padding:11px 14px;border:0;border-radius:12px;background:var(--tg-theme-button-color,#2481cc);color:var(--tg-theme-button-text-color,#fff);cursor:pointer}
+.securityCard button:disabled,.securitySettings button:disabled{opacity:.5;cursor:default}
+.securityCard .securitySecondary{background:transparent;color:var(--tg-theme-link-color,#2481cc);border:1px solid currentColor}
+.securityError{color:var(--tg-theme-destructive-text-color,#c62828);font-size:14px}
+.securitySettings{display:grid;gap:12px;padding:14px;margin:0 0 16px;border:1px solid rgba(127,127,127,.18);border-radius:14px}
+.securitySettingsTitle{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.securitySettingsTitle span,.securitySettings small{font-size:12px;opacity:.72}
+.securitySettingsPin{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.securitySettingsPin input{font-size:16px;letter-spacing:.12em}
+.securitySettingsPin button{grid-column:1/-1}
+
+/* SEC-001 acceptance hardening: narrow Telegram viewports */
+.securityGate,
+.securityCard,
+.securityCard *,
+.securitySettings,
+.securitySettings * {
+  box-sizing: border-box;
+}
+
+.securityGate {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 100dvh;
+  padding: 16px;
+  overflow-x: hidden;
+}
+
+.securityCard {
+  width: 100%;
+  max-width: 360px;
+  min-width: 0;
+}
+
+.securityPinForm,
+.securitySettings,
+.securitySettingsPin {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.securityPinForm input,
+.securitySettingsPin input {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.securitySettings {
+  overflow-x: hidden;
+}
+
+.securitySettingsTitle {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.securitySettingsTitle span {
+  min-width: 0;
+  margin-left: auto;
+}
+
+.securitySettingsPin {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.securitySettingsPin > strong,
+.securitySettingsPin > label {
+  grid-column: 1 / -1;
+}
+
+.securitySettings button {
+  width: 100%;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 420px) {
+  .securitySettingsPin {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .securitySettingsPin > * {
+    grid-column: 1 / -1;
+  }
+}

@@ -37,4 +37,13 @@ export default [
       'react-hooks/set-state-in-effect': 'off',
     },
   },
+  {
+    files: ['src/operation-source.jsx'],
+    rules: {
+      // UX-024 deliberately keeps the tiny persisted-source resolver beside the
+      // source icon primitive so routing and rendering share one canonical map.
+      // This Fast Refresh rule is development-only and does not affect runtime.
+      'react-refresh/only-export-components': 'off',
+    },
+  },
 ]
