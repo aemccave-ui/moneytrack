@@ -9,7 +9,7 @@ on:
       - '.github/workflows/spc001-source-contract.yml'
       - 'db/domain/SPC-001/**'
       - 'docs/architecture/SPC-001-tenancy-forensic.md'
-      - 'scripts/spc001-*.py'
+      - 'scripts/spc001-*'
       - 'miniapp/src/**'
       - 'workflows/moneytrack-DER2Lc3dT2afyQhy.json'
   pull_request:
@@ -19,7 +19,7 @@ on:
       - '.github/workflows/spc001-source-contract.yml'
       - 'db/domain/SPC-001/**'
       - 'docs/architecture/SPC-001-tenancy-forensic.md'
-      - 'scripts/spc001-*.py'
+      - 'scripts/spc001-*'
       - 'miniapp/src/**'
       - 'workflows/moneytrack-DER2Lc3dT2afyQhy.json'
 
@@ -46,6 +46,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m py_compile scripts/spc001-*.py
+          bash -n scripts/spc001-*.sh
 
       - name: Stage C source gate
         shell: bash
@@ -58,6 +59,18 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/spc001-cumulative-source-gate.py
+
+      - name: SPC-001D atomic migration source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-migration-source-gate.py
+          python scripts/spc001-build-db-migration.py \
+            --output /tmp/spc001-migration-commit.sql \
+            --final commit
+          python scripts/spc001-build-db-migration.py \
+            --output /tmp/spc001-migration-rollback.sql \
+            --final rollback
 
       - name: Generate financial adapter candidate
         shell: bash
@@ -148,6 +161,7 @@ jobs:
           set -euo pipefail
           echo 'SPC001_SOURCE_CONTRACT=PASS'
           echo 'RUNTIME_EVIDENCE=NOT_CLAIMED'
+          echo 'DB_MIGRATION_FORENSIC=NOT_RUN'
           echo 'DB_MUTATION=NONE'
           echo 'N8N_MUTATION=NONE'
           echo 'PREVIEW_MUTATION=NONE'
