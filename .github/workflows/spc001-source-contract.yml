@@ -97,16 +97,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # SPC composes on top of the already accepted API-2C production
-          # contract: the legacy /moneytrack-test webhook is not a valid ingress.
+          # SPC composes on top of the accepted API-2C removal of the legacy
+          # /moneytrack-test ingress, then applies explicit Bot Space context,
+          # inline capture authority cutover, and manual receipt-category cutover.
           python scripts/api-2c-transform-remove-test-ingress.py \
             --before workflows/moneytrack-DER2Lc3dT2afyQhy.json \
             --after /tmp/spc001-bot-api2c.json
           python scripts/spc001-transform-bot-capture.py \
             /tmp/spc001-bot-api2c.json \
-            /tmp/spc001-bot-capture.json
+            /tmp/spc001-bot-context.json
+          python scripts/spc001-transform-bot-inline-capture.py \
+            /tmp/spc001-bot-context.json \
+            /tmp/spc001-bot-inline.json
           python scripts/spc001-transform-bot-receipt-category.py \
-            /tmp/spc001-bot-capture.json \
+            /tmp/spc001-bot-inline.json \
             /tmp/spc001-bot-final.json
           python - <<'PY'
           import json
@@ -119,6 +123,9 @@ jobs:
           assert 'Webhook moneytrack-test' not in names
           text=p.read_text(encoding='utf-8')
           assert 'bot_capture_context_v1' in text
+          assert 'capture_receipt_ingest_projection_v1' in text
+          assert 'capture_receipt_duplicate_probe_v1' in text
+          assert 'receipt_projection_uncategorized_products_v1' in text
           assert 'receipt_projection_set_item_category_hint_v1' in text
           assert 'receipt_set_item_category_v1(' not in text
           print(f"bot_transform=PASS nodes={len(w.get('nodes',[]))}")
