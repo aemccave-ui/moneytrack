@@ -7,6 +7,12 @@ this builder removes only each unit's outer BEGIN/COMMIT, inserts the pre-mutati
 baseline and pre-commit reconciliation fragments, and wraps the complete program
 in one transaction.
 
+The live legacy database contains a proven historical cross-user reference
+anomaly. The controlled repair fragment is injected *inside* 010 after Personal
+Spaces/space_id are assigned and before 010's own same-Space reconciliation.
+This preserves 010's fail-closed invariant while allowing only ledger-backed
+reference repair.
+
 This script only writes a candidate SQL file. It never connects to PostgreSQL.
 """
 from __future__ import annotations
@@ -19,8 +25,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SPC = ROOT / "db" / "domain" / "SPC-001"
 
-BASELINE = "300_migration_baseline.sql"
-RECONCILE = "310_migration_reconciliation_guard.sql"
+BASELINE = "301_migration_baseline_reference_repair.sql"
+REPAIR = "309_migration_legacy_reference_repair.sql"
+RECONCILE = "312_migration_reconciliation_guard_reference_repair.sql"
 
 MUTATION_UNITS = [
     "010_tenancy_foundation.sql",
@@ -54,6 +61,10 @@ MUTATION_UNITS = [
 TX_BEGIN = re.compile(r"^\s*begin\s*;\s*$", re.I)
 TX_COMMIT = re.compile(r"^\s*commit\s*;\s*$", re.I)
 TX_ROLLBACK = re.compile(r"^\s*rollback\s*;\s*$", re.I)
+FOUNDATION_RECONCILE_MARKER = (
+    "-- ---------------------------------------------------------------------------\n"
+    "-- 6. Reconciliation MUST pass before this transaction can commit."
+)
 
 
 def read(path: Path) -> str:
@@ -91,6 +102,22 @@ def fragment(name: str) -> str:
     return text.rstrip() + "\n"
 
 
+def foundation_with_repair() -> str:
+    body = unwrap_unit("010_tenancy_foundation.sql")
+    marker_index = body.find(FOUNDATION_RECONCILE_MARKER)
+    if marker_index < 0:
+        raise SystemExit("010 repair injection marker not found")
+    before = body[:marker_index].rstrip() + "\n"
+    after = body[marker_index:]
+    return (
+        before
+        + "\n-- ===== CONTROLLED LEGACY REFERENCE REPAIR =====\n"
+        + fragment(REPAIR)
+        + "\n"
+        + after
+    )
+
+
 def build(final_action: str) -> str:
     if final_action not in {"commit", "rollback"}:
         raise SystemExit(f"invalid final action: {final_action}")
@@ -108,12 +135,11 @@ def build(final_action: str) -> str:
     ]
 
     for name in MUTATION_UNITS:
-        pieces.extend(
-            [
-                f"\n-- ===== SOURCE UNIT: {name} =====\n",
-                unwrap_unit(name),
-            ]
-        )
+        pieces.append(f"\n-- ===== SOURCE UNIT: {name} =====\n")
+        if name == "010_tenancy_foundation.sql":
+            pieces.append(foundation_with_repair())
+        else:
+            pieces.append(unwrap_unit(name))
 
     pieces.extend(
         [
@@ -140,6 +166,7 @@ def main() -> None:
     print("SPC001_DB_MIGRATION_BUNDLE=CREATED")
     print(f"mutation_units={len(MUTATION_UNITS)}")
     print(f"baseline={BASELINE}")
+    print(f"repair={REPAIR}")
     print(f"reconciliation={RECONCILE}")
     print(f"final_action={args.final.upper()}")
     print(f"sha256={digest}")
