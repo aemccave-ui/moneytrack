@@ -39,16 +39,20 @@ def main() -> int:
 
     forensic = read("docs/architecture/SPC-001-tenancy-forensic.md")
     foundation = read("db/domain/SPC-001/010_tenancy_foundation.sql")
+    actor_erasure = read("db/domain/SPC-001/013_actor_erasure_fk_hardening.sql")
     finance = read("db/domain/SPC-001/020_space_finance_domain.sql")
+    finance_hardening = read("db/domain/SPC-001/021_space_finance_hardening.sql")
     verify_a = read("db/domain/SPC-001/090_verify_tenancy_foundation.sql")
     lifecycle = read("db/domain/SPC-001/110_space_lifecycle.sql")
-    capture = read("db/domain/SPC-001/210_capture_projection.sql")
     erasure = read("db/domain/SPC-001/120_user_erasure_guard.sql")
+    capture = read("db/domain/SPC-001/210_capture_projection.sql")
     workflow = read(".github/workflows/moneytrack-source-gates.yml")
     sec = read("db/domain/SEC-001/010_application_lock.sql")
     ux024 = read("db/domain/UX-024/010_operation_source_and_datetime_guard.sql")
 
-    stage_a_complete = bool(finance and verify_a)
+    stage_a_complete = bool(
+        foundation and actor_erasure and finance and finance_hardening and verify_a
+    )
     stage_b_complete = bool(lifecycle and erasure)
     stage_c_complete = bool(capture)
 
@@ -68,7 +72,12 @@ def main() -> int:
         "all_members_financially_equal": has_all(
             foundation,
             "Active membership, not owner role, grants ordinary Space financial access",
-        ) and (has_all(finance, "assert_space_member_v1") if stage_a_complete else True),
+        ) and (
+            has_all(finance, "assert_space_member_v1")
+            and has_all(finance_hardening, "assert_space_member_v1")
+            if stage_a_complete
+            else True
+        ),
         "membership_server_side": has_all(
             foundation,
             "assert_space_member_v1",
@@ -77,7 +86,12 @@ def main() -> int:
         "client_space_id_untrusted": has_all(
             forensic,
             "client-provided Space id remains untrusted",
-        ) and (has_all(finance, "assert_space_member_v1") if stage_a_complete else True),
+        ) and (
+            has_all(finance, "assert_space_member_v1")
+            and has_all(finance_hardening, "assert_space_member_v1")
+            if stage_a_complete
+            else True
+        ),
         "legacy_user_data_migrated": has_all(
             foundation,
             "spc001_personal_space_for_user_v1",
@@ -87,6 +101,12 @@ def main() -> int:
         "financial_data_space_scoped": (
             has_all(
                 finance,
+                "p_actor_user_id",
+                "p_space_id",
+                "assert_space_member_v1",
+            )
+            and has_all(
+                finance_hardening,
                 "p_actor_user_id",
                 "p_space_id",
                 "assert_space_member_v1",
@@ -115,8 +135,55 @@ def main() -> int:
             "preserves original author independently of Space ownership",
         ) and (
             has_all(finance, "created_by_user_id", "updated_by_user_id")
+            and has_all(actor_erasure, "on delete set null", "Financial history remains Space-owned")
             if stage_a_complete
             else True
+        ),
+        "stage_a_finance_hardening_present": (
+            has_all(
+                finance_hardening,
+                "Correctness layer over 020_space_finance_domain.sql",
+                "finance_create_transaction_space_v1",
+                "finance_create_transfer_space_v1",
+                "finance_dashboard_space_read_model_v1",
+            )
+            if stage_a_complete
+            else None
+        ),
+        "dashboard_balance_no_join_multiplication": (
+            has_all(
+                finance_hardening,
+                "tx_movements as (",
+                "transfer_movements as (",
+                "select * from tx_movements union all select * from transfer_movements",
+                "raw_balances as (",
+            )
+            if stage_a_complete
+            else None
+        ),
+        "actor_erasure_fk_shared_history_safe": (
+            has_all(
+                actor_erasure,
+                "created_by_user_id",
+                "updated_by_user_id",
+                "captured_by_user_id",
+                "on delete set null",
+                "Shared finance history must survive user erasure",
+            )
+            if stage_a_complete
+            else None
+        ),
+        "stage_a_verifier_is_rollback_only": (
+            has_all(
+                verify_a,
+                "always rolled back",
+                "TENANT_ISOLATION=PASS",
+                "SHARED_FINANCIAL_RIGHTS=PASS",
+                "MEMBER_REMOVAL_IMMEDIATE=PASS",
+                "rollback;",
+            )
+            if stage_a_complete
+            else None
         ),
         "capture_event_multi_projection": (
             has_all(capture, "capture_event", "space_id", "projection")
@@ -143,7 +210,7 @@ def main() -> int:
             "SPC001_TRANSFER_FROM_ACCOUNT_CROSS_SPACE",
             "SPC001_TRANSFER_TO_ACCOUNT_CROSS_SPACE",
         ) and (
-            has_all(finance, "space_id", "from_account_id", "to_account_id")
+            has_all(finance_hardening, "space_id", "from_account_id", "to_account_id")
             if stage_a_complete
             else True
         ),
@@ -174,7 +241,7 @@ def main() -> int:
             has_all(lifecycle, "active Space", "clear") if stage_b_complete else None
         ),
         "dashboard_single_space_only": (
-            has_all(finance, "finance_dashboard", "p_space_id")
+            has_all(finance_hardening, "finance_dashboard", "p_space_id")
             if stage_a_complete
             else None
         ),
@@ -211,6 +278,10 @@ def main() -> int:
             "user_global_security_remains_user_global",
             "financial_references_do_not_cross_spaces",
             "operation_author_preserved",
+            "stage_a_finance_hardening_present",
+            "dashboard_balance_no_join_multiplication",
+            "actor_erasure_fk_shared_history_safe",
+            "stage_a_verifier_is_rollback_only",
             "transfer_single_space_only",
             "dashboard_single_space_only",
             "ux022_contract_preserved",
