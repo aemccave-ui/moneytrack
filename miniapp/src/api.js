@@ -12,6 +12,14 @@ function telegramInitData() {
   return window.Telegram?.WebApp?.initData || ''
 }
 
+function captureRequestId(kind) {
+  const prefix = String(kind || 'capture').replace(/[^A-Za-z0-9_-]/g, '') || 'capture'
+  const uuid = globalThis.crypto?.randomUUID?.()
+  if (uuid) return `${prefix}:${uuid}`
+  const entropy = Math.random().toString(36).slice(2, 14)
+  return `${prefix}:${Date.now().toString(36)}:${entropy}`
+}
+
 function errorCode(payload) {
   if (!payload) return ''
   if (typeof payload.error === 'string') return payload.error
@@ -307,7 +315,7 @@ export function deleteTransfer(id, signal) {
 export function createTransactionFromText(text, signal) {
   return request('api/v1/transaction/text', signal, {
     method: 'POST',
-    body: { text },
+    body: { text, request_id: captureRequestId('text') },
     allowEmpty: true,
     allowText: true,
   })
@@ -316,6 +324,7 @@ export function createTransactionFromText(text, signal) {
 export function createTransactionFromPhoto(file, signal) {
   const form = new FormData()
   form.append('receipt', file)
+  form.append('request_id', captureRequestId('photo'))
   return request('api/v1/transaction/photo', signal, {
     method: 'POST',
     rawBody: form,
@@ -327,6 +336,7 @@ export function createTransactionFromPhoto(file, signal) {
 export function createTransactionFromVoice(blob, signal) {
   const form = new FormData()
   form.append('voice', blob, 'voice.webm')
+  form.append('request_id', captureRequestId('voice'))
   return request('api/v1/transaction/voice', signal, {
     method: 'POST',
     rawBody: form,
