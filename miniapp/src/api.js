@@ -1,5 +1,6 @@
 import { MoneyTrackApiError } from './api-errors.js'
 import { clearUnlockSession, getUnlockToken } from './security-session.js'
+import { getActiveSpaceId } from './space-context.js'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://n8n.moneytrackapp.xyz/webhook'
 
@@ -53,6 +54,11 @@ async function request(path, signal, {
   const unlockToken = getUnlockToken()
   if (unlockToken) headers['X-MoneyTrack-Unlock-Token'] = unlockToken
 
+  // SPC-001: this is untrusted routing input, never an authorization claim.
+  // PostgreSQL/backend still asserts active membership on every financial request.
+  const activeSpaceId = getActiveSpaceId()
+  if (activeSpaceId != null) headers['X-MoneyTrack-Space-Id'] = String(activeSpaceId)
+
   const response = await fetch(`${API_BASE}/${path}`, {
     method,
     headers,
@@ -87,6 +93,80 @@ function setOptionalIdFilter(params, key, ids) {
   params.set(key, ids.map(String).join(','))
 }
 
+// SPC-001 lifecycle routes are protected MiniApp routes but do not trust an
+// existing active-space header for authorization; target Space is explicit in
+// the request body and membership/owner checks happen server-side.
+export async function getSpaces(signal) {
+  const payload = await request('api/v1/spaces', signal, { allowEmpty: true })
+  return payload ?? { spaces: [], current_space_id: null, default_capture_space_id: null }
+}
+
+export function createSpace(name, signal) {
+  return request('api/v1/spaces', signal, { method: 'POST', body: { name } })
+}
+
+export function renameSpace(spaceId, name, signal) {
+  return request('api/v1/spaces', signal, {
+    method: 'PATCH', body: { space_id: Number(spaceId), name },
+  })
+}
+
+export function archiveSpace(spaceId, signal) {
+  return request('api/v1/spaces/archive', signal, {
+    method: 'POST', body: { space_id: Number(spaceId) },
+  })
+}
+
+export function setActiveSpace(spaceId, signal) {
+  return request('api/v1/spaces/active', signal, {
+    method: 'POST', body: { space_id: Number(spaceId) },
+  })
+}
+
+export function setDefaultCaptureSpace(spaceId, signal) {
+  return request('api/v1/spaces/default-capture', signal, {
+    method: 'POST', body: { space_id: Number(spaceId) },
+  })
+}
+
+export function createSpaceInvite(spaceId, signal) {
+  return request('api/v1/spaces/invite', signal, {
+    method: 'POST', body: { space_id: Number(spaceId) },
+  })
+}
+
+export function revokeSpaceInvite(inviteId, signal) {
+  return request('api/v1/spaces/invite/revoke', signal, {
+    method: 'POST', body: { invite_id: Number(inviteId) },
+  })
+}
+
+export function acceptSpaceInvite(inviteToken, signal) {
+  return request('api/v1/spaces/invite/accept', signal, {
+    method: 'POST', body: { invite_token: String(inviteToken || '') },
+  })
+}
+
+export function getSpaceMembers(spaceId, signal) {
+  return request(`api/v1/spaces/members?space_id=${encodeURIComponent(spaceId)}`, signal)
+}
+
+export function removeSpaceMember(spaceId, userId, signal) {
+  return request('api/v1/spaces/members/remove', signal, {
+    method: 'POST', body: { space_id: Number(spaceId), user_id: Number(userId) },
+  })
+}
+
+export function getCaptureProjections(captureEventId, signal) {
+  return request(`api/v1/capture/projections?capture_event_id=${encodeURIComponent(captureEventId)}`, signal)
+}
+
+export function projectCaptureToSpaces(captureEventId, targets, signal) {
+  return request('api/v1/capture/projections', signal, {
+    method: 'POST',
+    body: { capture_event_id: Number(captureEventId), targets },
+  })
+}
 
 export function getSecurityStatus(deviceId = '', signal) {
   const params = new URLSearchParams()
