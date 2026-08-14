@@ -8,6 +8,9 @@ This transform therefore changes the shared Get user context boundary and
 inserts Space context immediately before every delegated capture processor call
 that is actually present. Inline Photo tenancy remains owned by the separate
 inline transform/audit when no delegated Photo call exists.
+
+Bot capture Space is explicit and independent: this transform never derives it
+from the last active MiniApp Space.
 """
 from __future__ import annotations
 
