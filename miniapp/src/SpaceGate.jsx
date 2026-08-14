@@ -47,13 +47,12 @@ export default function SpaceGate({ children }) {
   useEffect(() => {
     let cancelled = false
     clearActiveSpaceId()
-    setSwitching(true)
     getSpaces()
       .then(async (payload) => {
         if (cancelled) return
         const nextSpaces = normalizeSpaces(payload)
         if (!nextSpaces.length) throw new Error('Нет доступного финансового пространства')
-        let next = nextSpaces.find((space) => space.id === currentId(payload)) ?? nextSpaces[0]
+        const next = nextSpaces.find((space) => space.id === currentId(payload)) ?? nextSpaces[0]
         if (currentId(payload) !== next.id) {
           await persistActiveSpace(next.id)
           if (cancelled) return
