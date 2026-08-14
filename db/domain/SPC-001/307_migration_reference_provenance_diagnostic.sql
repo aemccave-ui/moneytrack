@@ -63,7 +63,7 @@ select format(
     a.user_id,
     coalesce(a.code,''),
     replace(coalesce(a.name,''),'|','/'),
-    coalesce(a.account_type,''),
+    coalesce(a.account_type::text,''),
     coalesce(a.currency_code,''),
     coalesce(a.parent_id::text,''),
     coalesce(parent.code,''),
