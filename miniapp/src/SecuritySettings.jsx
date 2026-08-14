@@ -33,6 +33,19 @@ function showError(message) {
   else window.alert(message)
 }
 
+function confirmBiometricSettings() {
+  const message = 'Telegram уже получил запрос на доступ к биометрии, но доступ не разрешён. Открыть настройки биометрии Telegram для MoneyTrack?'
+  const webApp = window.Telegram?.WebApp
+
+  return new Promise((resolve) => {
+    if (webApp?.showConfirm) {
+      webApp.showConfirm(message, (confirmed) => resolve(confirmed === true))
+      return
+    }
+    resolve(window.confirm(message))
+  })
+}
+
 const digits = (value) => value.replace(/\D/g, '').slice(0, 6)
 
 export default function SecuritySettings() {
@@ -65,6 +78,29 @@ export default function SecuritySettings() {
       .catch((error) => active && showError(error?.message || 'Не удалось загрузить настройки защиты'))
     return () => { active = false }
   }, [])
+
+  useEffect(() => {
+    const webApp = window.Telegram?.WebApp
+
+    if (!manager || !webApp?.onEvent || !webApp?.offEvent) {
+      return undefined
+    }
+
+    const onBiometricManagerUpdated = async () => {
+      try {
+        const next = await getSecurityStatus(manager.deviceId || '')
+        setStatus(next)
+      } catch (error) {
+        showError(error?.message || 'Не удалось обновить состояние биометрии.')
+      }
+    }
+
+    webApp.onEvent('biometricManagerUpdated', onBiometricManagerUpdated)
+
+    return () => {
+      webApp.offEvent('biometricManagerUpdated', onBiometricManagerUpdated)
+    }
+  }, [manager])
 
   const enablePin = async () => {
     if (busy) return
@@ -146,11 +182,15 @@ export default function SecuritySettings() {
     try {
       let granted = manager.isAccessGranted === true
 
-      if (
-        !granted
-        && manager.isAccessRequested === true
-        && typeof manager.openSettings === 'function'
-      ) {
+      if (!granted && manager.isAccessRequested === true) {
+        const confirmed = await confirmBiometricSettings()
+        if (!confirmed) return
+
+        if (typeof manager.openSettings !== 'function') {
+          showError('Эта версия Telegram не предоставляет переход к настройкам биометрии. Обновите Telegram и повторите попытку.')
+          return
+        }
+
         manager.openSettings()
         return
       }
