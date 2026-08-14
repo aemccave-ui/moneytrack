@@ -48,12 +48,12 @@ begin
     ) on conflict (workspace_id,user_id) do update
       set role='member',is_active=true,joined_at=now(),removed_at=null;
 
-    select s.base_currency into v_currency
+    select upper(s.base_currency) into v_currency
       from moneytrack.space_financial_settings s where s.space_id=v_a.space_id;
 
-    -- Select equivalent template-derived POSTABLE leaf account codes in both
-    -- Spaces. UX-022 grouping accounts are structural and intentionally reject
-    -- direct transaction posting with ACCOUNT_GROUP_NOT_POSTABLE.
+    -- Select equivalent template-derived, base-currency, postable leaf accounts
+    -- in both Spaces. This verifier exercises tenancy/projection semantics, not
+    -- unrelated FX availability or the UX-022 grouping-account rejection path.
     select pa.id,fa.id into v_p_account,v_f_account
       from moneytrack.accounts pa
       join moneytrack.accounts fa on fa.code=pa.code
@@ -61,6 +61,8 @@ begin
        and fa.space_id=v_family
        and coalesce(pa.is_active,true)=true
        and coalesce(fa.is_active,true)=true
+       and upper(pa.currency_code)=v_currency
+       and upper(fa.currency_code)=v_currency
        and not moneytrack.ux022_account_has_active_children_v1(pa.user_id,pa.id)
        and not moneytrack.ux022_account_has_active_children_v1(fa.user_id,fa.id)
      order by pa.id limit 1;
