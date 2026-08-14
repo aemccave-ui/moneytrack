@@ -1,0 +1,403 @@
+/* UX-022R3 frontend interaction overrides. */
+
+html,
+body,
+#root {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body { min-height: 0; }
+
+.app {
+  height: 100dvh;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* HabitsTrack-style swipe: actions stay fixed, full-width surface follows pointer. */
+.swipeReveal {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+
+.swipeRevealActions {
+  position: absolute;
+  z-index: 1;
+  inset: 0 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  background: #eef5f3;
+}
+
+.swipeRevealSurface {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  background: #fff;
+  transition: transform 180ms ease;
+  will-change: transform;
+  touch-action: pan-y;
+}
+
+.swipeRevealSurface.isDragging { transition: none; }
+
+.transactionCard {
+  overflow: hidden;
+  border-radius: 16px;
+}
+
+.transactionSwipeReveal { border-radius: 16px; }
+
+.swipeActionButton {
+  min-width: 0;
+  padding: 4px 2px;
+  border: 0;
+  border-left: 1px solid rgba(29,85,89,.06);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  background: transparent;
+  color: #3f605e;
+  font-size: 8px;
+  line-height: 1.05;
+  text-align: center;
+}
+
+.swipeActionButton.danger {
+  color: #a4434d;
+  background: #fff0f1;
+}
+
+.swipeActionButton:disabled { opacity: .34; }
+
+.swipeActionIcon {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: 0 0 auto;
+}
+
+.transactionRow {
+  width: 100%;
+  transform: none !important;
+  transition: none !important;
+}
+
+.transactionTransferReason {
+  grid-column: 1 / -1;
+  padding: 8px 9px;
+  border-radius: 10px;
+  background: rgba(29,85,89,.06);
+  color: #617775;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.transactionBusy,
+.quickTransactionStatus {
+  position: fixed;
+  z-index: 120;
+  left: 50%;
+  bottom: calc(104px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  max-width: calc(100% - 40px);
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: #173f43;
+  color: #fff;
+  box-shadow: 0 10px 28px rgba(18,48,51,.25);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Existing account swipe remains compact; explicitly neutralize legacy 180-degree rule. */
+.accountSwipeShell {
+  --account-actions-width: 168px;
+  position: relative;
+  overflow-x: auto !important;
+  overflow-y: hidden;
+  border-radius: 17px;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  touch-action: pan-x pan-y;
+  scroll-snap-type: x proximity;
+  transition: transform .14s ease, box-shadow .14s ease;
+}
+
+.accountSwipeShell::-webkit-scrollbar { display: none; }
+
+.accountSwipeTrack {
+  display: grid;
+  grid-template-columns: calc(100% - var(--account-actions-width)) var(--account-actions-width);
+  width: calc(100% + var(--account-actions-width));
+  min-width: calc(100% + var(--account-actions-width));
+}
+
+.accountTreeRow {
+  width: 100%;
+  transform: none !important;
+  transition: opacity .16s ease, filter .16s ease;
+  scroll-snap-align: start;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.accountSwipeActions {
+  position: static !important;
+  inset: auto !important;
+  width: auto !important;
+  min-width: var(--account-actions-width);
+  display: grid;
+  grid-template-columns: repeat(3, 56px);
+  align-items: stretch;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transform: none !important;
+  rotate: none !important;
+  writing-mode: horizontal-tb !important;
+  background: #eff5f3;
+  scroll-snap-align: end;
+}
+
+.accountSwipeActions .swipeActionButton {
+  flex-direction: row;
+  gap: 4px;
+  padding: 4px 3px;
+  font-size: 7px;
+  white-space: nowrap;
+  writing-mode: horizontal-tb !important;
+  transform: none !important;
+  rotate: none !important;
+}
+
+.accountSwipeActions .swipeActionButton > *,
+.accountSwipeActions .swipeActionIcon {
+  writing-mode: horizontal-tb !important;
+  transform: none !important;
+  rotate: none !important;
+}
+
+.accountSwipeActions .swipeActionIcon { width: 14px; height: 14px; }
+
+.accountTreeNode.isSelectionExcluded .accountTreeRow {
+  opacity: .46;
+  filter: saturate(.55);
+}
+
+.accountTreeNode.isSelectionExcluded .explorerTransactionsLoading { display: none; }
+
+.accountTreeNode.isDragSource {
+  position: relative;
+  z-index: 3;
+}
+
+.accountTreeNode.isDragSource > .accountSwipeShell {
+  opacity: .22;
+  transform: none !important;
+  box-shadow: none;
+}
+
+.accountTreeNode.isDragSource .accountTreeRow { animation: accountLongPressWiggle .24s ease-out; }
+
+.accountTreeNode.isDropTarget > .accountSwipeShell {
+  outline: 2px solid rgba(29,85,89,.48);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(29,85,89,.08);
+}
+
+.accountDragGhost {
+  position: fixed;
+  z-index: 10000;
+  left: 0;
+  top: 0;
+  margin: 0;
+  pointer-events: none;
+  border: 1px solid rgba(29,85,89,.12);
+  border-radius: 17px;
+  background: rgba(255,255,255,.97);
+  box-shadow: 0 16px 38px rgba(29,85,89,.26);
+  transform: translate3d(var(--drag-x), var(--drag-y), 0) scale(1.018);
+  will-change: transform;
+}
+
+.accountDragGhost .accountTreeRow {
+  min-height: 60px;
+  border: 0;
+  background: transparent;
+}
+
+@keyframes accountLongPressWiggle {
+  0% { rotate: 0deg; }
+  22% { rotate: -.8deg; }
+  45% { rotate: .8deg; }
+  68% { rotate: -.45deg; }
+  100% { rotate: 0deg; }
+}
+
+.accountRootDropZone { display: none !important; }
+
+.accountRootDropZone.isDragRootZone {
+  display: flex !important;
+  min-height: 44px;
+  margin: 0 2px 8px;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed rgba(29,85,89,.32);
+  border-radius: 14px;
+  background: rgba(255,255,255,.72);
+  color: #547a78;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.accountRootDropZone.isDragRootZone.isDropTarget {
+  border-color: rgba(29,85,89,.72);
+  background: rgba(226,244,238,.96);
+  box-shadow: 0 0 0 4px rgba(29,85,89,.08);
+}
+
+.accountMoveShortcut,
+.accountsPlusButton { display: none !important; }
+
+.explorerAccountOperations { position: relative; z-index: 0; }
+
+/* Transaction editor restored with active Save. */
+.transactionEditorBackdrop,
+.quickTransactionBackdrop {
+  position: fixed;
+  z-index: 10000;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px 12px calc(16px + env(safe-area-inset-bottom));
+  background: rgba(12,38,40,.34);
+  backdrop-filter: blur(7px);
+}
+
+.transactionEditorSheet,
+.quickTransactionSheet {
+  width: min(100%, 620px);
+  max-height: min(86vh, 760px);
+  overflow-y: auto;
+  padding: 18px;
+  border-radius: 28px;
+  background: rgba(248,252,252,.99);
+  box-shadow: 0 24px 70px rgba(22,63,67,.24);
+}
+
+.transactionEditorHeader,
+.quickTransactionSheet > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.transactionEditorHeader > div { display: flex; flex-direction: column; gap: 2px; }
+.transactionEditorHeader span { color: rgba(22,63,67,.5); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+.transactionEditorHeader strong,
+.quickTransactionSheet > header strong { color: #163f43; font-size: 20px; }
+
+.transactionEditorClose,
+.quickTransactionSheet > header button {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  background: #dcebec;
+  color: #1d5559;
+  font-size: 25px;
+  line-height: 1;
+}
+
+.transactionEditorForm {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 10px 14px;
+  align-items: start;
+}
+
+.transactionEditorField { min-width: 0; display: grid; gap: 5px; }
+.transactionEditorField > span { padding-left: 3px; color: rgba(22,63,67,.55); font-size: 10px; font-weight: 650; }
+
+.transactionEditorField input,
+.transactionEditorField select,
+.quickTransactionSheet textarea {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid rgba(22,63,67,.11);
+  border-radius: 14px;
+  padding: 10px 11px;
+  background: #fff;
+  color: #163f43;
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.transactionEditorField select { appearance: auto; }
+.transactionDescriptionField { grid-column: 1 / -1; }
+
+.transactionEditorSave,
+.quickTransactionPrimary {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 14px;
+  border: 0;
+  border-radius: 16px;
+  background: #1d5559;
+  color: #fff;
+  font-weight: 800;
+}
+
+.transactionEditorSave:disabled,
+.quickTransactionPrimary:disabled { opacity: .48; }
+
+.quickTransactionFile {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.quickTransactionSheet textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.quickTransactionSheet.voice p {
+  margin: 4px 0 8px;
+  color: #617775;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.quickTransactionPrimary.recording { background: #a4434d; }
+
+@media (max-width: 380px) {
+  .transactionEditorForm { grid-template-columns: 1fr; }
+  .transactionDescriptionField { grid-column: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .swipeRevealSurface,
+  .accountSwipeShell { transition-duration: .01ms; }
+}

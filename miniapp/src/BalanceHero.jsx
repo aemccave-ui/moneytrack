@@ -10,7 +10,7 @@ export function BalanceHero({
 }) {
   const hidden = (value) => privacy
     ? '••••••'
-    : money(value, baseCurrency)
+    : money(Math.round(Number(value || 0)), baseCurrency)
 
   const resultText = hidden(result)
   const incomeText = hidden(income)

@@ -1,18 +1,38 @@
 import { useEffect, useRef, useState } from 'react'
+import { announceSwipeOpen, nextSwipeScope, SWIPE_OPEN_EVENT } from './swipe-coordinator.js'
+
+const ROOT_DROP_TARGET = '__root__'
 
 const accountId = (account) => String(account.id ?? account.account_id)
+const accountParentId = (account) => account.parent_account_id
+  ?? account.parent_id
+  ?? account.account_parent_id
+  ?? account.parentAccountId
+  ?? account.parentId
+  ?? null
 
 function subtreeIds(node) {
   return [accountId(node.account), ...node.children.flatMap(subtreeIds)]
 }
 
+function selectableIds(node) {
+  if (!node.children.length) return [accountId(node.account)]
+  return node.children.flatMap(selectableIds)
+}
+
 function selectionState(node, selectedIds) {
   if (!selectedIds) return 'none'
-  const ids = subtreeIds(node)
+  const ids = selectableIds(node)
   const selected = ids.filter((id) => selectedIds.has(id)).length
   if (selected === 0) return 'none'
   if (selected === ids.length) return 'all'
   return 'partial'
+}
+
+function SwipeActionIcon({ name }) {
+  if (name === 'edit') return <svg className="swipeActionIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l11-11-4-4L4 16v4ZM13.5 6.5l4 4" /></svg>
+  if (name === 'archive') return <svg className="swipeActionIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v13H4V7Zm-1-3h18v3H3V4Zm6 7h6" /></svg>
+  return <svg className="swipeActionIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4h6v3M8 10v7M12 10v7M16 10v7M6 7l1 13h10l1-13" /></svg>
 }
 
 function TreeRow({
@@ -28,26 +48,31 @@ function TreeRow({
   onNodeBody,
   isNodeBodyInteractive,
   resolveNodeAmount,
-  resolveOwnAmount,
-  onMoveAccount,
-  openActionsId,
-  onActionsOpen,
-  onActionsClose,
-  onCopy,
   onEdit,
   onArchive,
   onDelete,
   renderAfterNode,
   renderChildren,
+  dragEnabled,
+  dragging,
+  dragOffset,
+  dropTarget,
+  swipeOpen,
+  onSwipeOpen,
+  onSwipeClose,
+  onLongPressStart,
+  onLongPressMove,
+  onLongPressEnd,
 }) {
   const id = accountId(node.account)
   const hasChildren = node.children.length > 0
   const isExpanded = expanded.has(id)
   const state = selectionState(node, selectedIds)
+  const selectionExcluded = Boolean(selectedIds && state === 'none')
   const accountCurrency = String(node.account.currency_code || baseCurrency).toUpperCase()
-  const bodyInteractive = isNodeBodyInteractive
+  const bodyInteractive = !hasChildren && (isNodeBodyInteractive
     ? Boolean(isNodeBodyInteractive(node, { id, hasChildren, isExpanded, selectionState: state }))
-    : Boolean(onNodeBody)
+    : Boolean(onNodeBody))
   const defaultAmount = money(
     node.account.balance_original ?? node.account.balance_base ?? 0,
     accountCurrency,
@@ -55,78 +80,85 @@ function TreeRow({
   const displayedAmount = resolveNodeAmount
     ? resolveNodeAmount(node, { id, hasChildren, accountCurrency, defaultAmount, selectionState: state })
     : defaultAmount
-  const ownAmount = resolveOwnAmount?.(node, { id, hasChildren, accountCurrency })
 
-  const press = useRef({ timer: null, x: 0, y: 0, dragging: false })
-  const [dragTarget, setDragTarget] = useState(null)
-  const [lifted, setLifted] = useState(false)
-  const [swipeX, setSwipeX] = useState(0)
-  const actionsOpen = openActionsId === id
+  const rowRef = useRef(null)
+  const shellRef = useRef(null)
+  const gesture = useRef({ timer: null, startX: 0, startY: 0, dragging: false, suppressClick: false })
 
   useEffect(() => {
-    if (!actionsOpen) return undefined
-    const timer = window.setTimeout(() => onActionsClose?.(id), 2000)
-    return () => window.clearTimeout(timer)
-  }, [actionsOpen, id, onActionsClose])
+    if (swipeOpen || dragging) return
+    const shell = shellRef.current
+    if (shell && shell.scrollLeft > 0) shell.scrollLeft = 0
+  }, [dragging, swipeOpen])
 
-  const clearPress = () => {
-    if (press.current.timer) window.clearTimeout(press.current.timer)
-    press.current.timer = null
-  }
+  useEffect(() => {
+    const row = rowRef.current
+    if (!row || !dragEnabled) return undefined
 
-  const pointerDown = (event) => {
-    if (event.button != null && event.button !== 0) return
-    press.current.x = event.clientX
-    press.current.y = event.clientY
-    press.current.dragging = false
-    clearPress()
-    if (onMoveAccount) {
-      press.current.timer = window.setTimeout(() => {
-        press.current.dragging = true
-        setLifted(true)
-        window.Telegram?.WebApp?.HapticFeedback?.impactOccurred?.('light')
-      }, 600)
+    const clearTimer = () => {
+      if (gesture.current.timer) window.clearTimeout(gesture.current.timer)
+      gesture.current.timer = null
     }
-  }
 
-  const pointerMove = (event) => {
-    const dx = event.clientX - press.current.x
-    const dy = event.clientY - press.current.y
-    if (press.current.dragging) {
-      event.preventDefault()
-      const element = document.elementFromPoint(event.clientX, event.clientY)
-      if (element?.closest?.('[data-account-root-drop="true"]')) {
-        setDragTarget('__ROOT__')
+    const touchStart = (event) => {
+      if (event.touches.length !== 1) return
+      if (event.target.closest('.accountSelectionControl, .accountDisclosureControl')) return
+      if ((shellRef.current?.scrollLeft || 0) > 4) return
+      const touch = event.touches[0]
+      clearTimer()
+      gesture.current.startX = touch.clientX
+      gesture.current.startY = touch.clientY
+      gesture.current.dragging = false
+      gesture.current.timer = window.setTimeout(() => {
+        gesture.current.dragging = true
+        gesture.current.suppressClick = true
+        shellRef.current?.scrollTo({ left: 0, behavior: 'auto' })
+        window.Telegram?.WebApp?.HapticFeedback?.impactOccurred?.('light')
+        onLongPressStart?.(node, gesture.current.startX, gesture.current.startY)
+      }, 480)
+    }
+
+    const touchMove = (event) => {
+      const touch = event.touches[0]
+      if (!touch) return
+      const dx = touch.clientX - gesture.current.startX
+      const dy = touch.clientY - gesture.current.startY
+      if (!gesture.current.dragging) {
+        if (Math.abs(dx) > 8 || Math.abs(dy) > 8) clearTimer()
         return
       }
-      const candidate = element?.closest?.('[data-account-id]')?.dataset?.accountId || null
-      setDragTarget(candidate && candidate !== id ? candidate : null)
-      return
-    }
-    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) clearPress()
-    if (Math.abs(dx) > Math.abs(dy) && dx < 0) setSwipeX(Math.max(-176, dx))
-  }
-
-  const pointerUp = async (event) => {
-    clearPress()
-    if (press.current.dragging) {
       event.preventDefault()
-      const target = dragTarget
-      press.current.dragging = false
-      setLifted(false)
-      setDragTarget(null)
-      if (target === '__ROOT__') await onMoveAccount?.(id, null)
-      else if (target && target !== id) await onMoveAccount?.(id, target)
-      return
+      onLongPressMove?.(touch.clientX, touch.clientY)
     }
-    if (swipeX < -46) {
-      setSwipeX(0)
-      onActionsOpen?.(id)
-    } else {
-      setSwipeX(0)
-      if (actionsOpen) onActionsClose?.(id)
+
+    const finish = (event) => {
+      clearTimer()
+      if (!gesture.current.dragging) return
+      event.preventDefault()
+      gesture.current.dragging = false
+      onLongPressEnd?.()
+      window.setTimeout(() => { gesture.current.suppressClick = false }, 0)
     }
-  }
+
+    const cancel = () => {
+      clearTimer()
+      if (gesture.current.dragging) onLongPressEnd?.(true)
+      gesture.current.dragging = false
+      window.setTimeout(() => { gesture.current.suppressClick = false }, 0)
+    }
+
+    row.addEventListener('touchstart', touchStart, { passive: true })
+    row.addEventListener('touchmove', touchMove, { passive: false })
+    row.addEventListener('touchend', finish, { passive: false })
+    row.addEventListener('touchcancel', cancel, { passive: true })
+    return () => {
+      clearTimer()
+      row.removeEventListener('touchstart', touchStart)
+      row.removeEventListener('touchmove', touchMove)
+      row.removeEventListener('touchend', finish)
+      row.removeEventListener('touchcancel', cancel)
+    }
+  }, [dragEnabled, node, onLongPressEnd, onLongPressMove, onLongPressStart])
 
   const selectionControl = selectedIds ? (
     <button
@@ -145,64 +177,81 @@ function TreeRow({
   const identity = (
     <>
       <span className="accountTreeIdentity">
-        <strong>{node.account.name}</strong>
-        <span>{node.account.account_type || 'Счёт'}{hasChildren ? ` · ${node.children.length}` : ` · ${accountCurrency}`}</span>
+        <span className="accountTreeTitleRow">
+          <strong>{node.account.name}</strong>
+          {hasChildren && (
+            <span
+              className="accountGroupCountBadge"
+              aria-label={`Счетов внутри: ${node.children.length}`}
+              title={`Счетов внутри: ${node.children.length}`}
+            >{node.children.length}</span>
+          )}
+        </span>
+        {!hasChildren && <span className="accountTreeMeta">{node.account.account_type || 'Счёт'} · {accountCurrency}</span>}
       </span>
       <span className="accountTreeAmounts">
-        {hasChildren && ownAmount != null && Number(ownAmount.value) !== 0 && (
-          <small className="accountOwnAmount sensitive">{privacy ? '••••' : ownAmount.label}</small>
-        )}
         <strong className="accountTreeAmount sensitive">{privacy ? '••••••' : displayedAmount}</strong>
       </span>
     </>
   )
 
-  const details = renderAfterNode?.(node, { id, hasChildren, isExpanded, selectionState: state })
+  const details = !hasChildren
+    ? renderAfterNode?.(node, { id, hasChildren, isExpanded, selectionState: state })
+    : null
 
   return (
     <div
-      className={`accountTreeNode ${lifted ? 'isLifted' : ''} ${details ? 'hasDetails' : ''}`}
+      className={`accountTreeNode ${details ? 'hasDetails' : ''} ${dragging ? 'isDragSource' : ''} ${dropTarget ? 'isDropTarget' : ''} ${selectionExcluded ? 'isSelectionExcluded' : ''}`}
       style={{ '--account-depth': depth }}
       data-depth={depth}
       data-account-id={id}
+      data-account-role={hasChildren ? 'group' : 'operational'}
     >
-      <div className={`accountSwipeShell ${actionsOpen ? 'actionsOpen' : ''}`}>
-        <div className="accountSwipeActions" aria-hidden={!actionsOpen}>
-          <button type="button" onClick={() => { onCopy?.(node); onActionsClose?.(id) }}>Копировать</button>
-          <button type="button" onClick={() => { onEdit?.(node); onActionsClose?.(id) }}>Изменить</button>
-          <button type="button" onClick={() => { onArchive?.(node); onActionsClose?.(id) }}>Архив</button>
-          <button type="button" className="danger" onClick={() => { onDelete?.(node); onActionsClose?.(id) }}>Удалить</button>
-        </div>
-        <div
-          className={`hierarchyToggle accountTreeRow ${hasChildren ? 'hasChildren' : ''}`}
-          style={{ transform: `translateX(${actionsOpen ? -176 : swipeX}px)` }}
-          onPointerDown={pointerDown}
-          onPointerMove={pointerMove}
-          onPointerUp={pointerUp}
-          onPointerCancel={() => { clearPress(); setLifted(false); setSwipeX(0); setDragTarget(null) }}
-        >
-          {selectionControl}
-          {hasChildren ? (
-            <button
-              type="button"
-              className={`accountDisclosureControl ${isExpanded ? 'expanded' : ''}`}
-              onClick={(event) => { event.stopPropagation(); onToggleParent(id, node) }}
-              aria-label={isExpanded ? 'Свернуть счёт' : 'Раскрыть счёт'}
-              aria-expanded={isExpanded}
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            </button>
-          ) : !selectionControl ? <span className="hierarchyChevron accountLeafMarker" aria-hidden="true">•</span> : null}
-          {bodyInteractive ? (
-            <button type="button" className="homeAccountOpenTarget" onClick={() => {
-              if (press.current.dragging || Math.abs(swipeX) > 8) return
-              onNodeBody?.(node, hasChildren)
-            }}>{identity}</button>
-          ) : <div className="homeAccountOpenTarget">{identity}</div>}
+      <div
+        ref={shellRef}
+        className="accountSwipeShell"
+        aria-label="Смахните строку влево для действий; удерживайте для переноса"
+        onScroll={() => {
+          if (dragging) return
+          const left = shellRef.current?.scrollLeft || 0
+          if (left > 18 && !swipeOpen) onSwipeOpen?.()
+          else if (left < 4 && swipeOpen) onSwipeClose?.()
+        }}
+        style={dragging ? { transform: `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0) scale(1.012)` } : undefined}
+      >
+        <div className="accountSwipeTrack">
+          <div ref={rowRef} className={`hierarchyToggle accountTreeRow ${hasChildren ? 'hasChildren groupingAccountRow' : 'operationalAccountRow'}`}>
+            {selectionControl}
+            {hasChildren ? (
+              <button
+                type="button"
+                className={`accountDisclosureControl ${isExpanded ? 'expanded' : ''}`}
+                onClick={(event) => { event.stopPropagation(); onToggleParent(id, node) }}
+                aria-label={isExpanded ? 'Свернуть группу счетов' : 'Раскрыть группу счетов'}
+                aria-expanded={isExpanded}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </button>
+            ) : !selectionControl ? <span className="hierarchyChevron accountLeafMarker" aria-hidden="true">•</span> : null}
+            {bodyInteractive ? (
+              <button type="button" className="homeAccountOpenTarget" onClick={(event) => {
+                if (gesture.current.suppressClick || (shellRef.current?.scrollLeft || 0) > 4) {
+                  event.preventDefault()
+                  return
+                }
+                onNodeBody?.(node, false)
+              }}>{identity}</button>
+            ) : <div className="homeAccountOpenTarget">{identity}</div>}
+          </div>
+          <div className="accountSwipeActions">
+            <button type="button" className="swipeActionButton" onClick={() => onEdit?.(node)}><SwipeActionIcon name="edit" /><span>Изменить</span></button>
+            <button type="button" className="swipeActionButton" onClick={() => onArchive?.(node)}><SwipeActionIcon name="archive" /><span>Архив</span></button>
+            <button type="button" className="swipeActionButton danger" onClick={() => onDelete?.(node)}><SwipeActionIcon name="delete" /><span>Удалить</span></button>
+          </div>
         </div>
       </div>
-      {hasChildren && isExpanded && <div className="accountTreeChildren">{renderChildren(node.children, depth + 1)}</div>}
       {details}
+      {hasChildren && isExpanded && <div className="accountTreeChildren">{renderChildren(node.children, depth + 1)}</div>}
     </div>
   )
 }
@@ -220,49 +269,133 @@ export function AccountTree({
   isNodeBodyInteractive,
   renderAfterNode,
   resolveNodeAmount,
-  resolveOwnAmount,
   onMoveAccount,
-  onCopy,
   onEdit,
   onArchive,
   onDelete,
-  openActionsId,
-  onActionsOpen,
-  onActionsClose,
   className = '',
 }) {
-  const renderNodes = (nodes, depth = 0) => nodes.map((node) => (
-    <TreeRow
-      key={accountId(node.account)}
-      node={node}
-      depth={depth}
-      expanded={expanded}
-      baseCurrency={baseCurrency}
-      privacy={privacy}
-      money={money}
-      selectedIds={selectedIds}
-      onToggleParent={onToggleParent}
-      onToggleSelection={onToggleSelection}
-      onNodeBody={onNodeBody}
-      isNodeBodyInteractive={isNodeBodyInteractive}
-      renderAfterNode={renderAfterNode}
-      resolveNodeAmount={resolveNodeAmount}
-      resolveOwnAmount={resolveOwnAmount}
-      onMoveAccount={onMoveAccount}
-      openActionsId={openActionsId}
-      onActionsOpen={onActionsOpen}
-      onActionsClose={onActionsClose}
-      onCopy={onCopy}
-      onEdit={onEdit}
-      onArchive={onArchive}
-      onDelete={onDelete}
-      renderChildren={renderNodes}
-    />
-  ))
+  const dragRef = useRef({ sourceId: null, targetId: null, currentParentId: null, blocked: new Set(), startX: 0, startY: 0 })
+  const [draggingId, setDraggingId] = useState(null)
+  const [dropTargetId, setDropTargetId] = useState(null)
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const [openSwipeId, setOpenSwipeId] = useState(null)
+  const [swipeScope] = useState(() => nextSwipeScope('accounts'))
+
+  useEffect(() => {
+    if (openSwipeId == null) return undefined
+    const timer = window.setTimeout(() => setOpenSwipeId(null), 2000)
+    return () => window.clearTimeout(timer)
+  }, [openSwipeId])
+
+  useEffect(() => {
+    const onExternalSwipe = (event) => {
+      if (openSwipeId == null) return
+      const ownKey = `${swipeScope}:${openSwipeId}`
+      if (event.detail?.key !== ownKey) setOpenSwipeId(null)
+    }
+    window.addEventListener(SWIPE_OPEN_EVENT, onExternalSwipe)
+    return () => window.removeEventListener(SWIPE_OPEN_EVENT, onExternalSwipe)
+  }, [openSwipeId, swipeScope])
+
+  const openSwipe = (id) => {
+    setOpenSwipeId(id)
+    announceSwipeOpen(`${swipeScope}:${id}`)
+  }
+
+  const beginDrag = (node, startX, startY) => {
+    const sourceId = accountId(node.account)
+    dragRef.current = {
+      sourceId,
+      targetId: null,
+      currentParentId: accountParentId(node.account) == null ? null : String(accountParentId(node.account)),
+      blocked: new Set(subtreeIds(node)),
+      startX,
+      startY,
+    }
+    setOpenSwipeId(null)
+    announceSwipeOpen(`${swipeScope}:drag:${sourceId}`)
+    setDraggingId(sourceId)
+    setDropTargetId(null)
+    setDragOffset({ x: 0, y: 0 })
+  }
+
+  const moveDrag = (x, y) => {
+    if (!dragRef.current.sourceId) return
+    setDragOffset({ x: x - dragRef.current.startX, y: y - dragRef.current.startY })
+    const hitElements = typeof document.elementsFromPoint === 'function'
+      ? document.elementsFromPoint(x, y)
+      : [document.elementFromPoint(x, y)].filter(Boolean)
+    const rootHit = hitElements.some((element) => element.closest?.('[data-account-root-drop]'))
+    const candidates = hitElements
+      .map((element) => element.closest?.('[data-account-id]'))
+      .filter(Boolean)
+    const candidate = candidates.find((element) => !dragRef.current.blocked.has(String(element.dataset.accountId)))
+    const valid = rootHit
+      ? ROOT_DROP_TARGET
+      : candidate?.dataset?.accountId ? String(candidate.dataset.accountId) : null
+    if (dragRef.current.targetId !== valid) {
+      dragRef.current.targetId = valid
+      setDropTargetId(valid)
+      if (valid) window.Telegram?.WebApp?.HapticFeedback?.selectionChanged?.()
+    }
+  }
+
+  const endDrag = async (cancelled = false) => {
+    const { sourceId, targetId, currentParentId } = dragRef.current
+    dragRef.current = { sourceId: null, targetId: null, currentParentId: null, blocked: new Set(), startX: 0, startY: 0 }
+    setDraggingId(null)
+    setDropTargetId(null)
+    setDragOffset({ x: 0, y: 0 })
+    const hasTarget = targetId != null
+    const nextParentId = targetId === ROOT_DROP_TARGET ? null : targetId
+    if (cancelled || !sourceId || !hasTarget || nextParentId === currentParentId) return
+    window.Telegram?.WebApp?.HapticFeedback?.impactOccurred?.('medium')
+    await onMoveAccount?.(sourceId, nextParentId)
+  }
+
+  const renderNodes = (nodes, depth = 0) => nodes.map((node) => {
+    const id = accountId(node.account)
+    return (
+      <TreeRow
+        key={id}
+        node={node}
+        depth={depth}
+        expanded={expanded}
+        baseCurrency={baseCurrency}
+        privacy={privacy}
+        money={money}
+        selectedIds={selectedIds}
+        onToggleParent={onToggleParent}
+        onToggleSelection={onToggleSelection}
+        onNodeBody={onNodeBody}
+        isNodeBodyInteractive={isNodeBodyInteractive}
+        renderAfterNode={renderAfterNode}
+        resolveNodeAmount={resolveNodeAmount}
+        onEdit={onEdit}
+        onArchive={onArchive}
+        onDelete={onDelete}
+        renderChildren={renderNodes}
+        dragEnabled={Boolean(onMoveAccount)}
+        dragging={draggingId === id}
+        dragOffset={draggingId === id ? dragOffset : { x: 0, y: 0 }}
+        dropTarget={dropTargetId === id}
+        swipeOpen={openSwipeId === id}
+        onSwipeOpen={() => openSwipe(id)}
+        onSwipeClose={() => setOpenSwipeId((current) => current === id ? null : current)}
+        onLongPressStart={beginDrag}
+        onLongPressMove={moveDrag}
+        onLongPressEnd={endDrag}
+      />
+    )
+  })
 
   return (
     <div className={`accountTree ${className}`.trim()}>
-      {onMoveAccount && <div className="accountRootDropZone" data-account-root-drop="true">Без родителя / верхний уровень</div>}
+      <div
+        className={`accountRootDropZone ${draggingId ? 'isDragRootZone' : ''} ${dropTargetId === ROOT_DROP_TARGET ? 'isDropTarget' : ''}`}
+        data-account-root-drop="true"
+      >В верхний уровень</div>
       {renderNodes(hierarchy)}
     </div>
   )

@@ -1,4 +1,11 @@
+import { MoneyTrackApiError } from './api-errors.js'
+import { clearUnlockSession, getUnlockToken } from './security-session.js'
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://n8n.moneytrackapp.xyz/webhook'
+
+let lastAccountMoveResult = null
+
+const LOCK_ERROR_CODES = new Set(['UNLOCK_REQUIRED', 'UNLOCK_INVALID', 'UNLOCK_EXPIRED', 'MONEYTRACK_LOCKED'])
 
 function telegramInitData() {
   return window.Telegram?.WebApp?.initData || ''
@@ -10,53 +17,118 @@ function errorCode(payload) {
   return payload.error?.code || payload.code || ''
 }
 
+function errorMessage(payload) {
+  if (!payload || typeof payload !== 'object') return ''
+  return payload.error?.message || payload.message || ''
+}
+
+async function parseResponse(response, { allowText = false } = {}) {
+  const responseBody = await response.text()
+  if (!responseBody.trim()) return { responseBody, payload: null }
+  try {
+    return { responseBody, payload: JSON.parse(responseBody) }
+  } catch {
+    if (allowText && response.ok) return { responseBody, payload: responseBody }
+    if (!response.ok) {
+      throw new MoneyTrackApiError(`HTTP_${response.status}`, responseBody.slice(0, 120), response.status)
+    }
+    throw new MoneyTrackApiError('API_RESPONSE_INVALID', 'Сервис вернул некорректный ответ.', response.status)
+  }
+}
+
 async function request(path, signal, {
   allowEmpty = false,
+  allowText = false,
   method = 'GET',
   body = undefined,
+  rawBody = undefined,
+  headers: extraHeaders = {},
 } = {}) {
   const headers = {
     Accept: 'application/json',
     'X-Telegram-Init-Data': telegramInitData(),
+    ...extraHeaders,
   }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
+  const unlockToken = getUnlockToken()
+  if (unlockToken) headers['X-MoneyTrack-Unlock-Token'] = unlockToken
 
   const response = await fetch(`${API_BASE}/${path}`, {
     method,
     headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: rawBody !== undefined ? rawBody : body === undefined ? undefined : JSON.stringify(body),
     signal,
   })
 
-  const responseBody = await response.text()
-  let payload = null
-  if (responseBody.trim()) {
-    try {
-      payload = JSON.parse(responseBody)
-    } catch {
-      if (!response.ok) throw new Error(`API ${response.status}: ${responseBody.slice(0, 120)}`)
-      throw new Error(`Некорректный JSON API: ${path}`)
-    }
-  }
+  const { responseBody, payload } = await parseResponse(response, { allowText })
 
   if (!response.ok) {
-    const code = errorCode(payload)
-    throw new Error(code || `API ${response.status}${responseBody ? `: ${responseBody.slice(0, 120)}` : ''}`)
+    const code = errorCode(payload) || `HTTP_${response.status}`
+    if (LOCK_ERROR_CODES.has(code)) {
+      clearUnlockSession()
+      window.dispatchEvent(new CustomEvent('moneytrack:locked', { detail: { code } }))
+    }
+    throw new MoneyTrackApiError(code, errorMessage(payload), response.status)
   }
 
   if (!responseBody.trim()) {
     if (allowEmpty) return null
-    throw new Error(`Пустой ответ API: ${path}`)
+    throw new MoneyTrackApiError('API_RESPONSE_EMPTY', 'Сервис вернул пустой ответ.', response.status)
   }
 
+  if (typeof payload === 'string') return payload
   const code = errorCode(payload)
-  if (code) throw new Error(code)
+  if (code) throw new MoneyTrackApiError(code, errorMessage(payload), response.status)
   return payload?.data ?? payload
 }
 
 function setOptionalIdFilter(params, key, ids) {
   if (ids == null) return
   params.set(key, ids.map(String).join(','))
+}
+
+
+export function getSecurityStatus(deviceId = '', signal) {
+  const params = new URLSearchParams()
+  if (deviceId) params.set('device_id', deviceId)
+  const suffix = params.toString() ? `?${params.toString()}` : ''
+  return request(`api/v1/security/status${suffix}`, signal)
+}
+
+export function setupSecurityPin(pin, signal) {
+  return request('api/v1/security/pin/setup', signal, { method: 'POST', body: { pin } })
+}
+
+export function unlockWithPin(pin, signal) {
+  return request('api/v1/security/pin/unlock', signal, { method: 'POST', body: { pin } })
+}
+
+export function changeSecurityPin(currentPin, newPin, newPinRepeat, signal) {
+  return request('api/v1/security/pin/change', signal, {
+    method: 'POST',
+    body: { current_pin: currentPin, new_pin: newPin, new_pin_repeat: newPinRepeat },
+  })
+}
+
+export function disableSecurity(currentPin, confirm, signal) {
+  return request('api/v1/security/disable', signal, {
+    method: 'POST',
+    body: { current_pin: currentPin, confirm: confirm === true },
+  })
+}
+
+export function unlockWithBiometric({ deviceId, biometricToken }, signal) {
+  return request('api/v1/security/biometric/unlock', signal, {
+    method: 'POST', body: { device_id: deviceId, biometric_token: biometricToken },
+  })
+}
+
+export function enrollBiometric(deviceId, signal) {
+  return request('api/v1/security/biometric/enroll', signal, { method: 'POST', body: { device_id: deviceId } })
+}
+
+export function revokeBiometric(deviceId, signal) {
+  return request('api/v1/security/biometric/revoke', signal, { method: 'POST', body: { device_id: deviceId } })
 }
 
 export function getDashboard(signal) {
@@ -78,6 +150,40 @@ export async function getTransactionReference(signal) {
   return payload ?? { currencies: [], categories: [] }
 }
 
+export async function getReceiptByTransaction(transactionId, signal) {
+  const payload = await request(`api/v1/receipt?transaction_id=${encodeURIComponent(transactionId)}`, signal, { allowEmpty: true })
+  return payload?.receipt ?? null
+}
+
+export function updateReceiptAccounting(receiptId, accountId, currency, signal) {
+  return request('api/v1/receipt/accounting', signal, {
+    method: 'PATCH',
+    body: {
+      receipt_id: Number(receiptId),
+      account_id: Number(accountId),
+      currency: String(currency || '').toUpperCase(),
+    },
+  })
+}
+
+export function updateReceiptItemCategory(receiptItemId, categoryId, signal) {
+  return request('api/v1/receipt-item/category', signal, {
+    method: 'PATCH',
+    body: { receipt_item_id: Number(receiptItemId), category_id: categoryId == null ? null : Number(categoryId) },
+  })
+}
+
+export function updateCategory({ categoryId, name, flowType }, signal) {
+  return request('api/v1/categories', signal, {
+    method: 'PATCH',
+    body: {
+      category_id: Number(categoryId),
+      name,
+      flow_type: flowType,
+    },
+  })
+}
+
 export function deleteTransaction(id, signal) {
   return request(`api/v1/transaction?id=${encodeURIComponent(id)}`, signal, {
     method: 'DELETE',
@@ -85,12 +191,74 @@ export function deleteTransaction(id, signal) {
   })
 }
 
+export function createTransaction(payload, signal) {
+  return request('api/v1/transaction', signal, { method: 'POST', body: payload })
+}
+
+export function updateTransaction(id, payload, signal) {
+  return request('api/v1/transaction', signal, {
+    method: 'PATCH',
+    body: { transaction_id: Number(id), ...payload },
+  })
+}
+
+export function getTransfer(id, signal) {
+  return request(`api/v1/transfer?id=${encodeURIComponent(id)}`, signal)
+}
+
+export function createTransfer(payload, signal) {
+  return request('api/v1/transfer', signal, { method: 'POST', body: payload })
+}
+
+export function updateTransfer(id, payload, signal) {
+  return request('api/v1/transfer', signal, {
+    method: 'PATCH',
+    body: { transfer_id: Number(id), ...payload },
+  })
+}
+
+export function deleteTransfer(id, signal) {
+  return request(`api/v1/transfer?id=${encodeURIComponent(id)}`, signal, {
+    method: 'DELETE',
+    allowEmpty: true,
+  })
+}
+
+export function createTransactionFromText(text, signal) {
+  return request('api/v1/transaction/text', signal, {
+    method: 'POST',
+    body: { text },
+    allowEmpty: true,
+    allowText: true,
+  })
+}
+
+export function createTransactionFromPhoto(file, signal) {
+  const form = new FormData()
+  form.append('receipt', file)
+  return request('api/v1/transaction/photo', signal, {
+    method: 'POST',
+    rawBody: form,
+    allowEmpty: true,
+    allowText: true,
+  })
+}
+
+export function createTransactionFromVoice(blob, signal) {
+  const form = new FormData()
+  form.append('voice', blob, 'voice.webm')
+  return request('api/v1/transaction/voice', signal, {
+    method: 'POST',
+    rawBody: form,
+    allowEmpty: true,
+    allowText: true,
+  })
+}
+
 export function getTransactions({
   accountId,
   dateFrom,
   dateTo,
-  includeDescendants = true,
-  selectedAccountIds = null,
   incomeCategoryIds = null,
   expenseCategoryIds = null,
 }, signal) {
@@ -98,9 +266,9 @@ export function getTransactions({
     account_id: String(accountId),
     date_from: dateFrom,
     date_to: dateTo,
-    include_descendants: String(includeDescendants),
+    include_descendants: 'false',
   })
-  setOptionalIdFilter(params, 'selected_account_ids', selectedAccountIds)
+  setOptionalIdFilter(params, 'selected_account_ids', [accountId])
   setOptionalIdFilter(params, 'income_category_ids', incomeCategoryIds)
   setOptionalIdFilter(params, 'expense_category_ids', expenseCategoryIds)
   return request(`api/v1/transactions?${params.toString()}`, signal)
@@ -160,8 +328,22 @@ export function editAccount({ accountId, name, accountType }, signal) {
   return request('api/v1/accounts', signal, { method: 'PATCH', body: { account_id: Number(accountId), name, account_type: accountType } })
 }
 
-export function moveAccount(accountId, parentId, signal) {
-  return request('api/v1/accounts/move', signal, { method: 'POST', body: { account_id: Number(accountId), parent_id: parentId == null ? null : Number(parentId) } })
+export function consumeLastAccountMoveResult() {
+  const result = lastAccountMoveResult
+  lastAccountMoveResult = null
+  return result
+}
+
+export async function moveAccount(accountId, parentId, signal) {
+  lastAccountMoveResult = null
+  try {
+    const result = await request('api/v1/accounts/move', signal, { method: 'POST', body: { account_id: Number(accountId), parent_id: parentId == null ? null : Number(parentId) } })
+    lastAccountMoveResult = { ok: true }
+    return result
+  } catch (error) {
+    lastAccountMoveResult = { ok: false, message: error?.message || 'Не удалось переместить счёт' }
+    throw error
+  }
 }
 
 export function archiveAccount(accountId, signal) {

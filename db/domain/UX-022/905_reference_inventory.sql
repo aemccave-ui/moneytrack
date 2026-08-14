@@ -4,6 +4,9 @@
 -- lifecycle semantics have not been classified by UX-022. user_settings is a
 -- special case: ux022_account_is_default_v1 inspects every account-looking field
 -- through to_jsonb(), so it remains schema-tolerant without silently ignoring it.
+--
+-- UX-022R3 migration backup tables are deliberately classified here as
+-- migration-only rollback metadata. They are not live posting/default references.
 do $inventory$
 declare
     v_unclassified text[];
@@ -19,6 +22,26 @@ begin
             or (c.table_name = 'user_default_accounts' and c.column_name = 'account_id')
             or (c.table_name = 'user_settings' and c.column_name like '%account_id%')
             or (c.table_name = 'filter_presets' and c.column_name = 'account_ids')
+            or (
+                c.table_name = 'ux022_grouping_created_account_migration_backup'
+                and c.column_name in ('account_id', 'parent_account_id')
+            )
+            or (
+                c.table_name = 'ux022_grouping_transaction_migration_backup'
+                and c.column_name in ('original_account_id', 'target_account_id')
+            )
+            or (
+                c.table_name = 'ux022_grouping_transfer_migration_backup'
+                and c.column_name in ('original_from_account_id', 'original_to_account_id', 'target_account_id')
+            )
+            or (
+                c.table_name = 'ux022_grouping_user_default_migration_backup'
+                and c.column_name in ('original_account_id', 'target_account_id')
+            )
+            or (
+                c.table_name = 'ux022_grouping_user_settings_migration_backup'
+                and c.column_name in ('original_account_id', 'target_account_id')
+            )
        );
 
     if coalesce(cardinality(v_unclassified), 0) > 0 then

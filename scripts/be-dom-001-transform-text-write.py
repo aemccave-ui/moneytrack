@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""BE-DOM-001: transform MoneyTrack Transaction Processor Text runtime export.
+"""BE-DOM-001 / UX-024: transform MoneyTrack Transaction Processor Text runtime export.
 
 Input may be either a single workflow object or the one-element array produced by
 `n8n export:workflow`. Only three named Postgres node queries are changed.
+UX-024 additionally persists the real ingress source (text/voice) through the
+backend sourced-create wrapper; operation content is never used to infer it.
 """
 
 import argparse
@@ -17,42 +19,70 @@ TARGETS = {
     "Insert opening balance",
 }
 
+SOURCE_EXPR = "{{ String((($('MoneyTrack Transaction Processor Text').first().json.source_type === 'voice') || ($('MoneyTrack Transaction Processor Text').first().json.message_type === 'voice')) ? 'voice' : 'text').replace(/'/g,\"''\") }}"
+
 SIMPLE_QUERY = r'''select
     c.id,
     c.account_id
-from moneytrack.finance_create_transaction_v1(
+from moneytrack.finance_create_sourced_transaction_v1(
     {{ $('MoneyTrack Transaction Processor Text').first().json.user_id }}::bigint,
     {{ $json.account_id }}::bigint,
     '{{ String($("Parse transaction JSON").item.json.operation_type || "").replace(/'/g,"''") }}'::text,
     {{ $("Parse transaction JSON").item.json.amount }}::numeric,
     '{{ String($("Parse transaction JSON").item.json.currency || "").replace(/'/g,"''") }}'::text,
     '{{ String($("Parse transaction JSON").item.json.description || "").replace(/'/g,"''") }}'::text,
-    coalesce(
-        nullif(nullif('{{ $("Parse transaction JSON").item.json.transaction_date }}','null'),'undefined')::date,
-        current_date
-    )::timestamptz,
-    null,
-    null,
+    case
+        when nullif(nullif('{{ $("Parse transaction JSON").item.json.transaction_date }}','null'),'undefined') is not null
+        then (
+            nullif(nullif('{{ $("Parse transaction JSON").item.json.transaction_date }}','null'),'undefined')::date::text
+            || ' '
+            || to_char(
+                coalesce(
+                    to_timestamp({{ $('MoneyTrack Transaction Processor Text').first().json.message_date || 'null' }}::double precision),
+                    current_timestamp
+                ),
+                'HH24:MI:SS'
+            )
+        )::timestamp::timestamptz
+        else coalesce(
+            to_timestamp({{ $('MoneyTrack Transaction Processor Text').first().json.message_date || 'null' }}::double precision),
+            current_timestamp
+        )
+    end,
+    '__SOURCE__'::text,
     null
-) c;'''
+) c;'''.replace('__SOURCE__', SOURCE_EXPR)
 
 ADJUSTMENT_QUERY = r'''select
     c.id
-from moneytrack.finance_create_transaction_v1(
+from moneytrack.finance_create_sourced_transaction_v1(
     {{ $('MoneyTrack Transaction Processor Text').first().json.user_id }}::bigint,
     {{ $json.account_id }}::bigint,
     'adjustment'::text,
     {{ $json.amount }}::numeric,
     '{{ String($json.currency || "").replace(/'/g,"''") }}'::text,
     '{{ String($json.description || "").replace(/'/g,"''") }}'::text,
-    coalesce(
-        nullif(nullif('{{ $json.transaction_date }}','null'),'undefined')::date,
-        current_date
-    )::timestamptz,
-    null,
-    null,
+    case
+        when nullif(nullif('{{ $json.transaction_date }}','null'),'undefined') is not null
+        then (
+            nullif(nullif('{{ $json.transaction_date }}','null'),'undefined')::date::text
+            || ' '
+            || to_char(
+                coalesce(
+                    to_timestamp({{ $('MoneyTrack Transaction Processor Text').first().json.message_date || 'null' }}::double precision),
+                    current_timestamp
+                ),
+                'HH24:MI:SS'
+            )
+        )::timestamp::timestamptz
+        else coalesce(
+            to_timestamp({{ $('MoneyTrack Transaction Processor Text').first().json.message_date || 'null' }}::double precision),
+            current_timestamp
+        )
+    end,
+    '__SOURCE__'::text,
     null
-) c;'''
+) c;'''.replace('__SOURCE__', SOURCE_EXPR)
 
 OPENING_QUERY = r'''with r as (
     select
@@ -66,7 +96,7 @@ OPENING_QUERY = r'''with r as (
 created as (
     select c.*
     from (select * from r where status = 'resolved') rr
-    cross join lateral moneytrack.finance_create_transaction_v1(
+    cross join lateral moneytrack.finance_create_sourced_transaction_v1(
         rr.user_id,
         rr.account_id,
         'openingbalance',
@@ -74,8 +104,7 @@ created as (
         rr.currency,
         'opening balance',
         rr.transaction_date::timestamptz,
-        null,
-        null,
+        '__SOURCE__'::text,
         null
     ) c
 )
@@ -92,7 +121,7 @@ select
         else 'added'
     end as status
 from r
-left join created c on true;'''
+left join created c on true;'''.replace('__SOURCE__', SOURCE_EXPR)
 
 REPLACEMENTS = {
     "Insert transaction text": SIMPLE_QUERY,
@@ -142,15 +171,14 @@ def main():
         raise SystemExit(f"changed node mismatch: {sorted(changed)}")
 
     output = [out_workflow] if was_array else out_workflow
-    Path(args.output).write_text(
-        json.dumps(output, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    Path(args.output).write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    print("BE-DOM-001 Text Processor candidate created")
+    print("BE-DOM-001 / UX-024 Text Processor candidate created")
     print(f"workflow_id={WORKFLOW_ID}")
     print("changed_nodes=" + ", ".join(sorted(changed)))
-    print("source_idempotency=DEFERRED (no stable Telegram message/update id proven in runtime contract)")
+    print("interactive_timestamp=parsed_date_plus_ingress_clock_or_ingress_timestamp")
+    print("operation_source=text_or_voice_from_ingress_contract")
+    print("source_content_heuristics=NONE")
 
 
 if __name__ == "__main__":

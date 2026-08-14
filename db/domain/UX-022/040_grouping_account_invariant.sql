@@ -1,0 +1,390 @@
+-- MoneyTrack — UX-022R3 — grouping account invariant
+-- Parent/grouping accounts are structural only and cannot own direct operations.
+
+begin;
+
+create or replace function moneytrack.ux022_account_has_direct_operations_v1(
+    p_user_id bigint,
+    p_account_id bigint
+)
+returns boolean
+language sql
+stable
+as $function$
+    select exists (
+        select 1
+        from moneytrack.transactions t
+        where t.user_id = p_user_id
+          and t.account_id = p_account_id
+    ) or exists (
+        select 1
+        from moneytrack.transfers tr
+        where tr.user_id = p_user_id
+          and (tr.from_account_id = p_account_id or tr.to_account_id = p_account_id)
+    );
+$function$;
+
+create or replace function moneytrack.ux022_account_has_active_children_v1(
+    p_user_id bigint,
+    p_account_id bigint
+)
+returns boolean
+language sql
+stable
+as $function$
+    select exists (
+        select 1
+        from moneytrack.accounts child
+        where child.user_id = p_user_id
+          and child.parent_id = p_account_id
+          and coalesce(child.is_active, true) = true
+    );
+$function$;
+
+-- Persistent rollback journals for the one-time legacy data normalization.
+create table if not exists moneytrack.ux022_grouping_transaction_migration_backup (
+    transaction_id bigint primary key,
+    user_id bigint not null,
+    original_account_id bigint not null,
+    target_account_id bigint not null,
+    migrated_at timestamptz not null default now()
+);
+
+create table if not exists moneytrack.ux022_grouping_transfer_migration_backup (
+    transfer_id bigint primary key,
+    user_id bigint not null,
+    original_from_account_id bigint not null,
+    original_to_account_id bigint not null,
+    target_account_id bigint not null,
+    migrated_at timestamptz not null default now()
+);
+
+create table if not exists moneytrack.ux022_grouping_created_account_migration_backup (
+    account_id bigint primary key,
+    user_id bigint not null,
+    parent_account_id bigint not null,
+    created_at timestamptz not null default now()
+);
+
+create table if not exists moneytrack.ux022_grouping_user_default_migration_backup (
+    user_id bigint not null,
+    currency_code text not null,
+    original_account_id bigint not null,
+    target_account_id bigint not null,
+    migrated_at timestamptz not null default now(),
+    primary key (user_id, currency_code)
+);
+
+create table if not exists moneytrack.ux022_grouping_user_settings_migration_backup (
+    user_id bigint not null,
+    column_name text not null,
+    original_account_id bigint not null,
+    target_account_id bigint not null,
+    migrated_at timestamptz not null default now(),
+    primary key (user_id, column_name)
+);
+
+-- One-time legacy normalization.
+-- Prefer an existing safe same-currency leaf child. When none is safe, create a
+-- dedicated same-currency leaf under the parent and move the parent's history there.
+do $block$
+declare
+    v_parent record;
+    v_target_id bigint;
+    v_target_sort bigint;
+    v_col record;
+begin
+    for v_parent in
+        select
+            a.id,
+            a.user_id,
+            a.code,
+            a.name,
+            a.account_type,
+            a.currency_code,
+            upper(a.currency_code) as currency_upper
+        from moneytrack.accounts a
+        where coalesce(a.is_active, true) = true
+          and moneytrack.ux022_account_has_active_children_v1(a.user_id, a.id)
+          and moneytrack.ux022_account_has_direct_operations_v1(a.user_id, a.id)
+        order by a.user_id, a.id
+    loop
+        -- Pick any safe existing child deterministically: sort_order, then id.
+        select child.id
+          into v_target_id
+          from moneytrack.accounts child
+         where child.user_id = v_parent.user_id
+           and child.parent_id = v_parent.id
+           and coalesce(child.is_active, true) = true
+           and upper(child.currency_code) = v_parent.currency_upper
+           and not moneytrack.ux022_account_has_active_children_v1(child.user_id, child.id)
+           and not exists (
+                select 1
+                from moneytrack.transfers tr
+                where tr.user_id = v_parent.user_id
+                  and (
+                        (tr.from_account_id = v_parent.id and tr.to_account_id = child.id)
+                     or (tr.to_account_id = v_parent.id and tr.from_account_id = child.id)
+                  )
+           )
+           and not (
+                exists (
+                    select 1
+                    from moneytrack.transactions t
+                    where t.user_id = v_parent.user_id
+                      and t.account_id = v_parent.id
+                      and t.transaction_type = 'openingbalance'
+                )
+                and exists (
+                    select 1
+                    from moneytrack.transactions t
+                    where t.user_id = v_parent.user_id
+                      and t.account_id = child.id
+                      and t.transaction_type = 'openingbalance'
+                )
+           )
+         order by coalesce(child.sort_order, 2147483647), child.id
+         limit 1;
+
+        if v_target_id is null then
+            select coalesce(max(child.sort_order), 0) + 10
+              into v_target_sort
+              from moneytrack.accounts child
+             where child.user_id = v_parent.user_id
+               and child.parent_id = v_parent.id;
+
+            insert into moneytrack.accounts(
+                user_id,
+                code,
+                name,
+                account_type,
+                currency_code,
+                is_active,
+                created_at,
+                sort_order,
+                parent_id
+            ) values (
+                v_parent.user_id,
+                'r3_legacy_parent_' || v_parent.id::text,
+                v_parent.name || ' — операции',
+                v_parent.account_type,
+                v_parent.currency_code,
+                true,
+                now(),
+                v_target_sort,
+                v_parent.id
+            )
+            returning id into v_target_id;
+
+            insert into moneytrack.ux022_grouping_created_account_migration_backup(
+                account_id, user_id, parent_account_id
+            ) values (
+                v_target_id, v_parent.user_id, v_parent.id
+            )
+            on conflict (account_id) do nothing;
+        end if;
+
+        -- Preserve and redirect canonical per-currency defaults.
+        if to_regclass('moneytrack.user_default_accounts') is not null then
+            insert into moneytrack.ux022_grouping_user_default_migration_backup(
+                user_id, currency_code, original_account_id, target_account_id
+            )
+            select d.user_id, d.currency_code, d.account_id, v_target_id
+            from moneytrack.user_default_accounts d
+            where d.user_id = v_parent.user_id
+              and d.account_id = v_parent.id
+            on conflict (user_id, currency_code) do nothing;
+
+            update moneytrack.user_default_accounts d
+               set account_id = v_target_id
+             where d.user_id = v_parent.user_id
+               and d.account_id = v_parent.id;
+        end if;
+
+        -- user_settings may evolve with additional account-looking columns.
+        -- Migrate all numeric account references schema-tolerantly and journal each field.
+        for v_col in
+            select
+                a.attname as column_name,
+                format_type(a.atttypid, a.atttypmod) as type_name
+            from pg_attribute a
+            join pg_class c on c.oid = a.attrelid
+            join pg_namespace n on n.oid = c.relnamespace
+            where n.nspname = 'moneytrack'
+              and c.relname = 'user_settings'
+              and a.attnum > 0
+              and not a.attisdropped
+              and (
+                    a.attname = 'setdefaultaccount'
+                 or a.attname like '%account_id%'
+                 or lower(a.attname) like '%accountid%'
+              )
+            order by a.attnum
+        loop
+            execute format(
+                'insert into moneytrack.ux022_grouping_user_settings_migration_backup(user_id,column_name,original_account_id,target_account_id) '
+                || 'select user_id,%L,(%I)::text::bigint,$1 from moneytrack.user_settings '
+                || 'where user_id=$2 and (%I)::text=$3 '
+                || 'on conflict (user_id,column_name) do nothing',
+                v_col.column_name,
+                v_col.column_name,
+                v_col.column_name
+            )
+            using v_target_id, v_parent.user_id, v_parent.id::text;
+
+            execute format(
+                'update moneytrack.user_settings set %I = ($1::text)::%s '
+                || 'where user_id=$2 and (%I)::text=$3',
+                v_col.column_name,
+                v_col.type_name,
+                v_col.column_name
+            )
+            using v_target_id, v_parent.user_id, v_parent.id::text;
+        end loop;
+
+        insert into moneytrack.ux022_grouping_transaction_migration_backup(
+            transaction_id, user_id, original_account_id, target_account_id
+        )
+        select t.id, t.user_id, t.account_id, v_target_id
+        from moneytrack.transactions t
+        where t.user_id = v_parent.user_id
+          and t.account_id = v_parent.id
+        on conflict (transaction_id) do nothing;
+
+        insert into moneytrack.ux022_grouping_transfer_migration_backup(
+            transfer_id, user_id, original_from_account_id, original_to_account_id, target_account_id
+        )
+        select tr.id, tr.user_id, tr.from_account_id, tr.to_account_id, v_target_id
+        from moneytrack.transfers tr
+        where tr.user_id = v_parent.user_id
+          and (tr.from_account_id = v_parent.id or tr.to_account_id = v_parent.id)
+        on conflict (transfer_id) do nothing;
+
+        update moneytrack.transactions t
+           set account_id = v_target_id
+         where t.user_id = v_parent.user_id
+           and t.account_id = v_parent.id;
+
+        update moneytrack.transfers tr
+           set from_account_id = v_target_id
+         where tr.user_id = v_parent.user_id
+           and tr.from_account_id = v_parent.id;
+
+        update moneytrack.transfers tr
+           set to_account_id = v_target_id
+         where tr.user_id = v_parent.user_id
+           and tr.to_account_id = v_parent.id;
+
+        v_target_id := null;
+    end loop;
+end;
+$block$;
+
+-- After normalization there must be no active grouping account with direct history
+-- or default-account references.
+do $block$
+declare
+    v_count bigint;
+begin
+    select count(*)
+      into v_count
+      from moneytrack.accounts a
+     where coalesce(a.is_active, true) = true
+       and moneytrack.ux022_account_has_active_children_v1(a.user_id, a.id)
+       and moneytrack.ux022_account_has_direct_operations_v1(a.user_id, a.id);
+
+    if v_count > 0 then
+        raise exception 'ACCOUNT_GROUPING_LEGACY_VIOLATION: % parent account(s) still have direct operations', v_count
+            using errcode = '23514';
+    end if;
+
+    select count(*)
+      into v_count
+      from moneytrack.accounts a
+     where coalesce(a.is_active, true) = true
+       and moneytrack.ux022_account_has_active_children_v1(a.user_id, a.id)
+       and moneytrack.ux022_account_is_default_v1(a.user_id, a.id);
+
+    if v_count > 0 then
+        raise exception 'ACCOUNT_GROUPING_DEFAULT_REFERENCE_REMAINS: % grouping account(s)', v_count
+            using errcode = '23514';
+    end if;
+end;
+$block$;
+
+create or replace function moneytrack.ux022_guard_parent_account_v1()
+returns trigger
+language plpgsql
+as $function$
+declare
+    v_parent_user_id bigint;
+begin
+    -- Inactive rows do not make their parent a runtime grouping account.
+    if new.parent_id is null or not coalesce(new.is_active, true) then
+        return new;
+    end if;
+
+    select a.user_id
+      into v_parent_user_id
+      from moneytrack.accounts a
+     where a.id = new.parent_id
+       and coalesce(a.is_active, true) = true;
+
+    if v_parent_user_id is null or v_parent_user_id <> new.user_id then
+        raise exception 'TARGET_ACCOUNT_NOT_FOUND' using errcode = 'P0002';
+    end if;
+
+    if moneytrack.ux022_account_has_direct_operations_v1(new.user_id, new.parent_id) then
+        raise exception 'ACCOUNT_PARENT_HAS_OPERATIONS' using errcode = '23514';
+    end if;
+
+    if moneytrack.ux022_account_is_default_v1(new.user_id, new.parent_id) then
+        raise exception 'ACCOUNT_PARENT_IS_DEFAULT' using errcode = '23514';
+    end if;
+
+    return new;
+end;
+$function$;
+
+create or replace function moneytrack.ux022_guard_transaction_postable_account_v1()
+returns trigger
+language plpgsql
+as $function$
+begin
+    if moneytrack.ux022_account_has_active_children_v1(new.user_id, new.account_id) then
+        raise exception 'ACCOUNT_GROUP_NOT_POSTABLE' using errcode = '23514';
+    end if;
+    return new;
+end;
+$function$;
+
+create or replace function moneytrack.ux022_guard_transfer_postable_accounts_v1()
+returns trigger
+language plpgsql
+as $function$
+begin
+    if moneytrack.ux022_account_has_active_children_v1(new.user_id, new.from_account_id)
+       or moneytrack.ux022_account_has_active_children_v1(new.user_id, new.to_account_id)
+    then
+        raise exception 'ACCOUNT_GROUP_NOT_POSTABLE' using errcode = '23514';
+    end if;
+    return new;
+end;
+$function$;
+
+drop trigger if exists ux022_accounts_parent_group_guard on moneytrack.accounts;
+create trigger ux022_accounts_parent_group_guard
+before insert or update of parent_id, is_active on moneytrack.accounts
+for each row execute function moneytrack.ux022_guard_parent_account_v1();
+
+drop trigger if exists ux022_transactions_group_posting_guard on moneytrack.transactions;
+create trigger ux022_transactions_group_posting_guard
+before insert or update of account_id, user_id on moneytrack.transactions
+for each row execute function moneytrack.ux022_guard_transaction_postable_account_v1();
+
+drop trigger if exists ux022_transfers_group_posting_guard on moneytrack.transfers;
+create trigger ux022_transfers_group_posting_guard
+before insert or update of from_account_id, to_account_id, user_id on moneytrack.transfers
+for each row execute function moneytrack.ux022_guard_transfer_postable_accounts_v1();
+
+commit;

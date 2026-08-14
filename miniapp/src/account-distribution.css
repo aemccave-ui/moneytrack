@@ -96,7 +96,109 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.stackCount { flex: 0 0 auto; white-space: nowrap; }
+
+/* Compact Home captions: each concrete name owns its own account-count badge. */
+.stackNamedCaption {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  color: rgba(22,63,67,.58);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+}
+.stackNamedItem {
+  min-width: 0;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.stackNamedItem + .stackNamedItem::before {
+  content: '·';
+  margin-right: 4px;
+  color: rgba(22,63,67,.38);
+}
+.stackNamedLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* UX022R3_COUNT_BADGE_CONTRACT
+   Shared muted count badge in the page teal palette. */
+.app .accountTreeIdentity .accountTreeTitleRow > .accountGroupCountBadge,
+.app .homeCountBadge {
+  flex: 0 0 auto;
+  min-width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  border: 1px solid rgba(29,85,89,.16);
+  border-radius: 999px;
+  background: rgba(220,235,236,.9);
+  color: #1d5559;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+.app .compactCountBadge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 10px;
+}
+
+/* Existing Accounts Explorer group badge stays unchanged. */
+.app .accountTreeIdentity .accountTreeTitleRow > .accountGroupCountBadge { order: -1; }
+.app .accountTreeIdentity .accountTreeTitleRow > strong { order: 0; }
+
+/* UX022R3_HOME_NAMED_COUNT_BADGES
+   Home badges are real React markup immediately after the concrete name. */
+.app .homeAggregateTitleRow {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+  color: inherit;
+  font-size: inherit;
+}
+.app .homeAggregateTitleRow > strong {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.app .homeAggregateTitleRow > .homeCountBadge {
+  flex: 0 0 auto;
+  order: 1;
+}
+
+.currencyDistribution .currencyGroupHeader {
+  grid-template-columns: 22px minmax(0,1fr) auto;
+}
+.currencyDistribution .homeNamedAggregate {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.currencyDistribution .homeNamedAggregate > .currencyBadge,
+.currencyDistribution .homeNamedAggregate > .homeCountBadge {
+  flex: 0 0 auto;
+}
 
 .accountDistribution .accountTree,
 .currencyDistribution .currencyHierarchy { margin-top: 0; }

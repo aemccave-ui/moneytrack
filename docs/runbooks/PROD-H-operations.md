@@ -94,15 +94,22 @@ set +a
 docker compose -p n8n \
   -f docker-compose.yml \
   -f docker-compose.prod-h.yml \
+  -f docker-compose.sec001.yml \
   config >/dev/null
 
 docker compose -p n8n \
   -f docker-compose.yml \
   -f docker-compose.prod-h.yml \
+  -f docker-compose.sec001.yml \
   up -d
 ```
 
 Then re-run the quick health check.
+
+SEC-001 adds `/root/stack/n8n/docker-compose.sec001.yml`.
+`MONEYTRACK_PIN_PEPPER` is persisted only in the protected
+`compose-interpolation.prod-h.sh` context and must never be printed or
+committed. Future n8n recreates must include the SEC-001 overlay shown above.
 
 ## Recreate MoneyTrack PostgreSQL safely
 
@@ -217,6 +224,7 @@ Production runtime files are server-local and recovery-protected:
 
 - `/root/stack/n8n/docker-compose.yml`;
 - `/root/stack/n8n/docker-compose.prod-h.yml`;
+- `/root/stack/n8n/docker-compose.sec001.yml`;
 - `/root/stack/n8n/compose-interpolation.prod-h.sh` (`0600`);
 - `/opt/moneytrack/postgres/docker-compose.yml`;
 - `/opt/moneytrack/postgres/docker-compose.prod-h.yml`;

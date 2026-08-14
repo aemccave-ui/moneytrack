@@ -20,11 +20,18 @@ def require(name: str, condition: bool) -> None:
         raise SystemExit(f"SOURCE_GATE=FAIL check={name}")
 
 
+app = read("miniapp/src/App.jsx")
+main = read("miniapp/src/main.jsx")
 explorer = read("miniapp/src/AccountsExplorer.jsx")
 tree = read("miniapp/src/AccountTree.jsx")
 filters = read("miniapp/src/AccountsFilters.jsx")
 recent = read("miniapp/src/RecentOperations.jsx")
+swipe_reveal = read("miniapp/src/SwipeReveal.jsx")
 api = read("miniapp/src/api.js")
+create_sheet = read("miniapp/src/AccountCreateSheet.jsx")
+currency_layout = read("miniapp/src/currency-layout.css")
+frontend_css = read("miniapp/src/ux022r3-frontend.css")
+gesture_policy = read("miniapp/src/telegram-gesture-policy.js")
 presets_sql = read("db/domain/UX-022/010_filter_presets.sql")
 lifecycle_sql = read("db/domain/UX-022/020_account_lifecycle.sql")
 lifecycle_hardening_sql = read("db/domain/UX-022/025_account_lifecycle_hardening.sql")
@@ -40,7 +47,24 @@ auth = read("scripts/api-3-telegram-initdata-verifier.fragment.js")
 
 require("collapsed_default", "useState(() => new Set())" in explorer and "accountsExplorer.expanded" not in explorer)
 require("date_before_filters", explorer.index("period === 'range'") < explorer.index("<AccountsFilters"))
-require("parent_own_display", "resolveOwnAmount" in explorer and "fullSubtreeTotal" in explorer)
+require(
+    "parent_aggregate_only",
+    "fullSubtreeTotal" in explorer
+    and "const details = !hasChildren" in tree
+    and "accountOwnAmount" not in tree,
+)
+require(
+    "home_group_totals_leaf_only",
+    "const totalBase = children.length" in app
+    and "? children.reduce((sum, child) => sum + child.totalBase, 0)" in app
+    and ": ownBase" in app,
+)
+require(
+    "home_currency_totals_leaf_only",
+    "const operationalAccountItems = useMemo(() =>" in app
+    and "return accountItems.filter((account) => !parentIds.has(accountId(account)))" in app
+    and "operationalAccountItems.forEach((account) =>" in app,
+)
 require(
     "tri_state_selection",
     "return 'partial'" in tree
@@ -49,11 +73,84 @@ require(
 )
 require("category_circle_semantics", "categoryCircle" in filters and "isOn" in filters)
 require("system_preset_all", "Системный пресет" in filters and ">Все<" in filters)
-require("drag_long_press_600ms", "setTimeout(() =>" in tree and "}, 600)" in tree)
-require("drag_cycle_front_guard", "ACCOUNT_HIERARCHY_CYCLE" in explorer)
-require("swipe_autoclose_accounts_2000", "setTimeout(() => onActionsClose?.(id), 2000)" in tree)
-require("swipe_autoclose_home_2000", "setTimeout(onActionsClose, 2000)" in recent)
-require("accounts_plus", "accountsPlusButton" in explorer and "Добавить новый счёт" in explorer)
+require(
+    "home_dom_order_restored",
+    ".app {\n  display: block;" in currency_layout
+    and "order:" not in currency_layout
+    and "window.scrollTo" not in app
+    and 'key="home"' in app
+    and 'key="accounts"' in app,
+)
+require(
+    "responsive_operation_swipe_with_icons",
+    "SwipeReveal" in recent
+    and "function DeleteIcon()" in recent
+    and 'className="swipeActionIcon"' in recent
+    and "key: 'delete'" in recent
+    and "label: 'Удалить'" in recent
+    and "icon: <DeleteIcon />" in recent
+    and "label: 'Изменить'" not in recent
+    and "label: 'Повторить'" not in recent
+    and "setPointerCapture" in swipe_reveal
+    and "Math.abs(dx) < 7 || Math.abs(dx) <= Math.abs(dy)" in swipe_reveal
+    and "width * .34" in swipe_reveal
+    and "autoCloseMs = 2000" in swipe_reveal
+    and "overflow-x: auto" not in recent
+    and "disableVerticalSwipes" in gesture_policy,
+)
+require(
+    "account_swipe_three_actions_with_icons",
+    "accountSwipeTrack" in tree
+    and tree.count('className="swipeActionButton') == 3
+    and "<span>Изменить</span>" in tree
+    and "<span>Архив</span>" in tree
+    and "<span>Удалить</span>" in tree
+    and "Копировать" not in tree
+    and "MoveAccountSheet" not in tree
+    and "accountMoveShortcut" not in tree
+    and "grid-template-columns: repeat(3, 56px)" in frontend_css,
+)
+require(
+    "account_long_press_drag_move",
+    "}, 480)" in tree
+    and "addEventListener('touchmove', touchMove, { passive: false })" in tree
+    and "onLongPressStart" in tree
+    and "onLongPressMove" in tree
+    and "onLongPressEnd" in tree
+    and "document.elementFromPoint" in tree
+    and "isDragSource" in tree
+    and "isDropTarget" in tree
+    and "accountLongPressWiggle" in frontend_css
+    and "HapticFeedback" in tree,
+)
+cycle_guard = "if (parentId != null && nodeIds(source).includes(String(parentId)))"
+cycle_message = "Нельзя переместить счёт внутрь самого себя."
+require(
+    "drag_cycle_front_guard",
+    cycle_guard in explorer
+    and cycle_message in explorer
+    and explorer.index(cycle_guard) < explorer.index("await moveAccount(sourceId, parentId)"),
+)
+require(
+    "accounts_global_fab",
+    "AccountCreateSheet" in app
+    and "accountCreateOpen" in app
+    and "<span>Счёт</span>" in app
+    and ".accountsPlusButton" in frontend_css
+    and "display: none !important" in frontend_css,
+)
+require(
+    "account_create_sheet_reliable",
+    "createAccount" in create_sheet
+    and "await onSaved?.()" in create_sheet
+    and "setError" in create_sheet,
+)
+require(
+    "expanded_account_operations_own_only",
+    "include_descendants: 'false'" in api
+    and "setOptionalIdFilter(params, 'selected_account_ids', [accountId])" in api,
+)
+require("frontend_override_loaded_last", main.index("./ux022r3-frontend.css") > main.index("./accounts-explorer.css"))
 require("archive_restore_ui", "ArchivedAccountsSheet" in explorer and "restoreAccount" in explorer)
 require("move_preview_ui", "previewMoveAccountOperations" in explorer and "Будет перенесено" in explorer)
 require("immutable_preset_frontend", "createFilterPreset" in filters and "renameFilterPreset" in filters and "date_from" not in filters and "date_to" not in filters)
@@ -76,6 +173,14 @@ require(
     "c.table_name = 'user_settings' and c.column_name like '%account_id%'" in reference_inventory_sql,
 )
 require(
+    "reference_inventory_classifies_grouping_migration_journals",
+    "ux022_grouping_created_account_migration_backup" in reference_inventory_sql
+    and "ux022_grouping_transaction_migration_backup" in reference_inventory_sql
+    and "ux022_grouping_transfer_migration_backup" in reference_inventory_sql
+    and "ux022_grouping_user_default_migration_backup" in reference_inventory_sql
+    and "ux022_grouping_user_settings_migration_backup" in reference_inventory_sql,
+)
+require(
     "rollback_drops_default_guard",
     "drop function if exists moneytrack.ux022_account_is_default_v1(bigint,bigint);" in rollback_sql,
 )
@@ -95,7 +200,7 @@ require("history_move_currency_guard", "ACCOUNT_CURRENCY_INCOMPATIBLE" in lifecy
 require("delete_no_transaction_cascade", "delete from moneytrack.transactions" not in lifecycle_sql.lower() and "delete from moneytrack.transfers" not in lifecycle_sql.lower())
 require("archive_zero_balance", "ACCOUNT_BALANCE_NOT_ZERO" in lifecycle_sql and "account_archive_v1" in lifecycle_sql)
 require("canonical_auth_contract", "api3b-v1" in auth and "api-3-telegram-initdata-verifier.fragment.js" in generator)
-require("frontend_preview_does_not_name_prod", "app.moneytrackapp.xyz" not in api + explorer + tree + filters + recent)
+require("frontend_preview_does_not_name_prod", "app.moneytrackapp.xyz" not in api + app + explorer + tree + filters + recent)
 require("preview_deployer_no_prod_target", "app.moneytrackapp.xyz" not in deployer)
 require("runtime_uses_three_restorable_workflows", "UX022AccountLifecycle202608" not in deployer and deployer.count("export_workflow UX022") == 3)
 require(
