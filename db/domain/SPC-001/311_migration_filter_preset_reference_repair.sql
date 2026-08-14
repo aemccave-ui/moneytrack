@@ -70,34 +70,33 @@ begin
 end;
 $filter_repair_coverage$;
 
+-- Both category arrays are rewritten in ONE row update. The canonical
+-- filter-preset same-Space trigger validates the complete NEW row, so separate
+-- income/expense updates would expose a transient mixed template/Space state
+-- and correctly fail closed before the second update could run.
 update moneytrack.filter_presets p
 set income_category_ids=(
-    select coalesce(array_agg(coalesce(r.new_target_id,x.id) order by x.ord),'{}'::bigint[])
-    from unnest(coalesce(p.income_category_ids,'{}'::bigint[])) with ordinality x(id,ord)
-    left join spc001_filter_reference_repairs r
-      on r.preset_id=p.id
-     and r.kind='income_category'
-     and r.ordinal=x.ord
-     and r.old_target_id=x.id
-)
+        select coalesce(array_agg(coalesce(r.new_target_id,x.id) order by x.ord),'{}'::bigint[])
+        from unnest(coalesce(p.income_category_ids,'{}'::bigint[])) with ordinality x(id,ord)
+        left join spc001_filter_reference_repairs r
+          on r.preset_id=p.id
+         and r.kind='income_category'
+         and r.ordinal=x.ord
+         and r.old_target_id=x.id
+    ),
+    expense_category_ids=(
+        select coalesce(array_agg(coalesce(r.new_target_id,x.id) order by x.ord),'{}'::bigint[])
+        from unnest(coalesce(p.expense_category_ids,'{}'::bigint[])) with ordinality x(id,ord)
+        left join spc001_filter_reference_repairs r
+          on r.preset_id=p.id
+         and r.kind='expense_category'
+         and r.ordinal=x.ord
+         and r.old_target_id=x.id
+    )
 where exists (
-    select 1 from spc001_filter_reference_repairs r
-    where r.preset_id=p.id and r.kind='income_category'
-);
-
-update moneytrack.filter_presets p
-set expense_category_ids=(
-    select coalesce(array_agg(coalesce(r.new_target_id,x.id) order by x.ord),'{}'::bigint[])
-    from unnest(coalesce(p.expense_category_ids,'{}'::bigint[])) with ordinality x(id,ord)
-    left join spc001_filter_reference_repairs r
-      on r.preset_id=p.id
-     and r.kind='expense_category'
-     and r.ordinal=x.ord
-     and r.old_target_id=x.id
-)
-where exists (
-    select 1 from spc001_filter_reference_repairs r
-    where r.preset_id=p.id and r.kind='expense_category'
+    select 1
+    from spc001_filter_reference_repairs r
+    where r.preset_id=p.id
 );
 
 -- Immediate postcondition: every persisted filter reference is now Space-local.
