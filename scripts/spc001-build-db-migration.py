@@ -4,14 +4,15 @@
 Canonical SPC SQL units are individually transaction-wrapped for source review.
 For controlled runtime apply we must not allow partial commits between units, so
 this builder removes only each unit's outer BEGIN/COMMIT, inserts the pre-mutation
-baseline and pre-commit reconciliation fragments, and wraps the complete program
+baselines and pre-commit reconciliation fragments, and wraps the complete program
 in one transaction.
 
-The live legacy database contains a proven historical cross-user reference
-anomaly. The controlled repair fragment is injected *inside* 010 after Personal
-Spaces/space_id are assigned and before 010's own same-Space reconciliation.
-This preserves 010's fail-closed invariant while allowing only ledger-backed
-reference repair.
+The live legacy database contains proven historical cross-user reference
+anomalies. The main controlled repair fragment is injected *inside* 010 after
+Personal Spaces/space_id are assigned and before 010's own same-Space
+reconciliation. Legacy UX-022 filter preset template-category references are
+handled later: the ordinary full migration reconciliation must pass first, then
+only ledger-backed array element remaps are allowed immediately before COMMIT.
 
 This script only writes a candidate SQL file. It never connects to PostgreSQL.
 """
@@ -26,8 +27,11 @@ ROOT = Path(__file__).resolve().parents[1]
 SPC = ROOT / "db" / "domain" / "SPC-001"
 
 BASELINE = "301_migration_baseline_reference_repair.sql"
+FILTER_BASELINE = "302_migration_filter_preset_reference_baseline.sql"
 REPAIR = "309_migration_legacy_reference_repair.sql"
 RECONCILE = "312_migration_reconciliation_guard_reference_repair.sql"
+FILTER_REPAIR = "311_migration_filter_preset_reference_repair.sql"
+FILTER_RECONCILE = "316_migration_filter_preset_reference_reconciliation.sql"
 
 MUTATION_UNITS = [
     "010_tenancy_foundation.sql",
@@ -133,6 +137,8 @@ def build(final_action: str) -> str:
         "select pg_advisory_xact_lock(hashtextextended('SPC-001:controlled-migration',0));\n",
         "\n-- ===== PRE-MUTATION BASELINE =====\n",
         fragment(BASELINE),
+        "\n-- ===== PRE-MUTATION FILTER PRESET REFERENCE BASELINE =====\n",
+        fragment(FILTER_BASELINE),
     ]
 
     for name in MUTATION_UNITS:
@@ -146,6 +152,10 @@ def build(final_action: str) -> str:
         [
             "\n-- ===== PRE-COMMIT RECONCILIATION =====\n",
             fragment(RECONCILE),
+            "\n-- ===== CONTROLLED FILTER PRESET REFERENCE REPAIR =====\n",
+            fragment(FILTER_REPAIR),
+            "\n-- ===== PRE-COMMIT FILTER PRESET RECONCILIATION =====\n",
+            fragment(FILTER_RECONCILE),
             f"\n{final_action};\n",
         ]
     )
@@ -167,8 +177,11 @@ def main() -> None:
     print("SPC001_DB_MIGRATION_BUNDLE=CREATED")
     print(f"mutation_units={len(MUTATION_UNITS)}")
     print(f"baseline={BASELINE}")
+    print(f"filter_baseline={FILTER_BASELINE}")
     print(f"repair={REPAIR}")
     print(f"reconciliation={RECONCILE}")
+    print(f"filter_repair={FILTER_REPAIR}")
+    print(f"filter_reconciliation={FILTER_RECONCILE}")
     print(f"final_action={args.final.upper()}")
     print(f"sha256={digest}")
     print("db_connection=NONE")
