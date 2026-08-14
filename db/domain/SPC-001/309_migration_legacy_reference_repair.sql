@@ -104,19 +104,11 @@ begin
             from path p
             join moneytrack.accounts parent on parent.id=p.parent_id
         ), dedup as (
-            select
-                target_user_id,target_space_id,source_id,
-                max(depth) as depth,
-                min(parent_id) as parent_id,
-                min(code) as code,
-                min(name) as name,
-                min(account_type::text) as account_type,
-                min(currency_code) as currency_code,
-                bool_and(coalesce(is_active,true)) as is_active,
-                min(created_at) as created_at,
-                min(sort_order) as sort_order
+            select distinct on (target_user_id,target_space_id,source_id)
+                target_user_id,target_space_id,source_id,parent_id,code,name,
+                account_type,currency_code,is_active,created_at,sort_order,depth
             from path
-            group by target_user_id,target_space_id,source_id
+            order by target_user_id,target_space_id,source_id,depth desc
         )
         select * from dedup
         order by target_space_id, depth desc, source_id
@@ -233,19 +225,12 @@ begin
             from path p
             join moneytrack.category_catalog parent on parent.id=p.parent_id
         ), dedup as (
-            select
-                target_user_id,target_space_id,source_id,
-                max(depth) as depth,
-                min(parent_id) as parent_id,
-                min(code) as code,
-                bool_and(coalesce(is_active,true)) as is_active,
-                min(sort_order) as sort_order,
-                min(created_at) as created_at,
-                bool_or(coalesce(show_in_budget_report,false)) as show_in_budget_report,
-                min(budget_sort_order) as budget_sort_order,
-                min(flow_type) as flow_type
+            select distinct on (target_user_id,target_space_id,source_id)
+                target_user_id,target_space_id,source_id,parent_id,code,is_active,
+                sort_order,created_at,show_in_budget_report,budget_sort_order,
+                flow_type,depth
             from path
-            group by target_user_id,target_space_id,source_id
+            order by target_user_id,target_space_id,source_id,depth desc
         )
         select * from dedup
         order by target_space_id, depth desc, source_id
