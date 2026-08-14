@@ -52,6 +52,7 @@ def main() -> int:
     workflow = read(".github/workflows/moneytrack-source-gates.yml")
     sec = read("db/domain/SEC-001/010_application_lock.sql")
     ux024 = read("db/domain/UX-024/010_operation_source_and_datetime_guard.sql")
+    space_gate = read("miniapp/src/SpaceGate.jsx")
 
     stage_a_complete = bool(
         foundation
@@ -299,7 +300,14 @@ def main() -> int:
             else None
         ),
         "space_switch_clears_old_context": (
-            has_all(lifecycle, "active Space", "clear") if stage_b_complete else None
+            has_all(
+                space_gate,
+                "clearActiveSpaceId()",
+                "setActiveSpace(null)",
+                "key={activeSpace.id}",
+            )
+            if stage_b_complete
+            else None
         ),
         "dashboard_single_space_only": (
             has_all(finance_hardening, "finance_dashboard", "p_space_id")
