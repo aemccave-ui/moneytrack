@@ -43,6 +43,8 @@ REQUIRED = [
     "db/domain/SPC-001/214_capture_receipt_atomic_ingress.sql",
     "db/domain/SPC-001/215_receipt_projection_read_wrappers.sql",
     "db/domain/SPC-001/216_capture_resolvers.sql",
+    "db/domain/SPC-001/217_bot_capture_read_wrappers.sql",
+    "db/domain/SPC-001/218_capture_text_account_hint.sql",
     "db/domain/SPC-001/290_verify_capture_projection.sql",
     "scripts/spc001-source-gate.py",
     "scripts/spc001-generate-financial-api.py",
@@ -51,8 +53,11 @@ REQUIRED = [
     "scripts/spc001-transform-text-processor.py",
     "scripts/spc001-transform-photo-processor.py",
     "scripts/spc001-transform-bot-capture.py",
+    "scripts/spc001-transform-bot-inline-capture.py",
     "scripts/spc001-transform-bot-receipt-category.py",
     "scripts/spc001-audit-workflow-tenancy.py",
+    "scripts/spc001-runtime-forensic.py",
+    "scripts/spc001-runtime-forensic-v3.py",
     "miniapp/src/space-context.js",
     "miniapp/src/SpaceGate.jsx",
     "miniapp/src/api.js",
@@ -105,6 +110,8 @@ def main() -> None:
         "214_capture_receipt_atomic_ingress.sql",
         "215_receipt_projection_read_wrappers.sql",
         "216_capture_resolvers.sql",
+        "217_bot_capture_read_wrappers.sql",
+        "218_capture_text_account_hint.sql",
     ))
     verifier = read("db/domain/SPC-001/090_verify_tenancy_foundation.sql") + read("db/domain/SPC-001/190_verify_space_lifecycle.sql") + read("db/domain/SPC-001/290_verify_capture_projection.sql")
     api = read("miniapp/src/api.js")
@@ -112,9 +119,9 @@ def main() -> None:
     main_jsx = read("miniapp/src/main.jsx")
     tx_editor = read("miniapp/src/TransactionEditor.jsx")
     receipt_modal = read("miniapp/src/ReceiptModal.jsx")
-    bot_transform = read("scripts/spc001-transform-bot-capture.py") + read("scripts/spc001-transform-bot-receipt-category.py")
+    bot_transform = read("scripts/spc001-transform-bot-capture.py") + read("scripts/spc001-transform-bot-inline-capture.py") + read("scripts/spc001-transform-bot-receipt-category.py")
     quick_transform = read("scripts/spc001-transform-quick-input.py") + read("scripts/spc001-transform-text-processor.py") + read("scripts/spc001-transform-photo-processor.py")
-    audit = read("scripts/spc001-audit-workflow-tenancy.py")
+    audit = read("scripts/spc001-audit-workflow-tenancy.py") + read("scripts/spc001-runtime-forensic.py") + read("scripts/spc001-runtime-forensic-v3.py")
 
     require("space_is_financial_tenant", contains_all(foundation + extended, ("space_id", "assert_space_member_v1")))
     require("owner_is_admin_not_financial_role", "assert_space_owner_v1" in lifecycle and "owner-only" in lifecycle.lower())
@@ -141,8 +148,9 @@ def main() -> None:
     require("user_erasure_shared_space_safe", "OWNER_DELETION_REQUIRES_TRANSFER" in erase and "MEMBER_ERASURE_SHARED_HISTORY=PASS" in verifier)
 
     require("quick_capture_space_context", contains_all(quick_transform, ("space_id", "capture_source_ref", "capture_create_projection_compat_v1", "capture_receipt_ingest_projection_v1")))
+    require("capture_text_account_hint_space_native", contains_all(capture + quick_transform, ("capture_infer_account_hint_space_v1", "assert_space_member_v1", "Parse transaction JSON1", "account_hint_inference=SPACE_NATIVE")))
     require("bot_capture_space_context", contains_all(bot_transform, ("bot_capture_context_v1", "capture_source_ref", "default_capture_space")))
-    require("runtime_workflow_tenancy_audit_source_ready", contains_all(audit, ("financial_user_id_predicate", "SPC001_TENANCY_AUDIT=FAIL", "SPC001_TENANCY_AUDIT=PASS")))
+    require("runtime_workflow_tenancy_audit_source_ready", contains_all(audit, ("financial_user_id_predicate", "SPC001_TENANCY_AUDIT=FAIL", "SPC001_TENANCY_AUDIT=PASS", "MUTATION_POLICY=READ_ONLY_EXPORT_ONLY")))
     require("miniapp_active_space_header", "X-MoneyTrack-Space-Id" in api)
     require("miniapp_invite_onboarding", "start_param" in space_gate and "acceptSpaceInvite" in space_gate)
     require("miniapp_capture_idempotency", contains_all(api, ("request_id", "captureRequestId('text')", "captureRequestId('photo')", "captureRequestId('voice')")))
