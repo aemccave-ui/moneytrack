@@ -84,6 +84,8 @@ def main() -> None:
         "live_commit_uses_fresh_prod_h2_backup",
         all(x in live for x in (
             "prod-h2-backup-now.sh",
+            '[[ -f "$ROOT/scripts/prod-h2-backup-now.sh" ]]',
+            'BACKUP_ROOT="$OUTPUT_DIR/prod-h2" bash "$ROOT/scripts/prod-h2-backup-now.sh"',
             "FRESH DURABLE PROD-H2 BACKUP",
             "moneytrack.dump",
             "COMPLETE",
@@ -91,6 +93,7 @@ def main() -> None:
             "pg_restore --list",
             "live_table_state_stable_during_backup=PASS",
         ))
+        and "prod_h2_backup_script_missing_or_not_executable" not in live
         and all(x in backup for x in (
             "BACKUP_ROOT=",
             "moneytrack.dump",
