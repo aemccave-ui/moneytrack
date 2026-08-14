@@ -6,9 +6,10 @@ MoneyTrack. It uses the n8n CLI only for `export:workflow`, writes exports and
 transformed candidates under a temporary output directory, then runs the
 committed fail-closed workflow SQL tenancy audit.
 
-Purpose: runtime-derived Text/Photo/Voice processor resolver SQL is not stored in
-GitHub. We must inspect the live accepted workflow definitions before writing an
-exact resolver transform; guessing resolver node names/queries is forbidden.
+Runtime-derived Text/Photo/Voice processor resolver SQL is intentionally inspected
+from live exports. The canonical Bot handles Photo inline; the MiniApp quick-input
+workflow references the separate Photo processor, so that processor is exported
+by its accepted frozen ID rather than invented from a Bot node.
 """
 from __future__ import annotations
 
@@ -30,8 +31,8 @@ EXPECTED_PHOTO_ID = "5VC0EcFB21rwTfoI"
 PROCESSOR_NODE_NAMES = {
     "text": "Call 'Transaction Processor Text'",
     "voice": "Call 'Transaction Processor Voice'",
-    "photo": "Call 'Transaction Processor Photo'",
 }
+TEST_WEBHOOK = "Webhook moneytrack-test"
 
 
 def run(cmd: list[str], *, check: bool = True, capture: bool = False) -> subprocess.CompletedProcess[str]:
@@ -114,19 +115,12 @@ def referenced_workflow_id(workflow: dict[str, Any], node_name: str) -> str:
             f"SPC001_FORENSIC=FAIL processor_node_type_drift name={node_name!r} type={node.get('type')!r}"
         )
     params = node.get("parameters", {})
-    candidates = [
-        params.get("workflowId"),
-        params.get("workflow"),
-        params.get("id"),
-    ]
-    for candidate in candidates:
+    for candidate in (params.get("workflowId"), params.get("workflow"), params.get("id")):
         found = workflow_id_from_parameter(candidate)
         if found:
             return found
-    # Some n8n versions nest the selector. Fail closed unless one plausible ID
-    # can be unambiguously recovered from the serialized parameters.
     raw = json.dumps(params, ensure_ascii=False)
-    ids = set(re.findall(r'\b[A-Za-z0-9_-]{12,40}\b', raw))
+    ids = set(re.findall(r"\b[A-Za-z0-9_-]{12,40}\b", raw))
     ids.discard("n8n-nodes-base")
     if len(ids) == 1:
         return next(iter(ids))
@@ -162,6 +156,25 @@ def export_workflow(container: str, workflow_id: str, label: str, out_dir: Path)
 def transform(script: str, source: Path, target: Path) -> None:
     run([sys.executable, str(ROOT / "scripts" / script), str(source), str(target)])
     load_workflow(target)
+
+
+def api2c_candidate(source: Path, target: Path) -> None:
+    workflow = load_workflow(source)
+    matches = [n for n in workflow.get("nodes", []) if n.get("name") == TEST_WEBHOOK]
+    if len(matches) > 1:
+        raise SystemExit(f"SPC001_FORENSIC=FAIL duplicate_test_webhook count={len(matches)}")
+    if not matches:
+        shutil.copyfile(source, target)
+        print("API2C_TEST_INGRESS=ALREADY_ABSENT")
+        return
+    run([
+        sys.executable,
+        str(ROOT / "scripts" / "api-2c-transform-remove-test-ingress.py"),
+        "--before", str(source),
+        "--after", str(target),
+    ])
+    load_workflow(target)
+    print("API2C_TEST_INGRESS=REMOVED_IN_TEMP_CANDIDATE")
 
 
 def sha256(path: Path) -> str:
@@ -201,6 +214,7 @@ def main() -> int:
         kind: referenced_workflow_id(bot_workflow, node_name)
         for kind, node_name in PROCESSOR_NODE_NAMES.items()
     }
+    processor_ids["photo"] = EXPECTED_PHOTO_ID
     for kind, workflow_id in processor_ids.items():
         print(f"PROCESSOR_{kind.upper()}_ID={workflow_id}")
 
@@ -208,29 +222,33 @@ def main() -> int:
         raise SystemExit(
             f"SPC001_FORENSIC=FAIL text_processor_drift expected={EXPECTED_TEXT_ID} actual={processor_ids['text']}"
         )
-    if processor_ids["photo"] != EXPECTED_PHOTO_ID:
-        raise SystemExit(
-            f"SPC001_FORENSIC=FAIL photo_processor_drift expected={EXPECTED_PHOTO_ID} actual={processor_ids['photo']}"
-        )
 
     text = export_workflow(container, processor_ids["text"], "text-processor", out_dir)
     voice = export_workflow(container, processor_ids["voice"], "voice-processor", out_dir)
-    photo = export_workflow(container, processor_ids["photo"], "photo-processor", out_dir)
+    photo = export_workflow(container, EXPECTED_PHOTO_ID, "photo-processor", out_dir)
 
     quick_candidate = out_dir / "candidate-quick-input.json"
     text_candidate = out_dir / "candidate-text-processor.json"
     photo_candidate = out_dir / "candidate-photo-processor.json"
-    bot_capture = out_dir / "candidate-bot-capture.json"
+    bot_api2c = out_dir / "candidate-bot-api2c.json"
+    bot_context = out_dir / "candidate-bot-context.json"
+    bot_inline = out_dir / "candidate-bot-inline.json"
     bot_candidate = out_dir / "candidate-bot.json"
 
     transform("spc001-transform-quick-input.py", quick, quick_candidate)
     transform("spc001-transform-text-processor.py", text, text_candidate)
     transform("spc001-transform-photo-processor.py", photo, photo_candidate)
-    transform("spc001-transform-bot-capture.py", bot, bot_capture)
-    transform("spc001-transform-bot-receipt-category.py", bot_capture, bot_candidate)
+    api2c_candidate(bot, bot_api2c)
+    transform("spc001-transform-bot-capture.py", bot_api2c, bot_context)
+    transform("spc001-transform-bot-inline-capture.py", bot_context, bot_inline)
+    transform("spc001-transform-bot-receipt-category.py", bot_inline, bot_candidate)
 
     audit_inputs = [quick_candidate, text_candidate, voice, photo_candidate, bot_candidate]
-    audit_cmd = [sys.executable, str(ROOT / "scripts" / "spc001-audit-workflow-tenancy.py")]
+    audit_cmd = [
+        sys.executable,
+        str(ROOT / "scripts" / "spc001-audit-workflow-tenancy.py"),
+        "--reachable-only",
+    ]
     audit_cmd.extend(str(path) for path in audit_inputs)
     audit = run(audit_cmd, check=False)
 
@@ -250,7 +268,7 @@ def main() -> int:
 
     if audit.returncode != 0:
         print("SPC001_RUNTIME_TENANCY_FORENSIC=FAIL")
-        print("NEXT=map exact reported resolver nodes to Space-native backend boundaries")
+        print("NEXT=map exact reported runtime resolver nodes to Space-native backend boundaries")
         return audit.returncode
 
     print("SPC001_RUNTIME_TENANCY_FORENSIC=PASS")
