@@ -39,7 +39,9 @@ def main() -> int:
 
     forensic = read("docs/architecture/SPC-001-tenancy-forensic.md")
     foundation = read("db/domain/SPC-001/010_tenancy_foundation.sql")
+    uniqueness = read("db/domain/SPC-001/012_tenancy_uniqueness_hardening.sql")
     actor_erasure = read("db/domain/SPC-001/013_actor_erasure_fk_hardening.sql")
+    bootstrap = read("db/domain/SPC-001/014_space_bootstrap.sql")
     finance = read("db/domain/SPC-001/020_space_finance_domain.sql")
     finance_hardening = read("db/domain/SPC-001/021_space_finance_hardening.sql")
     verify_a = read("db/domain/SPC-001/090_verify_tenancy_foundation.sql")
@@ -51,7 +53,13 @@ def main() -> int:
     ux024 = read("db/domain/UX-024/010_operation_source_and_datetime_guard.sql")
 
     stage_a_complete = bool(
-        foundation and actor_erasure and finance and finance_hardening and verify_a
+        foundation
+        and uniqueness
+        and actor_erasure
+        and bootstrap
+        and finance
+        and finance_hardening
+        and verify_a
     )
     stage_b_complete = bool(lifecycle and erasure)
     stage_c_complete = bool(capture)
@@ -97,6 +105,39 @@ def main() -> int:
             "spc001_personal_space_for_user_v1",
             "legacy_migration",
             "Template sentinel user 0 remains GLOBAL_PLATFORM",
+        ),
+        "financial_uniqueness_space_scoped": (
+            has_all(
+                uniqueness,
+                "ux_spc001_accounts_space_code",
+                "ux_spc001_categories_space_code",
+                "ux_spc001_products_space_key",
+                "ux_spc001_transactions_space_source",
+                "ux_spc001_transfers_space_source",
+                "user_id = 0 and space_id is null",
+            )
+            and has_all(
+                uniqueness,
+                "array['user_id','code']",
+                "array['user_id','product_key']",
+                "ux_transactions_source_idempotency",
+                "ux_transfers_source_idempotency",
+            )
+            if stage_a_complete
+            else None
+        ),
+        "new_user_bootstrap_space_scoped": (
+            has_all(
+                bootstrap,
+                "spc001_user_bootstrap_v1",
+                "spc001_bootstrap_space_finance_v1",
+                "catalog_ensure_space_categories_v1",
+                "on conflict (space_id, code) where space_id is not null",
+                "current_workspace_id",
+                "assert_space_member_v1",
+            )
+            if stage_a_complete
+            else None
         ),
         "financial_data_space_scoped": (
             has_all(
@@ -274,6 +315,8 @@ def main() -> int:
             "membership_server_side",
             "client_space_id_untrusted",
             "legacy_user_data_migrated",
+            "financial_uniqueness_space_scoped",
+            "new_user_bootstrap_space_scoped",
             "financial_data_space_scoped",
             "user_global_security_remains_user_global",
             "financial_references_do_not_cross_spaces",
