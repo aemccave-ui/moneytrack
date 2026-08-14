@@ -1,6 +1,9 @@
 import { Children, useCallback, useEffect, useMemo, useState } from 'react'
-import { createSpace, getSpaces, setActiveSpace as persistActiveSpace } from './api.js'
+import { acceptSpaceInvite, createSpace, getSpaces, setActiveSpace as persistActiveSpace } from './api.js'
 import { clearActiveSpaceId, setActiveSpaceId, SpaceContext } from './space-context.js'
+
+let inviteAcceptanceParam = ''
+let inviteAcceptancePromise = null
 
 function normalizeSpaces(payload) {
   const raw = payload?.spaces ?? payload?.items ?? payload?.data?.spaces ?? []
@@ -18,6 +21,37 @@ function currentId(payload) {
     ?? payload?.data?.current_space_id
   const numeric = Number(value)
   return Number.isSafeInteger(numeric) && numeric > 0 ? numeric : null
+}
+
+function resultSpaceId(payload) {
+  const value = payload?.space_id ?? payload?.id ?? payload?.space?.id ?? payload?.data?.space_id
+  const numeric = Number(value)
+  return Number.isSafeInteger(numeric) && numeric > 0 ? numeric : null
+}
+
+function telegramInviteStartParam() {
+  const raw = String(window.Telegram?.WebApp?.initDataUnsafe?.start_param || '').trim()
+  return raw.startsWith('invite_') ? raw : ''
+}
+
+function acceptTelegramInviteOnce() {
+  const startParam = telegramInviteStartParam()
+  if (!startParam) return Promise.resolve(null)
+
+  if (inviteAcceptancePromise && inviteAcceptanceParam === startParam) {
+    return inviteAcceptancePromise
+  }
+
+  inviteAcceptanceParam = startParam
+  inviteAcceptancePromise = acceptSpaceInvite(startParam)
+    .then((result) => resultSpaceId(result))
+    .catch((error) => {
+      inviteAcceptanceParam = ''
+      inviteAcceptancePromise = null
+      throw error
+    })
+
+  return inviteAcceptancePromise
 }
 
 export default function SpaceGate({ children }) {
@@ -47,26 +81,48 @@ export default function SpaceGate({ children }) {
   useEffect(() => {
     let cancelled = false
     clearActiveSpaceId()
-    getSpaces()
-      .then(async (payload) => {
+
+    const initializeSpace = async () => {
+      let invitedSpaceId = null
+      let inviteError = ''
+
+      try {
+        invitedSpaceId = await acceptTelegramInviteOnce()
+      } catch (reason) {
+        inviteError = reason?.message || 'Не удалось принять приглашение в пространство'
+      }
+
+      if (cancelled) return
+
+      const payload = await getSpaces()
+      if (cancelled) return
+
+      const nextSpaces = normalizeSpaces(payload)
+      if (!nextSpaces.length) throw new Error('Нет доступного финансового пространства')
+
+      const next = nextSpaces.find((space) => space.id === invitedSpaceId)
+        ?? nextSpaces.find((space) => space.id === currentId(payload))
+        ?? nextSpaces[0]
+
+      if (currentId(payload) !== next.id) {
+        await persistActiveSpace(next.id)
         if (cancelled) return
-        const nextSpaces = normalizeSpaces(payload)
-        if (!nextSpaces.length) throw new Error('Нет доступного финансового пространства')
-        const next = nextSpaces.find((space) => space.id === currentId(payload)) ?? nextSpaces[0]
-        if (currentId(payload) !== next.id) {
-          await persistActiveSpace(next.id)
-          if (cancelled) return
-        }
-        setSpaces(nextSpaces)
-        setActiveSpaceId(next.id)
-        setActiveSpace(next)
-      })
+      }
+
+      setSpaces(nextSpaces)
+      setActiveSpaceId(next.id)
+      setActiveSpace(next)
+      if (inviteError) setError(inviteError)
+    }
+
+    initializeSpace()
       .catch((reason) => {
         if (!cancelled) setError(reason?.message || 'Не удалось загрузить пространства')
       })
       .finally(() => {
         if (!cancelled) setSwitching(false)
       })
+
     return () => {
       cancelled = true
       clearActiveSpaceId()
