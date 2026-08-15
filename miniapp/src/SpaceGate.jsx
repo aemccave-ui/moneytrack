@@ -129,9 +129,9 @@ export default function SpaceGate({ children }) {
     }
   }, [])
 
-  const switchSpace = useCallback(async (spaceId) => {
+  const switchSpace = useCallback(async (spaceId, availableSpaces = spaces) => {
     const targetId = Number(spaceId)
-    const target = spaces.find((space) => space.id === targetId)
+    const target = availableSpaces.find((space) => space.id === targetId)
     if (!target || target.id === activeSpace?.id || switching) return
 
     const previous = activeSpace
@@ -178,7 +178,7 @@ export default function SpaceGate({ children }) {
       setSpaces(nextSpaces)
       const createdId = Number(created?.space_id ?? created?.id ?? created?.space?.id)
       if (Number.isSafeInteger(createdId) && nextSpaces.some((space) => space.id === createdId)) {
-        await switchSpace(createdId)
+        await switchSpace(createdId, nextSpaces)
       }
     } catch (reason) {
       setError(reason?.message || 'Не удалось создать пространство')
