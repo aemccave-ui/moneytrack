@@ -110,6 +110,12 @@ jobs:
           set -euo pipefail
           python scripts/spc001-n8n-cutover-preflight-source-gate.py
 
+      - name: SPC-001E2 controlled n8n cutover source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-n8n-cutover-source-gate.py
+
       - name: Generate financial adapter candidate
         shell: bash
         run: |
