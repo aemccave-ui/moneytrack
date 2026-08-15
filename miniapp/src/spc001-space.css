@@ -27,7 +27,8 @@
 }
 
 .spaceBarIdentity select,
-.spaceCreateInline input {
+.spaceCreateInline input,
+.spaceInviteCard input {
   min-width: 0;
   height: 36px;
   border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
@@ -53,7 +54,8 @@
   width: min(35vw, 160px);
 }
 
-.spaceCreateInline button {
+.spaceCreateInline button,
+.spaceManageButton {
   width: 36px;
   height: 36px;
   flex: 0 0 36px;
@@ -61,12 +63,23 @@
   border-radius: 50%;
   background: var(--tg-theme-button-color, #2481cc);
   color: var(--tg-theme-button-text-color, #ffffff);
-  font-size: 24px;
   line-height: 1;
 }
 
+.spaceCreateInline button {
+  font-size: 24px;
+}
+
+.spaceManageButton {
+  font-size: 22px;
+  letter-spacing: 1px;
+}
+
 .spaceCreateInline button:disabled,
-.spaceBarIdentity select:disabled {
+.spaceBarIdentity select:disabled,
+.spaceDefaultCaptureButton:disabled,
+.spaceManageSection button:disabled,
+.spaceMemberRow button:disabled {
   opacity: 0.5;
 }
 
@@ -95,6 +108,176 @@
   margin-top: 4px;
 }
 
+.spaceManageBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: color-mix(in srgb, #000 34%, transparent);
+  padding: 18px 12px max(18px, env(safe-area-inset-bottom));
+}
+
+.spaceManageSheet {
+  width: min(100%, 560px);
+  max-height: min(82vh, 720px);
+  overflow: auto;
+  border-radius: 22px;
+  background: var(--tg-theme-bg-color, #ffffff);
+  color: var(--tg-theme-text-color, inherit);
+  box-shadow: 0 18px 60px color-mix(in srgb, #000 22%, transparent);
+  padding: 18px;
+}
+
+.spaceManageHeader,
+.spaceManageSectionHead,
+.spaceMemberRow,
+.spaceInviteActions,
+.spaceManageSummary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.spaceManageHeader,
+.spaceManageSectionHead,
+.spaceMemberRow,
+.spaceManageSummary {
+  justify-content: space-between;
+}
+
+.spaceManageHeader > div,
+.spaceManageSectionHead > div,
+.spaceMemberRow > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.spaceManageHeader span,
+.spaceManageSectionHead span,
+.spaceMemberRow small,
+.spaceInviteCard small,
+.spaceManageHint,
+.spaceManageSummary {
+  font-size: 12px;
+  opacity: 0.68;
+}
+
+.spaceManageHeader strong,
+.spaceManageSectionHead strong,
+.spaceMemberRow strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.spaceManageHeader > button {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--tg-theme-secondary-bg-color, #f2f2f2);
+  color: inherit;
+  font-size: 22px;
+}
+
+.spaceManageSummary {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+}
+
+.spaceDefaultCaptureButton,
+.spaceManageSection button,
+.spaceMemberRow button {
+  min-height: 36px;
+  border: 0;
+  border-radius: 10px;
+  padding: 0 12px;
+  font: inherit;
+  font-weight: 650;
+}
+
+.spaceDefaultCaptureButton {
+  width: 100%;
+  margin-top: 12px;
+  background: var(--tg-theme-button-color, #2481cc);
+  color: var(--tg-theme-button-text-color, #ffffff);
+}
+
+.spaceManageHint {
+  margin: 7px 2px 0;
+  line-height: 1.4;
+}
+
+.spaceManageSection {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.spaceManageSectionHead button,
+.spaceInviteActions button,
+.spaceMemberRow button {
+  background: var(--tg-theme-secondary-bg-color, #f2f2f2);
+  color: inherit;
+}
+
+.spaceInviteCard {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--tg-theme-button-color, #2481cc) 7%, transparent);
+}
+
+.spaceInviteCard input {
+  width: 100%;
+  font-size: 12px;
+}
+
+.spaceInviteActions {
+  flex-wrap: wrap;
+}
+
+.spaceInviteActions button:last-child,
+.spaceMemberRow button {
+  color: #b3261e;
+}
+
+.spaceInviteRevoked {
+  font-size: 13px;
+  color: #b3261e;
+}
+
+.spaceMemberList {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.spaceMemberRow {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+}
+
+.spaceMemberEmpty {
+  margin-top: 10px;
+  padding: 12px;
+  text-align: center;
+  font-size: 13px;
+  opacity: 0.62;
+}
+
+.spaceManageError {
+  margin-top: 12px;
+}
+
 @media (max-width: 430px) {
   .spaceBar {
     align-items: flex-end;
@@ -106,7 +289,8 @@
   }
 
   .spaceCreateInline {
-    width: 100%;
+    width: auto;
+    flex: 1 1 calc(100% - 46px);
   }
 
   .spaceCreateInline input {
@@ -118,5 +302,16 @@
     clip: auto;
     clip-path: none;
     white-space: normal;
+  }
+
+  .spaceManageBackdrop {
+    padding: 0;
+  }
+
+  .spaceManageSheet {
+    width: 100%;
+    max-height: 88vh;
+    border-radius: 22px 22px 0 0;
+    padding-bottom: max(18px, env(safe-area-inset-bottom));
   }
 }
