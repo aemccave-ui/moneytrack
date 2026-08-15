@@ -13,9 +13,15 @@ N8N_DB_CONTAINER="${N8N_DB_CONTAINER:-postgres}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --output-dir) OUTPUT_DIR="${2:-}"; shift 2 ;;
-    --e1-dir) E1_DIR="${2:-}"; shift 2 ;;
-    --expected-head) EXPECTED_HEAD="${2:-}"; shift 2 ;;
+    --output-dir)
+      [[ -n "${2:-}" ]] || { echo 'ERROR: --output-dir requires a value' >&2; exit 2; }
+      OUTPUT_DIR="$2"; shift 2 ;;
+    --e1-dir)
+      [[ -n "${2:-}" ]] || { echo 'ERROR: --e1-dir requires a value' >&2; exit 2; }
+      E1_DIR="$2"; shift 2 ;;
+    --expected-head)
+      [[ -n "${2:-}" ]] || { echo 'ERROR: --expected-head requires a value' >&2; exit 2; }
+      EXPECTED_HEAD="$2"; shift 2 ;;
     --apply) APPLY=1; shift ;;
     *) echo "ERROR: unexpected argument: $1" >&2; exit 2 ;;
   esac
@@ -27,11 +33,13 @@ done
   exit 2
 }
 [[ "$OUTPUT_DIR" = /* && "$E1_DIR" = /* ]] || { echo 'ERROR: absolute paths required' >&2; exit 2; }
-case "$OUTPUT_DIR" in /tmp|/tmp/*) echo 'SPC001_N8N_CUTOVER=REFUSED durable_output_required_not_tmp' >&2; exit 2;; esac
+case "$OUTPUT_DIR" in
+  /tmp|/tmp/*) echo 'SPC001_N8N_CUTOVER=REFUSED durable_output_required_not_tmp' >&2; exit 2 ;;
+esac
 [[ ! -e "$OUTPUT_DIR" ]] || { echo "ERROR: output path already exists: $OUTPUT_DIR" >&2; exit 2; }
 [[ -d "$E1_DIR" ]] || { echo "ERROR: E1 directory missing: $E1_DIR" >&2; exit 2; }
 
-for command_name in python3 sha256sum git docker grep awk sed find sort cp sync curl; do
+for command_name in python3 sha256sum git docker grep awk find sort cp sync curl tee sleep; do
   command -v "$command_name" >/dev/null 2>&1 || {
     echo "SPC001_N8N_CUTOVER=FAIL missing_command=$command_name" >&2
     exit 1
@@ -47,11 +55,11 @@ HEAD_SHA="$(git rev-parse HEAD)"
 
 for c in "$N8N_CONTAINER" "$N8N_DB_CONTAINER" moneytrack-db; do
   docker inspect "$c" >/dev/null 2>&1 || { echo "SPC001_N8N_CUTOVER=FAIL container_missing=$c" >&2; exit 1; }
+  [[ "$(docker inspect "$c" --format '{{.State.Running}}')" == true ]] || {
+    echo "SPC001_N8N_CUTOVER=FAIL container_not_running=$c" >&2
+    exit 1
+  }
 done
-[[ "$(docker inspect "$N8N_CONTAINER" --format '{{.State.Running}}')" == true ]] || {
-  echo 'SPC001_N8N_CUTOVER=FAIL n8n_not_running' >&2
-  exit 1
-}
 
 E1_METADATA="$E1_DIR/preflight-metadata.txt"
 E1_PLAN="$E1_DIR/cutover-plan.json"
@@ -63,11 +71,14 @@ done
   cd "$E1_DIR"
   sha256sum -c SHA256SUMS >/dev/null
 )
-grep -Fx 'SPC001_N8N_CUTOVER_PREFLIGHT=PASS' "$E1_METADATA" >/dev/null
-grep -Fx 'DB_MUTATION=NONE' "$E1_METADATA" >/dev/null
-grep -Fx 'N8N_IMPORT=NONE' "$E1_METADATA" >/dev/null
-grep -Fx 'N8N_PUBLISH=NONE' "$E1_METADATA" >/dev/null
-grep -Fx 'N8N_UNPUBLISH=NONE' "$E1_METADATA" >/dev/null
+for marker in \
+  'SPC001_N8N_CUTOVER_PREFLIGHT=PASS' \
+  'DB_MUTATION=NONE' \
+  'N8N_IMPORT=NONE' \
+  'N8N_PUBLISH=NONE' \
+  'N8N_UNPUBLISH=NONE'; do
+  grep -Fx "$marker" "$E1_METADATA" >/dev/null
+ done
 E1_MANIFEST_SHA="$(sha256sum "$E1_MANIFEST" | awk '{print $1}')"
 echo "E1_EVIDENCE_INTEGRITY=PASS manifest_sha256=$E1_MANIFEST_SHA"
 
@@ -90,12 +101,12 @@ PY
 mapfile -t RETIRE_IDS < <(python3 - "$E1_PLAN" <<'PY'
 import json, sys
 from pathlib import Path
-p=json.loads(Path(sys.argv[1]).read_text())
+p=json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
 for x in p['legacy_financial_retire_workflow_ids']:
     print(x)
 PY
 )
-SURVIVOR_ID="$(python3 - "$E1_PLAN" -c '' 2>/dev/null || true)"
+
 SURVIVOR_ID="7TJ2xQTxLsTydXZc"
 FINANCIAL_ID="SPC001FinancialApi202608"
 CONTROL_ID="SPC001ControlApi202608"
@@ -116,7 +127,14 @@ docker exec "$N8N_CONTAINER" n8n export:workflow --help 2>&1 | grep -Fq -- '--pu
 echo 'N8N_CLI_GATE=PASS'
 
 umask 077
-mkdir -p "$OUTPUT_DIR" "$OUTPUT_DIR/pre/current" "$OUTPUT_DIR/pre/published" "$OUTPUT_DIR/post/current" "$OUTPUT_DIR/rollback" "$OUTPUT_DIR/import"
+mkdir -p \
+  "$OUTPUT_DIR/pre/current" \
+  "$OUTPUT_DIR/pre/published" \
+  "$OUTPUT_DIR/pre-after-backup/current" \
+  "$OUTPUT_DIR/pre-after-backup/published" \
+  "$OUTPUT_DIR/post/current" \
+  "$OUTPUT_DIR/rollback" \
+  "$OUTPUT_DIR/import"
 chmod 700 "$OUTPUT_DIR"
 
 export_one() {
@@ -144,7 +162,8 @@ export_all_published() {
 
 wait_health() {
   local code=""
-  for _ in $(seq 1 45); do
+  local i
+  for i in $(seq 1 45); do
     code="$(curl -sS --max-time 3 -o /dev/null -w '%{http_code}' http://127.0.0.1:5678/healthz || true)"
     [[ "$code" == 200 ]] && { echo 'N8N_HEALTH=PASS'; return 0; }
     sleep 1
@@ -166,7 +185,8 @@ if isinstance(raw,list):
 else:
     wf=raw
 if not isinstance(wf,dict) or str(wf.get('id') or '')!=expected:
-    raise SystemExit(f'candidate_identity expected={expected} actual={wf.get("id") if isinstance(wf,dict) else None}')
+    actual=wf.get('id') if isinstance(wf,dict) else None
+    raise SystemExit(f'candidate_identity expected={expected} actual={actual}')
 dst.write_text(json.dumps([wf],ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 PY
   echo "$dst"
@@ -202,8 +222,8 @@ raise SystemExit(0 if any(str(x.get('id') or '')==sys.argv[2] for x in raw) else
 PY
 }
 
-# E1 freeze also acts as the accepted route/runtime snapshot. No mutation before
-# the fresh backup and exact-drift checks below.
+# E1 freeze is the accepted pre-cutover runtime snapshot. Export fresh current
+# state and require exact core/published parity before any mutation.
 export_all_published "$OUTPUT_DIR/pre/all-published.json"
 cp "$OUTPUT_DIR/pre/all-published.json" "$OUTPUT_DIR/rollback/before-all-published.json"
 for id in "$SURVIVOR_ID" "${RETIRE_IDS[@]}"; do
@@ -212,9 +232,11 @@ done
 for id in "${CAPTURE_IDS[@]}"; do
   export_one "$id" "$OUTPUT_DIR/pre/current/$id.json" no
 done
-python3 "$ROOT/scripts/spc001-n8n-cutover-verify.py" pre --e1-dir "$E1_DIR" --runtime-dir "$OUTPUT_DIR/pre"
+python3 "$ROOT/scripts/spc001-n8n-cutover-verify.py" pre \
+  --e1-dir "$E1_DIR" --runtime-dir "$OUTPUT_DIR/pre"
 
-NEW_ID_COUNT="$(docker exec "$N8N_DB_CONTAINER" psql -X -q -At -U n8n -d n8n -c "select count(*) from workflow_entity where id in ('$FINANCIAL_ID','$CONTROL_ID');")"
+NEW_ID_COUNT="$(docker exec "$N8N_DB_CONTAINER" psql -X -q -At -U n8n -d n8n -c \
+  "select count(*) from workflow_entity where id in ('$FINANCIAL_ID','$CONTROL_ID');")"
 [[ "$NEW_ID_COUNT" == 0 ]] || {
   echo "SPC001_N8N_CUTOVER=FAIL new_workflow_id_already_exists count=$NEW_ID_COUNT" >&2
   exit 1
@@ -222,11 +244,14 @@ NEW_ID_COUNT="$(docker exec "$N8N_DB_CONTAINER" psql -X -q -At -U n8n -d n8n -c 
 echo 'NEW_WORKFLOW_IDS_ABSENT=PASS'
 
 for id in "$BOT_ID" "$QUICK_ID"; do
-  was_published_e1 "$id" || { echo "SPC001_N8N_CUTOVER=FAIL required_ingress_not_published_e1 id=$id" >&2; exit 1; }
+  was_published_e1 "$id" || {
+    echo "SPC001_N8N_CUTOVER=FAIL required_ingress_not_published_e1 id=$id" >&2
+    exit 1
+  }
 done
 
-# No active published workflow outside the frozen capture set may call the
-# processor IDs being replaced while Bot/Quick are quiesced.
+# Fail closed if any active published workflow outside the frozen capture set
+# references the processor IDs that will be replaced while Bot/Quick are down.
 python3 - "$OUTPUT_DIR/pre/all-published.json" "$BOT_ID" "$QUICK_ID" "$TEXT_ID" "$VOICE_ID" "$PHOTO_ID" <<'PY'
 import json,sys
 from pathlib import Path
@@ -237,18 +262,25 @@ callees=set(sys.argv[4:])
 bad=[]
 for wf in raw:
     wid=str(wf.get('id') or '')
-    if wid in capture: continue
+    if wid in capture:
+        continue
     blob=json.dumps(wf.get('nodes') or [],ensure_ascii=False)
     hit=sorted(x for x in callees if x in blob)
-    if hit: bad.append((wid,hit))
-if bad: raise SystemExit('CAPTURE_EXTERNAL_CALLER_GATE=FAIL '+json.dumps(bad))
+    if hit:
+        bad.append((wid,hit))
+if bad:
+    raise SystemExit('CAPTURE_EXTERNAL_CALLER_GATE=FAIL '+json.dumps(bad))
 print('CAPTURE_EXTERNAL_CALLER_GATE=PASS')
 PY
 
-# Fresh PROD-H2 backup immediately before first runtime mutation.
-BACKUP_ROOT="$OUTPUT_DIR/prod-h2" bash "$ROOT/scripts/prod-h2-backup-now.sh" 2>&1 | tee "$OUTPUT_DIR/prod-h2-backup.log"
+# Fresh PROD-H2 recovery point immediately before first persistent n8n change.
+BACKUP_ROOT="$OUTPUT_DIR/prod-h2" bash "$ROOT/scripts/prod-h2-backup-now.sh" \
+  2>&1 | tee "$OUTPUT_DIR/prod-h2-backup.log"
 mapfile -t BACKUP_DIRS < <(find "$OUTPUT_DIR/prod-h2" -mindepth 1 -maxdepth 1 -type d | sort)
-[[ "${#BACKUP_DIRS[@]}" -eq 1 ]] || { echo 'SPC001_N8N_CUTOVER=FAIL fresh_backup_directory_count' >&2; exit 1; }
+[[ "${#BACKUP_DIRS[@]}" -eq 1 ]] || {
+  echo 'SPC001_N8N_CUTOVER=FAIL fresh_backup_directory_count' >&2
+  exit 1
+}
 BACKUP_DIR="${BACKUP_DIRS[0]}"
 [[ -f "$BACKUP_DIR/COMPLETE" && -s "$BACKUP_DIR/n8n-metadata.dump" && -s "$BACKUP_DIR/SHA256SUMS" ]]
 (
@@ -258,8 +290,8 @@ BACKUP_DIR="${BACKUP_DIRS[0]}"
 N8N_BACKUP_SHA="$(sha256sum "$BACKUP_DIR/n8n-metadata.dump" | awk '{print $1}')"
 echo "FRESH_PROD_H2_BACKUP=PASS path=$BACKUP_DIR n8n_metadata_sha256=$N8N_BACKUP_SHA"
 
-# Re-export after backup: no drift is allowed between E1/preflight and mutation.
-mkdir -p "$OUTPUT_DIR/pre-after-backup/current" "$OUTPUT_DIR/pre-after-backup/published"
+# Backup must not race a runtime edit. Re-export and repeat the exact E1 drift
+# guard after the backup has completed and immediately before mutation.
 export_all_published "$OUTPUT_DIR/pre-after-backup/all-published.json"
 for id in "$SURVIVOR_ID" "${RETIRE_IDS[@]}"; do
   export_one "$id" "$OUTPUT_DIR/pre-after-backup/published/$id.json" yes
@@ -267,7 +299,8 @@ done
 for id in "${CAPTURE_IDS[@]}"; do
   export_one "$id" "$OUTPUT_DIR/pre-after-backup/current/$id.json" no
 done
-python3 "$ROOT/scripts/spc001-n8n-cutover-verify.py" pre --e1-dir "$E1_DIR" --runtime-dir "$OUTPUT_DIR/pre-after-backup"
+python3 "$ROOT/scripts/spc001-n8n-cutover-verify.py" pre \
+  --e1-dir "$E1_DIR" --runtime-dir "$OUTPUT_DIR/pre-after-backup"
 echo 'RUNTIME_STABLE_THROUGH_BACKUP=PASS'
 
 SURVIVOR_IMPORT="$(prepare_import "$E1_DIR/candidate-global-api-survivor.json" "$SURVIVOR_ID")"
@@ -277,7 +310,6 @@ TEXT_IMPORT="$(prepare_import "$E1_DIR/forensic/candidate-text-processor.json" "
 PHOTO_IMPORT="$(prepare_import "$E1_DIR/forensic/candidate-photo-processor.json" "$PHOTO_ID")"
 QUICK_IMPORT="$(prepare_import "$E1_DIR/forensic/candidate-quick-input.json" "$QUICK_ID")"
 BOT_IMPORT="$(prepare_import "$E1_DIR/forensic/candidate-bot.json" "$BOT_ID")"
-
 echo 'IMPORT_CANDIDATES_FROZEN_FROM_E1=PASS'
 
 MUTATED=0
@@ -289,48 +321,62 @@ rollback_metadata() {
   [[ "$MUTATED" -eq 1 && "$CUTOVER_COMPLETE" -eq 0 ]] || return "$rc"
   [[ "$ROLLBACK_RUNNING" -eq 0 ]] || return "$rc"
   ROLLBACK_RUNNING=1
-  trap - ERR
+  trap - ERR HUP INT TERM
   set +e
+
   echo "ROLLBACK_TRIGGERED=YES rc=$rc" | tee "$OUTPUT_DIR/rollback/rollback.txt" >&2
-  docker stop "$N8N_CONTAINER" >/dev/null 2>&1
-  STOP_RC=$?
-  echo "rollback_n8n_stop_rc=$STOP_RC" >> "$OUTPUT_DIR/rollback/rollback.txt"
+
   (
     cd "$BACKUP_DIR"
     sha256sum -c SHA256SUMS >/dev/null
   )
   HASH_RC=$?
   echo "rollback_backup_hash_rc=$HASH_RC" >> "$OUTPUT_DIR/rollback/rollback.txt"
+
+  if [[ "$(docker inspect "$N8N_CONTAINER" --format '{{.State.Running}}' 2>/dev/null)" == true ]]; then
+    docker stop "$N8N_CONTAINER" >/dev/null 2>&1
+    STOP_RC=$?
+  else
+    STOP_RC=0
+  fi
+  echo "rollback_n8n_stop_rc=$STOP_RC" >> "$OUTPUT_DIR/rollback/rollback.txt"
+
   docker exec "$N8N_DB_CONTAINER" psql -X -q -v ON_ERROR_STOP=1 -U n8n -d postgres -c \
-    "select pg_terminate_backend(pid) from pg_stat_activity where datname='n8n' and pid<>pg_backend_pid();" >/dev/null 2>&1
+    "select pg_terminate_backend(pid) from pg_stat_activity where datname='n8n' and pid<>pg_backend_pid();" \
+    >/dev/null 2>&1
   TERM_RC=$?
   docker exec "$N8N_DB_CONTAINER" dropdb -U n8n --if-exists n8n >/dev/null 2>&1
   DROP_RC=$?
   docker exec "$N8N_DB_CONTAINER" createdb -U n8n -O n8n n8n >/dev/null 2>&1
   CREATE_RC=$?
-  docker exec -i "$N8N_DB_CONTAINER" pg_restore -U n8n -d n8n --exit-on-error < "$BACKUP_DIR/n8n-metadata.dump" >/dev/null 2>&1
+  docker exec -i "$N8N_DB_CONTAINER" pg_restore -U n8n -d n8n --exit-on-error \
+    < "$BACKUP_DIR/n8n-metadata.dump" >/dev/null 2>&1
   RESTORE_RC=$?
-  echo "rollback_db term=$TERM_RC drop=$DROP_RC create=$CREATE_RC restore=$RESTORE_RC" >> "$OUTPUT_DIR/rollback/rollback.txt"
+  echo "rollback_db term=$TERM_RC drop=$DROP_RC create=$CREATE_RC restore=$RESTORE_RC" \
+    >> "$OUTPUT_DIR/rollback/rollback.txt"
+
   docker start "$N8N_CONTAINER" >/dev/null 2>&1
   START_RC=$?
   echo "rollback_n8n_start_rc=$START_RC" >> "$OUTPUT_DIR/rollback/rollback.txt"
   wait_health >> "$OUTPUT_DIR/rollback/rollback.txt" 2>&1
   HEALTH_RC=$?
-  if [[ "$RESTORE_RC" -eq 0 && "$START_RC" -eq 0 && "$HEALTH_RC" -eq 0 ]]; then
+
+  EXPORT_RC=1
+  VERIFY_RC=1
+  if [[ "$HASH_RC" -eq 0 && "$DROP_RC" -eq 0 && "$CREATE_RC" -eq 0 && "$RESTORE_RC" -eq 0 && "$START_RC" -eq 0 && "$HEALTH_RC" -eq 0 ]]; then
     export_all_published "$OUTPUT_DIR/rollback/all-published.json"
     EXPORT_RC=$?
     if [[ "$EXPORT_RC" -eq 0 ]]; then
-      python3 "$ROOT/scripts/spc001-n8n-cutover-verify.py" rollback --e1-dir "$E1_DIR" --runtime-dir "$OUTPUT_DIR/rollback" >> "$OUTPUT_DIR/rollback/rollback.txt" 2>&1
+      python3 "$ROOT/scripts/spc001-n8n-cutover-verify.py" rollback \
+        --e1-dir "$E1_DIR" --runtime-dir "$OUTPUT_DIR/rollback" \
+        >> "$OUTPUT_DIR/rollback/rollback.txt" 2>&1
       VERIFY_RC=$?
-    else
-      VERIFY_RC=1
     fi
-  else
-    EXPORT_RC=1
-    VERIFY_RC=1
   fi
-  echo "rollback_export_rc=$EXPORT_RC rollback_verify_rc=$VERIFY_RC" >> "$OUTPUT_DIR/rollback/rollback.txt"
-  if [[ "$HASH_RC" -eq 0 && "$STOP_RC" -eq 0 && "$DROP_RC" -eq 0 && "$CREATE_RC" -eq 0 && "$RESTORE_RC" -eq 0 && "$START_RC" -eq 0 && "$HEALTH_RC" -eq 0 && "$VERIFY_RC" -eq 0 ]]; then
+  echo "rollback_export_rc=$EXPORT_RC rollback_verify_rc=$VERIFY_RC" \
+    >> "$OUTPUT_DIR/rollback/rollback.txt"
+
+  if [[ "$HASH_RC" -eq 0 && "$STOP_RC" -eq 0 && "$TERM_RC" -eq 0 && "$DROP_RC" -eq 0 && "$CREATE_RC" -eq 0 && "$RESTORE_RC" -eq 0 && "$START_RC" -eq 0 && "$HEALTH_RC" -eq 0 && "$VERIFY_RC" -eq 0 ]]; then
     echo 'ROLLBACK_N8N_METADATA=PASS' | tee -a "$OUTPUT_DIR/rollback/rollback.txt" >&2
   else
     echo "ROLLBACK_N8N_METADATA=FAIL backup=$BACKUP_DIR" | tee -a "$OUTPUT_DIR/rollback/rollback.txt" >&2
@@ -342,46 +388,62 @@ rollback_metadata() {
 
 on_error() {
   local rc=$?
-  trap - ERR
+  trap - ERR HUP INT TERM
   rollback_metadata "$rc" || true
   echo "SPC001_N8N_CUTOVER=FAIL rc=$rc output=$OUTPUT_DIR" >&2
   exit "$rc"
 }
-trap on_error ERR
 
-# First persistent n8n mutation starts here. Bot and Quick ingress are quiesced
-# first so processor/caller versions can never be mixed while externally reachable.
+on_signal() {
+  local sig="$1" rc=130
+  [[ "$sig" == TERM ]] && rc=143
+  [[ "$sig" == HUP ]] && rc=129
+  trap - ERR HUP INT TERM
+  rollback_metadata "$rc" || true
+  echo "SPC001_N8N_CUTOVER=FAIL signal=$sig rc=$rc output=$OUTPUT_DIR" >&2
+  exit "$rc"
+}
+
+trap on_error ERR
+trap 'on_signal HUP' HUP
+trap 'on_signal INT' INT
+trap 'on_signal TERM' TERM
+
+# First persistent n8n mutation starts here. Quiesce all external capture ingress
+# before replacing processors so caller/callee versions are never externally mixed.
 MUTATED=1
 unpublish_workflow "$BOT_ID"
 unpublish_workflow "$QUICK_ID"
 echo 'CAPTURE_INGRESS_QUIESCED=PASS'
 
+# Remove every frozen legacy financial route owner before publishing the new
+# consolidated Financial API. This avoids duplicate webhook ownership.
 for id in "${RETIRE_IDS[@]}"; do
   unpublish_workflow "$id"
 done
 echo "LEGACY_FINANCIAL_UNPUBLISH=PASS workflows=${#RETIRE_IDS[@]}"
 
-# Global /i18n and /me survive in the same workflow ID; only its replaceable
-# financial webhook ingress is removed by the frozen survivor candidate.
+# /i18n and /me survive under the existing workflow identity. The frozen
+# survivor candidate removes only the two replaceable financial webhook ingress.
 import_workflow "$SURVIVOR_IMPORT" "$SURVIVOR_ID"
 publish_workflow "$SURVIVOR_ID"
 echo 'GLOBAL_SURVIVOR_CUTOVER=PASS'
 
-# New Space-native API workflows are introduced only after all conflicting legacy
-# financial webhook owners are gone.
+# Introduce the two new Space-native API workflow IDs only after all conflicting
+# legacy financial owners are no longer published.
 import_workflow "$FINANCIAL_IMPORT" "$FINANCIAL_ID"
 publish_workflow "$FINANCIAL_ID"
 import_workflow "$CONTROL_IMPORT" "$CONTROL_ID"
 publish_workflow "$CONTROL_ID"
 echo 'SPACE_API_CUTOVER=PASS'
 
-# With external capture ingress still quiesced, update callees before callers.
+# External capture remains quiesced. Replace callees first, preserving each
+# processor's pre-E1 published state, then replace/publish callers.
 import_workflow "$TEXT_IMPORT" "$TEXT_ID"
 if was_published_e1 "$TEXT_ID"; then publish_workflow "$TEXT_ID"; fi
 import_workflow "$PHOTO_IMPORT" "$PHOTO_ID"
 if was_published_e1 "$PHOTO_ID"; then publish_workflow "$PHOTO_ID"; fi
 
-# Voice processor is intentionally unchanged and is never imported/published.
 echo 'VOICE_PROCESSOR_MUTATION=NONE'
 
 import_workflow "$QUICK_IMPORT" "$QUICK_ID"
@@ -393,13 +455,15 @@ echo 'CAPTURE_CUTOVER=PASS'
 docker restart "$N8N_CONTAINER" >/dev/null
 wait_health
 
+# Verify the actual saved/published runtime, not merely the frozen candidates.
 export_all_published "$OUTPUT_DIR/post/all-published.json"
 for id in "$SURVIVOR_ID" "$FINANCIAL_ID" "$CONTROL_ID" "${CAPTURE_IDS[@]}"; do
   export_one "$id" "$OUTPUT_DIR/post/current/$id.json" no
 done
-python3 "$ROOT/scripts/spc001-n8n-cutover-verify.py" post --e1-dir "$E1_DIR" --runtime-dir "$OUTPUT_DIR/post" | tee "$OUTPUT_DIR/post/runtime-verify.txt"
+python3 "$ROOT/scripts/spc001-n8n-cutover-verify.py" post \
+  --e1-dir "$E1_DIR" --runtime-dir "$OUTPUT_DIR/post" \
+  | tee "$OUTPUT_DIR/post/runtime-verify.txt"
 
-# Audit actual applied current workflows, not just E1 candidates.
 python3 "$ROOT/scripts/spc001-audit-workflow-tenancy.py" --reachable-only \
   "$OUTPUT_DIR/post/current/$QUICK_ID.json" \
   "$OUTPUT_DIR/post/current/$TEXT_ID.json" \
@@ -413,8 +477,8 @@ python3 "$ROOT/scripts/spc001-audit-workflow-tenancy.py" --reachable-only \
 grep -Fx 'SPC001_TENANCY_AUDIT=PASS' "$OUTPUT_DIR/post/tenancy-audit.txt" >/dev/null
 echo 'APPLIED_TENANCY_AUDIT=PASS'
 
-# DB is already migrated; E2 performs no MoneyTrack writes. Re-run only the
-# strict read-only live verifier to prove runtime cutover did not disturb DB state.
+# E2 never writes MoneyTrack DB. Re-run only strict read-only 315 after n8n
+# cutover to prove the already-migrated live state remains valid.
 source "$ROOT/scripts/ux022-db-runtime.sh"
 ux022_db_init
 ux022_db_psql_file "$ROOT/db/domain/SPC-001/315_verify_live_post_migration_readonly.sql" \
@@ -424,7 +488,7 @@ grep -Fx 'SPC001_LIVE_POST_MIGRATION_VERIFY=END' "$OUTPUT_DIR/post/live-315.txt"
 echo 'LIVE_315_AFTER_N8N_CUTOVER=PASS'
 
 CUTOVER_COMPLETE=1
-trap - ERR
+trap - ERR HUP INT TERM
 
 D3_COMMIT_SHA="$(awk -F= '/^D3_COMMIT_BUNDLE_SHA256=/{print $2}' "$E1_METADATA" | tail -n1)"
 D3_ROLLBACK_SHA="$(awk -F= '/^D3_ROLLBACK_BUNDLE_SHA256=/{print $2}' "$E1_METADATA" | tail -n1)"
@@ -433,6 +497,7 @@ import json,sys
 print(json.load(open(sys.argv[1],encoding='utf-8'))['source_head'])
 PY
 )"
+
 {
   echo "HEAD=$HEAD_SHA"
   echo "E1_SOURCE_HEAD=$E1_SOURCE_HEAD"
@@ -457,17 +522,31 @@ PY
   echo "SPC001_N8N_CUTOVER=PASS"
 } > "$OUTPUT_DIR/cutover-metadata.txt"
 
-# Outer evidence manifest intentionally references the fresh backup through its
-# already-verified inner manifest instead of re-hashing multi-GB dump payloads.
-(
-  cd "$OUTPUT_DIR"
-  find . -type f \
-    ! -path './prod-h2/*' \
-    ! -name SHA256SUMS \
-    -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
-  printf '%s  %s\n' "$(sha256sum "$BACKUP_DIR/SHA256SUMS" | awk '{print $1}')" "${BACKUP_DIR#$OUTPUT_DIR/}/SHA256SUMS" >> SHA256SUMS
-  printf '%s  %s\n' "$(sha256sum "$BACKUP_DIR/COMPLETE" | awk '{print $1}')" "${BACKUP_DIR#$OUTPUT_DIR/}/COMPLETE" >> SHA256SUMS
-)
+# Outer evidence manifest references the large fresh backup via the backup's own
+# verified manifest instead of re-hashing all dump payloads a second time.
+python3 - "$OUTPUT_DIR" "$BACKUP_DIR" <<'PY'
+from pathlib import Path
+import hashlib, sys
+root=Path(sys.argv[1]).resolve()
+backup=Path(sys.argv[2]).resolve()
+manifest=root/'SHA256SUMS'
+
+def sha(path):
+    h=hashlib.sha256()
+    with path.open('rb') as f:
+        for chunk in iter(lambda:f.read(1024*1024),b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+lines=[]
+for p in sorted(root.rglob('*')):
+    if not p.is_file() or p==manifest or backup in p.parents:
+        continue
+    lines.append(f"{sha(p)}  {p.relative_to(root)}\n")
+for p in (backup/'SHA256SUMS', backup/'COMPLETE'):
+    lines.append(f"{sha(p)}  {p.relative_to(root)}\n")
+manifest.write_text(''.join(lines),encoding='utf-8')
+PY
 sync
 
 echo "E2_EVIDENCE_DIR=$OUTPUT_DIR"
