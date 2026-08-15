@@ -124,13 +124,16 @@ docker exec -i "$N8N_DB_CONTAINER" pg_restore -U n8n -d "$CLONE_DB" --exit-on-er
 echo "CLONE_RESTORE=PASS db=$CLONE_DB" | tee "$OUTPUT_DIR/rehearsal.txt"
 
 n8n_clone() {
-  local log="$1"; shift
+  local log="$1"
+  shift
   echo "+ n8n $*" >> "$log"
   docker exec -e DB_POSTGRESDB_DATABASE="$CLONE_DB" "$N8N_CONTAINER" n8n "$@" >> "$log" 2>&1
 }
 
 prepare_import() {
-  local src="$1" id="$2" dst="$OUTPUT_DIR/import/$id.json"
+  local src="$1"
+  local id="$2"
+  local dst="$OUTPUT_DIR/import/$id.json"
   python3 - "$src" "$dst" "$id" <<'PY'
 import json,sys
 from pathlib import Path
@@ -145,7 +148,10 @@ PY
 }
 
 import_clone() {
-  local file="$1" id="$2" log="$OUTPUT_DIR/import-$id.log" remote="/tmp/spc001-e2r-${id}-$$.json"
+  local file="$1"
+  local id="$2"
+  local log="$OUTPUT_DIR/import-$id.log"
+  local remote="/tmp/spc001-e2r-${id}-$$.json"
   REMOTE_FILES+=("$remote")
   docker cp "$file" "$N8N_CONTAINER:$remote" >/dev/null
   if ! n8n_clone "$log" import:workflow --input="$remote"; then
@@ -157,7 +163,8 @@ import_clone() {
 }
 
 publish_clone() {
-  local id="$1" log="$OUTPUT_DIR/publish-$id.log"
+  local id="$1"
+  local log="$OUTPUT_DIR/publish-$id.log"
   if ! n8n_clone "$log" publish:workflow --id="$id"; then
     echo "CLONE_PUBLISH=FAIL id=$id log=$log" | tee -a "$OUTPUT_DIR/rehearsal.txt" >&2
     cat "$log" >&2
@@ -167,7 +174,8 @@ publish_clone() {
 }
 
 unpublish_clone() {
-  local id="$1" log="$OUTPUT_DIR/unpublish-$id.log"
+  local id="$1"
+  local log="$OUTPUT_DIR/unpublish-$id.log"
   if ! n8n_clone "$log" unpublish:workflow --id="$id"; then
     echo "CLONE_UNPUBLISH=FAIL id=$id log=$log" | tee -a "$OUTPUT_DIR/rehearsal.txt" >&2
     cat "$log" >&2
@@ -177,7 +185,9 @@ unpublish_clone() {
 }
 
 export_clone_one() {
-  local id="$1" out="$2" remote="/tmp/spc001-e2r-export-${id}-$$.json"
+  local id="$1"
+  local out="$2"
+  local remote="/tmp/spc001-e2r-export-${id}-$$.json"
   REMOTE_FILES+=("$remote")
   n8n_clone "$OUTPUT_DIR/export-$id.log" export:workflow --id="$id" --output="$remote"
   docker cp "$N8N_CONTAINER:$remote" "$out" >/dev/null
@@ -185,7 +195,8 @@ export_clone_one() {
 }
 
 export_clone_all_published() {
-  local out="$1" remote="/tmp/spc001-e2r-all-$$.json"
+  local out="$1"
+  local remote="/tmp/spc001-e2r-all-$$.json"
   REMOTE_FILES+=("$remote")
   n8n_clone "$OUTPUT_DIR/export-all-published.log" export:workflow --all --published --output="$remote"
   docker cp "$N8N_CONTAINER:$remote" "$out" >/dev/null
