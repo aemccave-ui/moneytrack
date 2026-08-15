@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Source-only gate for SPC-001F preview-only deployment and F2R1 correction."""
+"""Source-only gate for SPC-001F preview, F2R1 correction, and shared-Space UI."""
 from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER = (ROOT / "scripts/spc001-preview-apply.sh").read_text(encoding="utf-8")
 CORRECTIVE = (ROOT / "scripts/spc001-f2r1-preview-apply.sh").read_text(encoding="utf-8")
+SHARED = (ROOT / "scripts/spc001-shared-preview-apply.sh").read_text(encoding="utf-8")
 MAIN = (ROOT / "miniapp/src/main.jsx").read_text(encoding="utf-8")
 SPACE_GATE = (ROOT / "miniapp/src/SpaceGate.jsx").read_text(encoding="utf-8")
 SPACE_CSS = (ROOT / "miniapp/src/spc001-space.css").read_text(encoding="utf-8")
@@ -122,6 +123,56 @@ checks = {
         and "docker exec" not in CORRECTIVE
         and "psql" not in CORRECTIVE
         and "n8n import:workflow" not in CORRECTIVE
+    ),
+    "shared_space_admin_ui_uses_existing_owner_boundaries": all(x in SPACE_GATE for x in (
+        "activeSpace.is_owner",
+        "createSpaceInvite(activeSpace.id)",
+        "getSpaceMembers(space.id)",
+        "removeSpaceMember(activeSpace.id, member.user_id)",
+        "revokeSpaceInvite(invite.id)",
+        "Совместный доступ",
+        "Участники",
+    )),
+    "shared_space_invite_is_user_shareable_and_revocable": all(x in SPACE_GATE for x in (
+        "created?.invite_url",
+        "navigator.clipboard?.writeText",
+        "https://t.me/share/url?url=",
+        "Ссылка приглашения",
+        "Приглашение отозвано",
+    )),
+    "default_capture_space_is_explicit_in_ui": (
+        "defaultCaptureSpaceId" in SPACE_GATE
+        and "setDefaultCaptureSpace(activeSpace.id)" in SPACE_GATE
+        and "Использовать для бота" in SPACE_GATE
+        and "Bot capture использует это назначение независимо" in SPACE_GATE
+    ),
+    "invite_receiver_onboarding_is_preserved": all(x in SPACE_GATE for x in (
+        "telegramInviteStartParam()",
+        "acceptTelegramInviteOnce()",
+        "startsWith('invite_')",
+        "invitedSpaceId",
+    )),
+    "shared_preview_requires_accepted_f2r1_and_exact_safe_delta": all(x in SHARED for x in (
+        "SPC001_F2R1_PREVIEW=PASS",
+        "sha256sum -c SHA256SUMS",
+        "git merge-base --is-ancestor",
+        "F2R1_TO_SHARED_UI_SAFE_DELTA=PASS",
+        "miniapp/src/SpaceGate.jsx|miniapp/src/spc001-space.css|scripts/spc001-shared-preview-apply.sh|scripts/spc001-preview-source-gate.py",
+        "non-shared-UI source changed after accepted F2R1",
+    )),
+    "shared_preview_is_preview_only_with_rollback_and_identity": (
+        SHARED.index("npm run build") < SHARED.index("preview_mutated=1")
+        and SHARED.index("preview.before.tgz") < SHARED.index("rsync -a --delete")
+        and "PREVIEW_ROLLBACK=PASS" in SHARED
+        and "PREVIEW_INDEX_IDENTITY=PASS" in SHARED
+        and "ASSET_IDENTITY=PASS" in SHARED
+        and "SPC001_SHARED_PREVIEW=PASS" in SHARED
+        and "PRODUCTION_FRONTEND_MUTATION=NONE" in SHARED
+        and "DB_MUTATION=NONE" in SHARED
+        and "N8N_MUTATION=NONE" in SHARED
+        and "docker exec" not in SHARED
+        and "psql" not in SHARED
+        and "n8n import:workflow" not in SHARED
     ),
 }
 
