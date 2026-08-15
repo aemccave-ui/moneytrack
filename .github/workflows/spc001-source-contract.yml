@@ -9,6 +9,7 @@ on:
       - '.github/workflows/spc001-source-contract.yml'
       - 'db/domain/SPC-001/**'
       - 'docs/architecture/SPC-001-tenancy-forensic.md'
+      - 'ops/spc001/**'
       - 'scripts/spc001-*'
       - 'miniapp/src/**'
       - 'workflows/moneytrack-DER2Lc3dT2afyQhy.json'
@@ -19,6 +20,7 @@ on:
       - '.github/workflows/spc001-source-contract.yml'
       - 'db/domain/SPC-001/**'
       - 'docs/architecture/SPC-001-tenancy-forensic.md'
+      - 'ops/spc001/**'
       - 'scripts/spc001-*'
       - 'miniapp/src/**'
       - 'workflows/moneytrack-DER2Lc3dT2afyQhy.json'
@@ -127,6 +129,12 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/spc001-preview-source-gate.py
+
+      - name: SPC-001F3 invite runtime source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-invite-runtime-source-gate.py
 
       - name: Generate financial adapter candidate
         shell: bash
