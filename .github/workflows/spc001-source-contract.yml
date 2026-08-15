@@ -142,6 +142,12 @@ jobs:
           set -euo pipefail
           python scripts/spc001-f4-financial-transport-source-gate.py
 
+      - name: SPC-001F4.2 acceptance polish source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-f4-acceptance-polish-source-gate.py
+
       - name: Generate financial adapter candidate
         shell: bash
         run: |
