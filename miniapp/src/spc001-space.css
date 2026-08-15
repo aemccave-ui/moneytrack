@@ -1,5 +1,9 @@
 .spaceGate {
-  min-height: 100vh;
+  min-height: 100dvh;
+  background:
+    radial-gradient(circle at 88% -5%, rgba(180,241,209,.75) 0, transparent 31%),
+    radial-gradient(circle at -10% 36%, rgba(216,247,231,.8) 0, transparent 28%),
+    linear-gradient(180deg,#f8fffb 0%,#eef8f3 56%,#e9f4ef 100%);
 }
 
 .spaceBar {
@@ -7,80 +11,91 @@
   top: 0;
   z-index: 80;
   display: flex;
-  align-items: flex-end;
-  gap: 10px;
+  align-items: stretch;
+  gap: 8px;
   padding: 10px 16px 8px;
-  background: var(--tg-theme-bg-color, #ffffff);
-  border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+  background: color-mix(in srgb, var(--bg, #eef8f3) 88%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, currentColor 8%, transparent);
+  backdrop-filter: blur(18px);
 }
 
-.spaceBarIdentity {
+.spacePickerTrigger {
   min-width: 0;
   flex: 1;
+  min-height: 48px;
   display: grid;
-  gap: 3px;
-}
-
-.spaceBarIdentity > span {
-  font-size: 11px;
-  opacity: 0.58;
-}
-
-.spaceBarIdentity select,
-.spaceCreateInline input,
-.spaceInviteCard input {
-  min-width: 0;
-  height: 36px;
-  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
-  border-radius: 10px;
-  background: var(--tg-theme-secondary-bg-color, #f5f5f5);
-  color: inherit;
-  padding: 0 10px;
-  font: inherit;
-}
-
-.spaceBarIdentity select {
-  width: 100%;
-  font-weight: 650;
-}
-
-.spaceCreateInline {
-  display: flex;
-  gap: 6px;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
+  gap: 10px;
+  border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  border-radius: 14px;
+  background: rgba(255,255,255,.72);
+  color: inherit;
+  padding: 7px 12px;
+  text-align: left;
+  box-shadow: 0 8px 24px rgba(28,101,75,.06);
 }
 
-.spaceCreateInline input {
-  width: min(35vw, 160px);
+.spacePickerTrigger:disabled,
+.spaceDefaultCaptureButton:disabled,
+.spaceManageSection button:disabled,
+.spaceMemberRow button:disabled,
+.spaceCreateForm button:disabled,
+.spacePickerRow:disabled {
+  opacity: 0.5;
 }
 
-.spaceCreateInline button,
+.spacePickerCopy {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.spacePickerCopy small,
+.spaceSheetHeader span,
+.spacePickerRow small,
+.spaceActionSheet small,
+.spaceCreateForm label > span,
+.spaceManageHeader span,
+.spaceManageSectionHead span,
+.spaceMemberRow small,
+.spaceInviteCard small,
+.spaceManageHint,
+.spaceManageSummary,
+.spaceBotSection > div > span {
+  font-size: 12px;
+  opacity: 0.68;
+}
+
+.spacePickerCopy strong,
+.spacePickerRow strong,
+.spaceActionSheet strong,
+.spaceSheetHeader strong,
+.spaceManageHeader strong,
+.spaceManageSectionHead strong,
+.spaceMemberRow strong,
+.spaceBotSection > div > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.spacePickerChevron {
+  font-size: 22px;
+  line-height: 1;
+  opacity: 0.62;
+}
+
 .spaceManageButton {
-  width: 36px;
-  height: 36px;
-  flex: 0 0 36px;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
   border: 0;
   border-radius: 50%;
   background: var(--tg-theme-button-color, #2481cc);
   color: var(--tg-theme-button-text-color, #ffffff);
-  line-height: 1;
-}
-
-.spaceCreateInline button {
   font-size: 24px;
-}
-
-.spaceManageButton {
-  font-size: 22px;
+  line-height: 1;
   letter-spacing: 1px;
-}
-
-.spaceCreateInline button:disabled,
-.spaceBarIdentity select:disabled,
-.spaceDefaultCaptureButton:disabled,
-.spaceManageSection button:disabled,
-.spaceMemberRow button:disabled {
-  opacity: 0.5;
 }
 
 .spaceGateNotice {
@@ -108,6 +123,7 @@
   margin-top: 4px;
 }
 
+.spaceSheetBackdrop,
 .spaceManageBackdrop {
   position: fixed;
   inset: 0;
@@ -119,6 +135,9 @@
   padding: 18px 12px max(18px, env(safe-area-inset-bottom));
 }
 
+.spacePickerSheet,
+.spaceActionSheet,
+.spaceCreateSheet,
 .spaceManageSheet {
   width: min(100%, 560px);
   max-height: min(82vh, 720px);
@@ -130,6 +149,7 @@
   padding: 18px;
 }
 
+.spaceSheetHeader,
 .spaceManageHeader,
 .spaceManageSectionHead,
 .spaceMemberRow,
@@ -140,6 +160,7 @@
   gap: 10px;
 }
 
+.spaceSheetHeader,
 .spaceManageHeader,
 .spaceManageSectionHead,
 .spaceMemberRow,
@@ -147,31 +168,17 @@
   justify-content: space-between;
 }
 
+.spaceSheetHeader > div,
 .spaceManageHeader > div,
 .spaceManageSectionHead > div,
-.spaceMemberRow > div {
+.spaceMemberRow > div,
+.spaceBotSection > div {
   min-width: 0;
   display: grid;
   gap: 2px;
 }
 
-.spaceManageHeader span,
-.spaceManageSectionHead span,
-.spaceMemberRow small,
-.spaceInviteCard small,
-.spaceManageHint,
-.spaceManageSummary {
-  font-size: 12px;
-  opacity: 0.68;
-}
-
-.spaceManageHeader strong,
-.spaceManageSectionHead strong,
-.spaceMemberRow strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
+.spaceSheetHeader > button,
 .spaceManageHeader > button {
   width: 36px;
   height: 36px;
@@ -183,6 +190,132 @@
   font-size: 22px;
 }
 
+.spacePickerList {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.spacePickerRow {
+  width: 100%;
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+  color: inherit;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.spacePickerRow > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.spacePickerRow > b {
+  flex: 0 0 auto;
+  font-size: 20px;
+  color: var(--tg-theme-button-color, #2481cc);
+}
+
+.spacePickerRow[data-active='true'] {
+  border-color: color-mix(in srgb, var(--tg-theme-button-color, #2481cc) 28%, transparent);
+  background: color-mix(in srgb, var(--tg-theme-button-color, #2481cc) 9%, #ffffff);
+}
+
+.spaceActionSheet {
+  display: grid;
+  gap: 8px;
+}
+
+.spaceActionSheet > button {
+  width: 100%;
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+  color: inherit;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.spaceActionSheet > button > span:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.spaceActionIcon {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--tg-theme-button-color, #2481cc) 12%, transparent);
+  color: var(--tg-theme-button-color, #2481cc);
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.spaceActionSheet > .spaceActionCancel {
+  justify-content: center;
+  min-height: 46px;
+  margin-top: 4px;
+  background: transparent;
+  font-weight: 700;
+}
+
+.spaceCreateForm {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.spaceCreateForm label {
+  display: grid;
+  gap: 6px;
+}
+
+.spaceCreateForm input,
+.spaceInviteCard input {
+  min-width: 0;
+  width: 100%;
+  height: 42px;
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-radius: 12px;
+  background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+  color: inherit;
+  padding: 0 11px;
+  font: inherit;
+}
+
+.spaceCreateForm > button,
+.spaceDefaultCaptureButton,
+.spaceManageSection button,
+.spaceMemberRow button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 11px;
+  padding: 0 12px;
+  font: inherit;
+  font-weight: 650;
+}
+
+.spaceCreateForm > button,
+.spaceDefaultCaptureButton {
+  background: var(--tg-theme-button-color, #2481cc);
+  color: var(--tg-theme-button-text-color, #ffffff);
+}
+
 .spaceManageSummary {
   margin-top: 12px;
   padding: 10px 12px;
@@ -190,26 +323,20 @@
   background: var(--tg-theme-secondary-bg-color, #f5f5f5);
 }
 
-.spaceDefaultCaptureButton,
-.spaceManageSection button,
-.spaceMemberRow button {
-  min-height: 36px;
-  border: 0;
-  border-radius: 10px;
-  padding: 0 12px;
-  font: inherit;
-  font-weight: 650;
+.spaceBotSection {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid color-mix(in srgb, currentColor 10%, transparent);
 }
 
 .spaceDefaultCaptureButton {
   width: 100%;
-  margin-top: 12px;
-  background: var(--tg-theme-button-color, #2481cc);
-  color: var(--tg-theme-button-text-color, #ffffff);
 }
 
 .spaceManageHint {
-  margin: 7px 2px 0;
+  margin: 0 2px;
   line-height: 1.4;
 }
 
@@ -236,7 +363,6 @@
 }
 
 .spaceInviteCard input {
-  width: 100%;
   font-size: 12px;
 }
 
@@ -280,34 +406,17 @@
 
 @media (max-width: 430px) {
   .spaceBar {
-    align-items: flex-end;
-    flex-wrap: wrap;
+    padding-inline: 12px;
   }
 
-  .spaceBarIdentity {
-    flex: 1 1 100%;
-  }
-
-  .spaceCreateInline {
-    width: auto;
-    flex: 1 1 calc(100% - 46px);
-  }
-
-  .spaceCreateInline input {
-    position: static;
-    width: auto;
-    height: 36px;
-    flex: 1 1 auto;
-    overflow: visible;
-    clip: auto;
-    clip-path: none;
-    white-space: normal;
-  }
-
+  .spaceSheetBackdrop,
   .spaceManageBackdrop {
     padding: 0;
   }
 
+  .spacePickerSheet,
+  .spaceActionSheet,
+  .spaceCreateSheet,
   .spaceManageSheet {
     width: 100%;
     max-height: 88vh;
