@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Source-only gate for SPC-001F4.2 acceptance polish."""
+"""Source-only gate for SPC-001F4.2/F4R3 acceptance polish."""
 from pathlib import Path
 import sys
 
@@ -9,6 +9,7 @@ APP = (ROOT / "miniapp/src/App.jsx").read_text(encoding="utf-8")
 BASE = (ROOT / "miniapp/src/styles.css").read_text(encoding="utf-8")
 POLISH = (ROOT / "miniapp/src/spc001-f4-acceptance-polish.css").read_text(encoding="utf-8")
 QUICK = (ROOT / "miniapp/src/quick-actions-runtime.js").read_text(encoding="utf-8")
+RUNNER = (ROOT / "scripts/spc001-f4r3-preview-apply.sh").read_text(encoding="utf-8")
 
 checks = {
     "f4_recovery_notice_is_transient": all(x in POLISH for x in (
@@ -65,6 +66,30 @@ checks = {
         and "className={`fabMenu ${actionsOpen ? 'open' : ''}`}" in APP
         and "const isHomeQuickMenu = labels.some" in QUICK
         and "['Фото', 'Фото чека', 'Текст', 'Голос']" in QUICK
+    ),
+    "f4r3_preview_requires_exact_f4_evidence_and_safe_delta": all(x in RUNNER for x in (
+        "explicit_--apply_required",
+        "SPC001_F4_PREVIEW=PASS",
+        "sha256sum -c SHA256SUMS",
+        "git merge-base --is-ancestor",
+        "F4_TO_F4R3_SAFE_DELTA=PASS",
+        "miniapp/src/quick-actions-runtime.js",
+        "miniapp/src/spc001-f4-acceptance-polish.css",
+    )),
+    "f4r3_preview_is_preview_only_with_rollback_and_identity": (
+        RUNNER.index("npm run build") < RUNNER.index("preview_mutated=1")
+        and RUNNER.index("preview.before.tgz") < RUNNER.index("rsync -a --delete")
+        and "PREVIEW_ROLLBACK=PASS" in RUNNER
+        and "PREVIEW_INDEX_IDENTITY=PASS" in RUNNER
+        and "ASSET_IDENTITY=PASS" in RUNNER
+        and "PREVIEW_ARTIFACT_IDENTITY=PASS" in RUNNER
+        and "DB_MUTATION=NONE" in RUNNER
+        and "N8N_MUTATION=NONE" in RUNNER
+        and "PRODUCTION_FRONTEND_MUTATION=NONE" in RUNNER
+        and "SPC001_F4R3_PREVIEW=PASS" in RUNNER
+        and "docker exec" not in RUNNER
+        and "psql" not in RUNNER
+        and "n8n import:workflow" not in RUNNER
     ),
 }
 
