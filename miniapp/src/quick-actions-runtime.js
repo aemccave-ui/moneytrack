@@ -151,12 +151,53 @@ function openAudio() {
   document.body.appendChild(backdrop)
 }
 
+function closeInlineQuickActions() {
+  document.querySelector('.homeQuickInlineActions')?.remove()
+  const trigger = document.querySelector('.homeQuickAddInline')
+  trigger?.setAttribute('aria-expanded', 'false')
+}
+
+function runQuickAction(label) {
+  closeInlineQuickActions()
+  if (label === 'Операция') window.dispatchEvent(new CustomEvent('moneytrack:new-operation'))
+  else if (label === 'Фото чека' || label === 'Фото') photoInput.click()
+  else if (label === 'Текст') openText()
+  else openAudio()
+}
+
+function toggleInlineQuickActions(trigger) {
+  const existing = document.querySelector('.homeQuickInlineActions')
+  if (existing) {
+    closeInlineQuickActions()
+    return
+  }
+
+  const section = trigger.closest('.recentOperationsSection')
+  const header = section?.querySelector(':scope > .sectionHeader')
+  if (!section || !header) return
+
+  const panel = document.createElement('div')
+  panel.className = 'homeQuickInlineActions'
+  panel.setAttribute('role', 'group')
+  panel.setAttribute('aria-label', 'Добавить операцию')
+  panel.innerHTML = `
+    <button type="button" data-home-quick-action="Операция"><b aria-hidden="true">＋</b><span>Операция</span></button>
+    <button type="button" data-home-quick-action="Фото чека"><b aria-hidden="true">▣</b><span>Фото чека</span></button>
+    <button type="button" data-home-quick-action="Голос"><b aria-hidden="true">●</b><span>Голос</span></button>
+    <button type="button" data-home-quick-action="Текст"><b aria-hidden="true">✎</b><span>Текст</span></button>`
+  header.insertAdjacentElement('afterend', panel)
+  trigger.setAttribute('aria-expanded', 'true')
+}
+
 function ensureHomeActions() {
   document.querySelectorAll('.fabMenu .fabActions').forEach((actions) => {
     const labels = [...actions.querySelectorAll(':scope > .fabAction span')]
       .map((node) => node.textContent?.trim())
     const isHomeQuickMenu = labels.some((label) => ['Фото', 'Фото чека', 'Текст', 'Голос'].includes(label))
     if (!isHomeQuickMenu) return
+
+    const menu = actions.closest('.fabMenu')
+    menu?.classList.add('homeQuickFabSource')
 
     actions.querySelectorAll(':scope > .fabAction').forEach((button) => {
       const labelNode = button.querySelector('span')
@@ -171,6 +212,17 @@ function ensureHomeActions() {
       actions.prepend(button)
     }
   })
+
+  const header = document.querySelector('.recentOperationsSection > .sectionHeader')
+  if (header && !header.querySelector('.homeQuickAddInline')) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'homeQuickAddInline'
+    button.setAttribute('aria-label', 'Добавить операцию')
+    button.setAttribute('aria-expanded', 'false')
+    button.innerHTML = '<span aria-hidden="true">+</span>'
+    header.appendChild(button)
+  }
 }
 
 function closeHomeFab(button) {
@@ -184,6 +236,20 @@ observer.observe(document.body, { childList: true, subtree: true })
 ensureHomeActions()
 
 document.addEventListener('click', (event) => {
+  const inlineTrigger = event.target.closest('.homeQuickAddInline')
+  if (inlineTrigger) {
+    event.preventDefault()
+    toggleInlineQuickActions(inlineTrigger)
+    return
+  }
+
+  const inlineAction = event.target.closest('[data-home-quick-action]')
+  if (inlineAction) {
+    event.preventDefault()
+    runQuickAction(inlineAction.dataset.homeQuickAction || '')
+    return
+  }
+
   const button = event.target.closest('.fabAction')
   if (!button || button.closest('.accountSheet')) return
   const label = button.querySelector('span')?.textContent?.trim()
@@ -191,8 +257,5 @@ document.addEventListener('click', (event) => {
   event.preventDefault()
   event.stopPropagation()
   closeHomeFab(button)
-  if (label === 'Операция') window.dispatchEvent(new CustomEvent('moneytrack:new-operation'))
-  else if (label === 'Фото чека' || label === 'Фото') photoInput.click()
-  else if (label === 'Текст') openText()
-  else openAudio()
+  runQuickAction(label)
 }, true)
