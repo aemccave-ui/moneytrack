@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Source-only gate for SPC-001F preview-only deployment."""
+"""Source-only gate for SPC-001F preview-only deployment and F2R1 correction."""
 from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER = (ROOT / "scripts/spc001-preview-apply.sh").read_text(encoding="utf-8")
+CORRECTIVE = (ROOT / "scripts/spc001-f2r1-preview-apply.sh").read_text(encoding="utf-8")
 MAIN = (ROOT / "miniapp/src/main.jsx").read_text(encoding="utf-8")
 SPACE_GATE = (ROOT / "miniapp/src/SpaceGate.jsx").read_text(encoding="utf-8")
+SPACE_CSS = (ROOT / "miniapp/src/spc001-space.css").read_text(encoding="utf-8")
 API = (ROOT / "miniapp/src/api.js").read_text(encoding="utf-8")
 
 checks = {
@@ -85,6 +87,41 @@ checks = {
         "X-MoneyTrack-Space-Id" in API
         and "getActiveSpaceId()" in API
         and "untrusted routing input" in API
+    ),
+    "mobile_space_creation_control_is_usable": (
+        "@media (max-width: 430px)" in SPACE_CSS
+        and "flex-wrap: wrap" in SPACE_CSS
+        and "position: static" in SPACE_CSS
+        and "clip-path: none" in SPACE_CSS
+        and "flex: 1 1 auto" in SPACE_CSS
+        and "width: 1px" not in SPACE_CSS
+        and "height: 1px" not in SPACE_CSS
+    ),
+    "new_space_switch_uses_refreshed_list": (
+        "availableSpaces = spaces" in SPACE_GATE
+        and "availableSpaces.find((space) => space.id === targetId)" in SPACE_GATE
+        and "await switchSpace(createdId, nextSpaces)" in SPACE_GATE
+    ),
+    "f2r1_requires_accepted_f1_and_exact_safe_delta": all(x in CORRECTIVE for x in (
+        "SPC001_PREVIEW_DEPLOY=PASS",
+        "sha256sum -c SHA256SUMS",
+        "git merge-base --is-ancestor",
+        "F1_TO_F2R1_SAFE_DELTA=PASS",
+        "miniapp/src/SpaceGate.jsx|miniapp/src/spc001-space.css|scripts/spc001-f2r1-preview-apply.sh|scripts/spc001-preview-source-gate.py",
+        "non-F2R1 source changed after accepted F1",
+    )),
+    "f2r1_is_preview_only_with_rollback_and_identity": (
+        CORRECTIVE.index("npm run build") < CORRECTIVE.index("preview_mutated=1")
+        and CORRECTIVE.index("preview.before.tgz") < CORRECTIVE.index("rsync -a --delete")
+        and "PREVIEW_ROLLBACK=PASS" in CORRECTIVE
+        and "PREVIEW_INDEX_IDENTITY=PASS" in CORRECTIVE
+        and "ASSET_IDENTITY=PASS" in CORRECTIVE
+        and "PRODUCTION_FRONTEND_MUTATION=NONE" in CORRECTIVE
+        and "DB_MUTATION=NONE" in CORRECTIVE
+        and "N8N_MUTATION=NONE" in CORRECTIVE
+        and "docker exec" not in CORRECTIVE
+        and "psql" not in CORRECTIVE
+        and "n8n import:workflow" not in CORRECTIVE
     ),
 }
 
