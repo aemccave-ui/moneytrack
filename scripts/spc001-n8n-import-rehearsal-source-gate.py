@@ -20,6 +20,18 @@ checks = {
         and '[[ -s "$BACKUP_DIR/COMPLETE" ]]' not in SRC
         and "BACKUP_COMPLETE_MARKER=PASS" in SRC
     ),
+    "e2r_locals_are_nounset_safe": (
+        'local src="$1"\n  local id="$2"\n  local dst="$OUTPUT_DIR/import/$id.json"' in SRC
+        and 'local file="$1"\n  local id="$2"\n  local log="$OUTPUT_DIR/import-$id.log"\n  local remote="/tmp/spc001-e2r-${id}-$$.json"' in SRC
+        and 'local id="$1"\n  local log="$OUTPUT_DIR/publish-$id.log"' in SRC
+        and 'local id="$1"\n  local log="$OUTPUT_DIR/unpublish-$id.log"' in SRC
+        and 'local id="$1"\n  local out="$2"\n  local remote="/tmp/spc001-e2r-export-${id}-$$.json"' in SRC
+        and 'local out="$1"\n  local remote="/tmp/spc001-e2r-all-$$.json"' in SRC
+        and 'local src="$1" id="$2" dst=' not in SRC
+        and 'local file="$1" id="$2" log=' not in SRC
+        and 'local id="$1" log="$OUTPUT_DIR/' not in SRC
+        and 'local id="$1" out="$2" remote=' not in SRC
+    ),
     "e2r_uses_disposable_n8n_database": (
         "spc001_n8n_rehearsal_" in SRC
         and "createdb -U n8n -O n8n" in SRC
