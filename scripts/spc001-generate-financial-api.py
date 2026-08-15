@@ -176,7 +176,7 @@ function collectStrings(value,out,seen){
 function extractDomainCode(value){
   const texts=[];
   collectStrings(value,texts,new Set());
-  const joined=texts.join("\n");
+  const joined=texts.join("\\n");
   const accessLoss=["SPACE_NOT_FOUND_OR_NOT_MEMBER","SPACE_CONTEXT_NOT_FOUND"];
   for(const code of accessLoss) if(joined.includes(code)) return code;
   const matches=joined.match(/\\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\\b/g)||[];
