@@ -92,6 +92,21 @@ CLONE_DB="spc001_n8n_rehearsal_${HEAD_SHA:0:8}_$$_${RANDOM}"
 CLONE_CREATED=0
 REMOTE_FILES=()
 
+write_manifest() {
+  python3 - "$OUTPUT_DIR" <<'PY'
+from pathlib import Path
+import hashlib,sys
+root=Path(sys.argv[1]); manifest=root/'SHA256SUMS'
+lines=[]
+for p in sorted(root.rglob('*')):
+    if p.is_file() and p!=manifest:
+        h=hashlib.sha256(p.read_bytes()).hexdigest()
+        lines.append(f'{h}  {p.relative_to(root)}\n')
+manifest.write_text(''.join(lines),encoding='utf-8')
+PY
+  sync
+}
+
 cleanup() {
   local rc=$?
   trap - EXIT
@@ -109,6 +124,7 @@ cleanup() {
   if [[ "$rc" -ne 0 ]]; then
     echo "SPC001_N8N_IMPORT_REHEARSAL=FAIL rc=$rc" | tee -a "$OUTPUT_DIR/rehearsal.txt" >&2
   fi
+  write_manifest || true
   exit "$rc"
 }
 trap cleanup EXIT
@@ -147,13 +163,28 @@ PY
   echo "$dst"
 }
 
+stage_import_payload() {
+  local file="$1"
+  local remote="$2"
+  local log="$3"
+  echo "+ stage import payload via stdin as n8n runtime user: $remote" >> "$log"
+  docker exec -i "$N8N_CONTAINER" sh -ceu \
+    'umask 077; cat > "$1"; test -s "$1"' sh "$remote" \
+    < "$file" >> "$log" 2>&1
+}
+
 import_clone() {
   local file="$1"
   local id="$2"
   local log="$OUTPUT_DIR/import-$id.log"
   local remote="/tmp/spc001-e2r-${id}-$$.json"
   REMOTE_FILES+=("$remote")
-  docker cp "$file" "$N8N_CONTAINER:$remote" >/dev/null
+  if ! stage_import_payload "$file" "$remote" "$log"; then
+    echo "CLONE_IMPORT_STAGE=FAIL id=$id log=$log" | tee -a "$OUTPUT_DIR/rehearsal.txt" >&2
+    cat "$log" >&2
+    return 1
+  fi
+  echo "CLONE_IMPORT_STAGE=PASS id=$id" | tee -a "$OUTPUT_DIR/rehearsal.txt"
   if ! n8n_clone "$log" import:workflow --input="$remote"; then
     echo "CLONE_IMPORT=FAIL id=$id log=$log" | tee -a "$OUTPUT_DIR/rehearsal.txt" >&2
     cat "$log" >&2
@@ -274,16 +305,3 @@ echo 'CLONE_METADATA_CUTOVER=PASS' | tee -a "$OUTPUT_DIR/rehearsal.txt"
 echo 'PRODUCTION_N8N_METADATA_MUTATION=NONE' | tee -a "$OUTPUT_DIR/rehearsal.txt"
 echo 'MONEYTRACK_DB_MUTATION=NONE' | tee -a "$OUTPUT_DIR/rehearsal.txt"
 echo 'SPC001_N8N_IMPORT_REHEARSAL=PASS' | tee -a "$OUTPUT_DIR/rehearsal.txt"
-
-python3 - "$OUTPUT_DIR" <<'PY'
-from pathlib import Path
-import hashlib,sys
-root=Path(sys.argv[1]); manifest=root/'SHA256SUMS'
-lines=[]
-for p in sorted(root.rglob('*')):
-    if p.is_file() and p!=manifest:
-        h=hashlib.sha256(p.read_bytes()).hexdigest()
-        lines.append(f'{h}  {p.relative_to(root)}\n')
-manifest.write_text(''.join(lines),encoding='utf-8')
-PY
-sync
