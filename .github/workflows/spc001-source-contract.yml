@@ -122,6 +122,12 @@ jobs:
           set -euo pipefail
           python scripts/spc001-n8n-import-rehearsal-source-gate.py
 
+      - name: SPC-001F preview-only deployment source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-preview-source-gate.py
+
       - name: Generate financial adapter candidate
         shell: bash
         run: |
