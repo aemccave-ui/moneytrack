@@ -367,7 +367,7 @@
 }
 
 .spaceInviteActions {
-  flex-wrap: wrap;
+  flex-flow: row wrap;
 }
 
 .spaceInviteActions button:last-child,
