@@ -78,7 +78,7 @@ for marker in \
   'N8N_PUBLISH=NONE' \
   'N8N_UNPUBLISH=NONE'; do
   grep -Fx "$marker" "$E1_METADATA" >/dev/null
- done
+done
 E1_MANIFEST_SHA="$(sha256sum "$E1_MANIFEST" | awk '{print $1}')"
 echo "E1_EVIDENCE_INTEGRITY=PASS manifest_sha256=$E1_MANIFEST_SHA"
 
@@ -173,7 +173,9 @@ wait_health() {
 }
 
 prepare_import() {
-  local src="$1" id="$2" dst="$OUTPUT_DIR/import/$id.json"
+  local src="$1"
+  local id="$2"
+  local dst="$OUTPUT_DIR/import/$id.json"
   python3 - "$src" "$dst" "$id" <<'PY'
 import json, sys
 from pathlib import Path
@@ -192,10 +194,34 @@ PY
   echo "$dst"
 }
 
+stage_import_payload() {
+  local file="$1"
+  local remote="$2"
+  local log="$3"
+  echo "+ stage import payload via stdin as n8n runtime user: $remote" >> "$log"
+  docker exec -i "$N8N_CONTAINER" sh -ceu \
+    'umask 077; cat > "$1"; test -s "$1"' sh "$remote" \
+    < "$file" >> "$log" 2>&1
+}
+
 import_workflow() {
-  local file="$1" id="$2" remote="/tmp/spc001-e2-import-${id}-$$.json"
-  docker cp "$file" "$N8N_CONTAINER:$remote" >/dev/null
-  docker exec "$N8N_CONTAINER" n8n import:workflow --input="$remote" >/dev/null
+  local file="$1"
+  local id="$2"
+  local remote="/tmp/spc001-e2-import-${id}-$$.json"
+  local log="$OUTPUT_DIR/import-$id.log"
+  if ! stage_import_payload "$file" "$remote" "$log"; then
+    echo "N8N_IMPORT_STAGE=FAIL id=$id log=$log" >&2
+    cat "$log" >&2
+    docker exec "$N8N_CONTAINER" rm -f "$remote" >/dev/null 2>&1 || true
+    return 1
+  fi
+  echo "N8N_IMPORT_STAGE=PASS id=$id"
+  if ! docker exec "$N8N_CONTAINER" n8n import:workflow --input="$remote" >> "$log" 2>&1; then
+    echo "N8N_IMPORT=FAIL id=$id log=$log" >&2
+    cat "$log" >&2
+    docker exec "$N8N_CONTAINER" rm -f "$remote" >/dev/null 2>&1 || true
+    return 1
+  fi
   docker exec "$N8N_CONTAINER" rm -f "$remote" >/dev/null 2>&1 || true
   echo "N8N_IMPORT=PASS id=$id"
 }
