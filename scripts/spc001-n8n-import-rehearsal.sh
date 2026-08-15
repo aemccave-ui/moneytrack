@@ -63,10 +63,16 @@ for f in \
   "$E1_DIR/preflight-metadata.txt" \
   "$E1_DIR/cutover-plan.json" \
   "$BACKUP_DIR/SHA256SUMS" \
-  "$BACKUP_DIR/COMPLETE" \
   "$BACKUP_DIR/n8n-metadata.dump"; do
-  [[ -s "$f" ]] || { echo "ERROR: evidence missing $f" >&2; exit 1; }
+  [[ -s "$f" ]] || { echo "ERROR: evidence missing_or_empty $f" >&2; exit 1; }
 done
+# COMPLETE is intentionally created with `touch` by prod-h2-backup-now.sh.
+# Its contract is existence, not non-zero size.
+[[ -f "$BACKUP_DIR/COMPLETE" ]] || {
+  echo "ERROR: backup COMPLETE marker missing $BACKUP_DIR/COMPLETE" >&2
+  exit 1
+}
+echo 'BACKUP_COMPLETE_MARKER=PASS'
 (
   cd "$E1_DIR"
   sha256sum -c SHA256SUMS >/dev/null
