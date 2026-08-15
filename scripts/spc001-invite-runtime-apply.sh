@@ -148,7 +148,10 @@ chmod 600 "$TMP_RENDERED"
 compose_with_current_overlay() {
   local args=(-p n8n -f "$BASE_COMPOSE" -f "$HARDENING_COMPOSE" -f "$SEC_OVERLAY")
   [[ -f "$OVERLAY_TARGET" ]] && args+=(-f "$OVERLAY_TARGET")
-  docker compose "${args[@]}" "$@"
+  (
+    cd "$STACK"
+    docker compose "${args[@]}" "$@"
+  )
 }
 
 wait_n8n() {
