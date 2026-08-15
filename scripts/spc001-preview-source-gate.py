@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Source-only gate for SPC-001F preview, F2R1 correction, and shared-Space UI."""
+"""Source-only gate for SPC-001 preview, shared-Space UI, and F4 recovery."""
 from pathlib import Path
 import sys
 
@@ -7,10 +7,14 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNNER = (ROOT / "scripts/spc001-preview-apply.sh").read_text(encoding="utf-8")
 CORRECTIVE = (ROOT / "scripts/spc001-f2r1-preview-apply.sh").read_text(encoding="utf-8")
 SHARED = (ROOT / "scripts/spc001-shared-preview-apply.sh").read_text(encoding="utf-8")
+F4_DB = (ROOT / "scripts/spc001-f4-member-read-apply.sh").read_text(encoding="utf-8")
+F4_PREVIEW = (ROOT / "scripts/spc001-f4-preview-apply.sh").read_text(encoding="utf-8")
 MAIN = (ROOT / "miniapp/src/main.jsx").read_text(encoding="utf-8")
 SPACE_GATE = (ROOT / "miniapp/src/SpaceGate.jsx").read_text(encoding="utf-8")
 SPACE_CSS = (ROOT / "miniapp/src/spc001-space.css").read_text(encoding="utf-8")
 API = (ROOT / "miniapp/src/api.js").read_text(encoding="utf-8")
+API_ERRORS = (ROOT / "miniapp/src/api-errors.js").read_text(encoding="utf-8")
+MEMBER_SQL = (ROOT / "db/domain/SPC-001/123_space_member_identity_read.sql").read_text(encoding="utf-8")
 
 checks = {
     "preview_requires_explicit_apply_exact_head_and_durable_output": all(x in RUNNER for x in (
@@ -89,15 +93,6 @@ checks = {
         and "getActiveSpaceId()" in API
         and "untrusted routing input" in API
     ),
-    "mobile_space_creation_control_is_usable": (
-        "@media (max-width: 430px)" in SPACE_CSS
-        and "flex-wrap: wrap" in SPACE_CSS
-        and "position: static" in SPACE_CSS
-        and "clip-path: none" in SPACE_CSS
-        and "flex: 1 1 auto" in SPACE_CSS
-        and "width: 1px" not in SPACE_CSS
-        and "height: 1px" not in SPACE_CSS
-    ),
     "new_space_switch_uses_refreshed_list": (
         "availableSpaces = spaces" in SPACE_GATE
         and "availableSpaces.find((space) => space.id === targetId)" in SPACE_GATE
@@ -140,11 +135,13 @@ checks = {
         "Ссылка приглашения",
         "Приглашение отозвано",
     )),
-    "default_capture_space_is_explicit_in_ui": (
+    "default_capture_space_is_explicit_and_plain_language": (
         "defaultCaptureSpaceId" in SPACE_GATE
         and "setDefaultCaptureSpace(activeSpace.id)" in SPACE_GATE
-        and "Использовать для бота" in SPACE_GATE
-        and "Bot capture использует это назначение независимо" in SPACE_GATE
+        and "Операции из бота" in SPACE_GATE
+        and "Записывать сюда" in SPACE_GATE
+        and "Новые операции, отправленные в Telegram-бот" in SPACE_GATE
+        and "Использовать для бота" not in SPACE_GATE
     ),
     "invite_receiver_onboarding_is_preserved": all(x in SPACE_GATE for x in (
         "telegramInviteStartParam()",
@@ -173,6 +170,75 @@ checks = {
         and "docker exec" not in SHARED
         and "psql" not in SHARED
         and "n8n import:workflow" not in SHARED
+    ),
+    "f4_space_access_loss_dispatches_central_recovery": all(x in API_ERRORS for x in (
+        "SPACE_CONTEXT_NOT_FOUND",
+        "SPACE_NOT_FOUND_OR_NOT_MEMBER",
+        "moneytrack:space-invalid",
+    )) and all(x in SPACE_GATE for x in (
+        "recoverSpaceAccess",
+        "moneytrack:space-invalid",
+        "clearActiveSpaceId()",
+        "setActiveSpace(null)",
+        "const payload = await getSpaces()",
+        "MoneyTrack переключил вас на доступное пространство",
+    )),
+    "f4_space_picker_is_custom_single_row": (
+        "<select" not in SPACE_GATE
+        and "spacePickerTrigger" in SPACE_GATE
+        and "spacePickerSheet" in SPACE_GATE
+        and "Добавить пространство" in SPACE_GATE
+        and "Совместный доступ" in SPACE_GATE
+        and "flex-wrap: wrap" not in SPACE_CSS
+        and "grid-template-columns: minmax(0, 1fr) auto" in SPACE_CSS
+    ),
+    "f4_background_fill_covers_space_gate": all(x in SPACE_CSS for x in (
+        "min-height: 100dvh",
+        "radial-gradient",
+        "linear-gradient(180deg",
+        "backdrop-filter: blur(18px)",
+    )),
+    "f4_member_read_adds_display_identity_only": (
+        "create or replace function moneytrack.space_members_api_read_v1" in MEMBER_SQL
+        and "assert_space_owner_v1" in MEMBER_SQL
+        and "first_name" in MEMBER_SQL
+        and "username" in MEMBER_SQL
+        and "telegram_user_id" not in MEMBER_SQL
+        and "member.first_name" in SPACE_GATE
+        and "member.username" in SPACE_GATE
+        and "Пользователь #" in SPACE_GATE
+    ),
+    "f4_member_read_apply_is_controlled_and_reversible": all(x in F4_DB for x in (
+        "explicit_--apply_required",
+        "SPC001_INVITE_RUNTIME_CONFIG=PASS",
+        "INVITE_RUNTIME_TO_F4_SAFE_DELTA=PASS",
+        "space-members-api.before.sql",
+        "pg_get_functiondef",
+        "315_verify_live_post_migration_readonly.sql",
+        "LIVE_315_UNCHANGED=PASS",
+        "F4_MEMBER_READ_ROLLBACK=PASS",
+        "FINANCIAL_DATA_MUTATION=NONE",
+        "N8N_MUTATION=NONE",
+    )),
+    "f4_preview_requires_exact_runtime_evidence_and_is_preview_only": (
+        all(x in F4_PREVIEW for x in (
+            "SPC001_SHARED_PREVIEW=PASS",
+            "SPC001_INVITE_RUNTIME_CONFIG=PASS",
+            "SPC001_F4_MEMBER_READ=PASS",
+            "INVITE_RUNTIME_TO_F4_SAFE_DELTA=PASS",
+            "PREVIEW_BACKUP=PASS",
+            "PREVIEW_ROLLBACK=PASS",
+            "PREVIEW_ARTIFACT_IDENTITY=PASS",
+            "SPC001_F4_PREVIEW=PASS",
+            "DB_MUTATION=NONE",
+            "N8N_MUTATION=NONE",
+            "PRODUCTION_FRONTEND_MUTATION=NONE",
+        ))
+        and F4_PREVIEW.index("npm run build") < F4_PREVIEW.index("preview_mutated=1")
+        and F4_PREVIEW.index("preview.before.tgz") < F4_PREVIEW.index("rsync -a --delete")
+        and "docker exec" not in F4_PREVIEW
+        and "psql" not in F4_PREVIEW
+        and "n8n import:workflow" not in F4_PREVIEW
     ),
 }
 
