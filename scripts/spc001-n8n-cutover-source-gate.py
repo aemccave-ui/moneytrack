@@ -25,6 +25,22 @@ checks = {
         and "E1_CUTOVER_PLAN_CONTRACT=PASS" in RUNNER
         and "cutover-plan.json" in RUNNER
     ),
+    "e2_import_candidates_are_nounset_safe": (
+        'local src="$1"\n  local id="$2"\n  local dst="$OUTPUT_DIR/import/$id.json"' in RUNNER
+        and 'local file="$1"\n  local id="$2"\n  local remote="/tmp/spc001-e2-import-${id}-$$.json"\n  local log="$OUTPUT_DIR/import-$id.log"' in RUNNER
+        and 'local src="$1" id="$2" dst=' not in RUNNER
+        and 'local file="$1" id="$2" remote=' not in RUNNER
+    ),
+    "e2_import_payload_owned_by_runtime_user": (
+        "stage_import_payload()" in RUNNER
+        and "stage import payload via stdin as n8n runtime user" in RUNNER
+        and 'docker exec -i "$N8N_CONTAINER" sh -ceu' in RUNNER
+        and 'umask 077; cat > "$1"; test -s "$1"' in RUNNER
+        and 'docker cp "$file" "$N8N_CONTAINER:$remote"' not in RUNNER
+        and "N8N_IMPORT_STAGE=PASS" in RUNNER
+        and "N8N_IMPORT_STAGE=FAIL" in RUNNER
+        and "N8N_IMPORT=FAIL" in RUNNER
+    ),
     "e2_pre_mutation_runtime_drift_guard": (
         RUNNER.count("spc001-n8n-cutover-verify.py\" pre") >= 2
         and "RUNTIME_STABLE_THROUGH_BACKUP=PASS" in RUNNER
