@@ -109,7 +109,7 @@ def postgres(name: str, query: str, x: int, y: int, credential_id: str, credenti
         "parameters": {"operation": "executeQuery", "query": query, "options": {}},
         "type": "n8n-nodes-base.postgres",
         "typeVersion": 2.6,
-        "position": [x, y],
+        "position": [x, y - 70],
         "id": uid(name),
         "name": name,
         "credentials": {"postgres": {"id": credential_id, "name": credential_name}},
@@ -158,12 +158,33 @@ return [{{json:{{
   body
 }}}}];'''
 
+# n8n Postgres with onError=continueRegularOutput does not promise that the
+# PostgreSQL message is always located at row.error.message. Keep the adapter
+# thin but preserve an opaque MoneyTrack domain code wherever n8n nests it.
+# Domain codes contain an underscore; SQLSTATEs such as P0002 therefore cannot
+# win the generic fallback. Access loss remains a 403 so the MiniApp can perform
+# centralized safe Space eviction instead of surfacing a generic DOMAIN_ERROR.
 FORMAT = '''const row=$input.first().json||{};
+function collectStrings(value,out,seen){
+  if(value==null) return;
+  if(typeof value==="string"){ out.push(value); return; }
+  if(typeof value!=="object" || seen.has(value)) return;
+  seen.add(value);
+  if(Array.isArray(value)) { for(const item of value) collectStrings(item,out,seen); return; }
+  for(const item of Object.values(value)) collectStrings(item,out,seen);
+}
+function extractDomainCode(value){
+  const texts=[];
+  collectStrings(value,texts,new Set());
+  const joined=texts.join("\n");
+  const accessLoss=["SPACE_NOT_FOUND_OR_NOT_MEMBER","SPACE_CONTEXT_NOT_FOUND"];
+  for(const code of accessLoss) if(joined.includes(code)) return code;
+  const matches=joined.match(/\\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\\b/g)||[];
+  return matches.find((code)=>code!=="DOMAIN_ERROR")||"DOMAIN_ERROR";
+}
 if(row.error){
-  const raw=String(row.error.message||row.error||"DOMAIN_ERROR");
-  const match=raw.match(/\\b([A-Z][A-Z0-9_]+)\\b/);
-  const code=match?match[1]:"DOMAIN_ERROR";
-  const forbidden=new Set(["SPACE_NOT_FOUND_OR_NOT_MEMBER","SPC001_API_ROUTE_NOT_ALLOWED","SPC001_API_METHOD_NOT_ALLOWED"]);
+  const code=extractDomainCode(row);
+  const forbidden=new Set(["SPACE_NOT_FOUND_OR_NOT_MEMBER","SPACE_CONTEXT_NOT_FOUND","SPC001_API_ROUTE_NOT_ALLOWED","SPC001_API_METHOD_NOT_ALLOWED"]);
   return [{json:{ok:false,http_status:forbidden.has(code)?403:400,error:{code}}}];
 }
 return [{json:{ok:true,http_status:200,data:row.data??{}}}];'''
