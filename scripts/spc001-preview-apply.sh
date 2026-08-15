@@ -33,7 +33,7 @@ done
 case "$OUTPUT_DIR" in /tmp|/tmp/*) echo 'SPC001_PREVIEW_DEPLOY=REFUSED durable_output_required' >&2; exit 2;; esac
 [[ ! -e "$OUTPUT_DIR" ]] || { echo "ERROR: output exists: $OUTPUT_DIR" >&2; exit 2; }
 
-for cmd in git npm rsync curl tar sha256sum grep awk find sort mktemp tee; do
+for cmd in git npm rsync curl tar sha256sum grep awk find sort mktemp tee python3 xargs; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "ERROR: missing command $cmd" >&2; exit 1; }
 done
 
