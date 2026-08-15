@@ -201,6 +201,29 @@ def verify_post(e1: Path, runtime: Path) -> None:
     )
 
     e1_published = by_id(e1 / "all-published.json")
+
+    # Existing capture workflows keep their pre-cutover published/active state.
+    # Bot and Quick are quiesced temporarily but must return active. Text/Photo
+    # are published after import only if they were published in E1. Voice is
+    # never mutated and must retain both state and core.
+    state_drift = []
+    for workflow_id in sorted(CAPTURE_FILES):
+        before_active = workflow_id in e1_published
+        after_active = workflow_id in published
+        if before_active != after_active:
+            state_drift.append((workflow_id, before_active, after_active))
+        if after_active:
+            expected_path = expected_current[workflow_id]
+            if core(published[workflow_id]) != core(one(expected_path)):
+                die(f"capture_published_core_mismatch id={workflow_id}")
+    if state_drift:
+        die("capture_publish_state_drift=" + json.dumps(state_drift))
+    print("CAPTURE_PUBLISH_STATE_PRESERVED=PASS")
+
+    if SURVIVOR_ID not in published or FINANCIAL_ID not in published or CONTROL_ID not in published:
+        die("required_post_cutover_workflow_not_published")
+    print("SPACE_API_REQUIRED_WORKFLOWS_PUBLISHED=PASS")
+
     allowed_changed = retire | {
         SURVIVOR_ID,
         FINANCIAL_ID,
