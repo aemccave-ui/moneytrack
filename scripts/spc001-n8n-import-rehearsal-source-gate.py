@@ -15,6 +15,11 @@ checks = {
         and "SPC001_N8N_CUTOVER_PREFLIGHT=PASS" in SRC
         and "n8n-metadata.dump" in SRC
     ),
+    "e2r_accepts_zero_byte_complete_marker": (
+        '[[ -f "$BACKUP_DIR/COMPLETE" ]]' in SRC
+        and '[[ -s "$BACKUP_DIR/COMPLETE" ]]' not in SRC
+        and "BACKUP_COMPLETE_MARKER=PASS" in SRC
+    ),
     "e2r_uses_disposable_n8n_database": (
         "spc001_n8n_rehearsal_" in SRC
         and "createdb -U n8n -O n8n" in SRC
