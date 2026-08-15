@@ -8,6 +8,7 @@ MAIN = (ROOT / "miniapp/src/main.jsx").read_text(encoding="utf-8")
 APP = (ROOT / "miniapp/src/App.jsx").read_text(encoding="utf-8")
 BASE = (ROOT / "miniapp/src/styles.css").read_text(encoding="utf-8")
 POLISH = (ROOT / "miniapp/src/spc001-f4-acceptance-polish.css").read_text(encoding="utf-8")
+QUICK = (ROOT / "miniapp/src/quick-actions-runtime.js").read_text(encoding="utf-8")
 
 checks = {
     "f4_recovery_notice_is_transient": all(x in POLISH for x in (
@@ -23,27 +24,47 @@ checks = {
         and "import './spc001-f4-acceptance-polish.css'" in MAIN
         and MAIN.index("import './spc001-space.css'") < MAIN.index("import './spc001-f4-acceptance-polish.css'")
     ),
-    "f4_home_quick_add_leaves_fixed_viewport_layer": all(x in POLISH for x in (
-        ".balanceHeader ~ .fabMenu",
-        "position: absolute",
-        "top: calc(18px + env(safe-area-inset-top))",
-        "bottom: auto",
-        "width: 46px",
-        "height: 46px",
-    )),
-    "f4_home_quick_add_reserves_header_space": (
-        ".balanceHeader" in POLISH
-        and "padding-right: 62px" in POLISH
+    "f4_home_quick_add_is_not_viewport_fab": (
+        "menu?.classList.add('homeQuickFabSource')" in QUICK
+        and ".homeQuickFabSource" in POLISH
+        and "display: none !important" in POLISH
+        and ".balanceHeader ~ .fabMenu" not in POLISH
     ),
-    "f4_home_quick_actions_expand_downward": all(x in POLISH for x in (
-        ".balanceHeader ~ .fabMenu .fabActions",
-        "top: 56px",
-        "bottom: auto",
+    "f4_home_quick_add_is_docked_to_recent_operations": all(x in QUICK for x in (
+        "document.querySelector('.recentOperationsSection > .sectionHeader')",
+        "homeQuickAddInline",
+        "header.appendChild(button)",
+        "aria-label', 'Добавить операцию'",
+    )) and all(x in POLISH for x in (
+        ".recentOperationsSection > .sectionHeader",
+        ".homeQuickAddInline",
+        "margin-left: auto",
+    )),
+    "f4_home_quick_actions_expand_in_normal_flow": all(x in QUICK for x in (
+        "homeQuickInlineActions",
+        "header.insertAdjacentElement('afterend', panel)",
+        "data-home-quick-action",
+    )) and all(x in POLISH for x in (
+        ".homeQuickInlineActions",
+        "display: grid",
+        "grid-template-columns: repeat(2, minmax(0, 1fr))",
+    )) and "position: fixed" not in POLISH,
+    "f4_home_quick_action_capabilities_preserved": all(x in QUICK for x in (
+        "moneytrack:new-operation",
+        "photoInput.click()",
+        "openText()",
+        "openAudio()",
+        "Операция",
+        "Фото чека",
+        "Голос",
+        "Текст",
     )),
     "f4_accounts_fab_contract_preserved": (
         ".fabMenu { position:fixed" in BASE
-        and 'activeScreen === \'accounts\'' in APP
-        and 'className={`fabMenu ${actionsOpen ? \'open\' : \'\'}`}' in APP
+        and "activeScreen === 'accounts'" in APP
+        and "className={`fabMenu ${actionsOpen ? 'open' : ''}`}" in APP
+        and "const isHomeQuickMenu = labels.some" in QUICK
+        and "['Фото', 'Фото чека', 'Текст', 'Голос']" in QUICK
     ),
 }
 
