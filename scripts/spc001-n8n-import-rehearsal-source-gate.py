@@ -32,6 +32,15 @@ checks = {
         and 'local id="$1" log="$OUTPUT_DIR/' not in SRC
         and 'local id="$1" out="$2" remote=' not in SRC
     ),
+    "e2r_import_payload_owned_by_runtime_user": (
+        "stage_import_payload()" in SRC
+        and "stage import payload via stdin as n8n runtime user" in SRC
+        and 'docker exec -i "$N8N_CONTAINER" sh -ceu' in SRC
+        and 'umask 077; cat > "$1"; test -s "$1"' in SRC
+        and 'docker cp "$file" "$N8N_CONTAINER:$remote"' not in SRC
+        and "CLONE_IMPORT_STAGE=PASS" in SRC
+        and "CLONE_IMPORT_STAGE=FAIL" in SRC
+    ),
     "e2r_uses_disposable_n8n_database": (
         "spc001_n8n_rehearsal_" in SRC
         and "createdb -U n8n -O n8n" in SRC
@@ -72,6 +81,11 @@ checks = {
         "trap cleanup EXIT" in SRC
         and "CLONE_DROPPED=YES" in SRC
         and "SPC001_N8N_IMPORT_REHEARSAL=FAIL" in SRC
+    ),
+    "e2r_manifest_after_cleanup_markers": (
+        "write_manifest()" in SRC
+        and SRC.index('echo "CLONE_DROPPED=YES"') < SRC.index("write_manifest || true")
+        and "manifest.write_text" in SRC
     ),
 }
 
