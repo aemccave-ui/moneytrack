@@ -1,0 +1,76 @@
+/* SPC-001F4.2 — acceptance polish after real membership-removal recovery.
+   Successful Space recovery is informational, not a permanent error banner.
+   The Home quick-add control must not float over financial content while scrolling. */
+
+.spaceGateNotice {
+  overflow: hidden;
+  animation: spc001SpaceNoticeDismiss .32s ease 5s forwards;
+}
+
+@keyframes spc001SpaceNoticeDismiss {
+  from {
+    opacity: 1;
+    max-height: 180px;
+    margin-bottom: 14px;
+    padding-top: 13px;
+    padding-bottom: 13px;
+    visibility: visible;
+  }
+  to {
+    opacity: 0;
+    max-height: 0;
+    margin-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+
+/* On Home the quick-add button lives in the page header plane instead of a
+   fixed viewport layer. It therefore scrolls with Home and can never cover
+   account headings, archive controls, transactions, or other page content. */
+.balanceHeader {
+  padding-right: 62px;
+}
+
+.balanceHeader ~ .fabMenu {
+  position: absolute;
+  top: calc(18px + env(safe-area-inset-top));
+  right: 18px;
+  bottom: auto;
+  width: 46px;
+  height: 46px;
+}
+
+.balanceHeader ~ .fabMenu .fab {
+  width: 46px;
+  height: 46px;
+  border-radius: 16px;
+  font-size: 27px;
+}
+
+/* A Home menu opened from the header expands downwards. The Accounts FAB keeps
+   the existing upward-opening fixed behavior because it does not match this selector. */
+.balanceHeader ~ .fabMenu .fabActions {
+  top: 56px;
+  right: 0;
+  bottom: auto;
+}
+
+@media (max-width: 380px) {
+  .balanceHeader {
+    gap: 10px;
+    padding-right: 58px;
+  }
+
+  .balanceHeader ~ .fabMenu {
+    right: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spaceGateNotice {
+    animation-duration: .01ms;
+  }
+}
