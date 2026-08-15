@@ -35,11 +35,12 @@ checks = {
         'install -m 0644 "$OVERLAY_SOURCE" "$OVERLAY_TARGET"',
     )),
     "invite_apply_uses_complete_compose_stack": all(x in RUNNER for x in (
-        '"$BASE_COMPOSE"',
-        '"$HARDENING_COMPOSE"',
-        '"$SEC_OVERLAY"',
-        '"$OVERLAY_TARGET"',
-        "docker compose -p n8n",
+        'local args=(-p n8n',
+        '-f "$BASE_COMPOSE"',
+        '-f "$HARDENING_COMPOSE"',
+        '-f "$SEC_OVERLAY"',
+        'args+=(-f "$OVERLAY_TARGET")',
+        'docker compose "${args[@]}"',
     )),
     "invite_apply_is_config_only": (
         "DB_MUTATION=NONE" in RUNNER
@@ -47,9 +48,12 @@ checks = {
         and "N8N_WORKFLOW_IMPORT=NONE" in RUNNER
         and "N8N_WORKFLOW_PUBLISH=NONE" in RUNNER
         and "FRONTEND_MUTATION=NONE" in RUNNER
-        and "psql" not in RUNNER
+        and "N8N_METADATA_READONLY=PASS" in RUNNER
         and "n8n import:workflow" not in RUNNER
         and "n8n publish:workflow" not in RUNNER
+        and "insert into" not in RUNNER.lower()
+        and "update workflow" not in RUNNER.lower()
+        and "delete from" not in RUNNER.lower()
     ),
     "invite_apply_has_backup_rollback_health_and_identity": all(x in RUNNER for x in (
         "CONFIG_BACKUP=PASS",
@@ -57,6 +61,7 @@ checks = {
         "N8N_CONFIG_ROLLBACK=PASS",
         "N8N_HEALTH=PASS",
         "LIVE_INVITE_ENV=PASS",
+        "SEC001_PIN_PEPPER_PRESERVED=PASS",
         "WORKFLOW_STATE_UNCHANGED=PASS",
         "SPC001_INVITE_RUNTIME_CONFIG=PASS",
     )),
