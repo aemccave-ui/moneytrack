@@ -68,9 +68,13 @@ checks = {
         "sha256sum -c SHA256SUMS",
         "git merge-base --is-ancestor",
         "F4_TO_F4R4_SAFE_DELTA=PASS",
+        "F4_CANONICAL_QUICK_ACTIONS_ALLOWED=PASS",
         "miniapp/src/quick-actions-runtime.js",
         "miniapp/src/spc001-f4-acceptance-polish.css",
-    )),
+    )) and (
+        '[[ " ${CHANGED[*]} " == *" miniapp/src/spc001-f4-acceptance-polish.css "* ]]' in RUNNER
+        and '[[ " ${CHANGED[*]} " == *" miniapp/src/quick-actions-runtime.js "* ]]' not in RUNNER
+    ),
     "f4r4_preview_is_preview_only_with_rollback_and_identity": (
         RUNNER.index("npm run build") < RUNNER.index("preview_mutated=1")
         and RUNNER.index("preview.before.tgz") < RUNNER.index("rsync -a --delete")
