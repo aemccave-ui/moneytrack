@@ -37,6 +37,8 @@ checks = {
     "f4_home_last_transaction_clears_fixed_fab": all(x in POLISH for x in (
         ".spaceFinancialRoot > .app > .recentOperationsSection",
         "padding-bottom: 80px",
+        ".transactionGroup:last-child .transactionCard:last-child",
+        "margin-right: 76px",
         "last transaction scroll fully above the FAB",
     )),
     "f4_rejected_inline_home_add_is_absent": all(x not in QUICK for x in (
