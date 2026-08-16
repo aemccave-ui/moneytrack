@@ -60,9 +60,13 @@ for path in "${CHANGED[@]}"; do
     *) echo "ERROR: non-F4 final corrective source changed after accepted F4 preview: $path" >&2; exit 1 ;;
   esac
 done
-[[ " ${CHANGED[*]} " == *" miniapp/src/quick-actions-runtime.js "* ]]
+# The rejected F4R3 inline experiment was intentionally reverted. Therefore
+# quick-actions-runtime.js may be byte-identical to the accepted F4 base and
+# legitimately absent from the net diff. The final visual contract CSS must be
+# present because F4R4 changes the FAB placement override and Space-menu palette.
 [[ " ${CHANGED[*]} " == *" miniapp/src/spc001-f4-acceptance-polish.css "* ]]
 echo "F4_TO_F4R4_SAFE_DELTA=PASS files=${#CHANGED[@]}"
+echo 'F4_CANONICAL_QUICK_ACTIONS_ALLOWED=PASS'
 echo 'F4_PREVIEW_EVIDENCE=PASS'
 
 python3 "$ROOT/scripts/spc001-f4-acceptance-polish-source-gate.py"
