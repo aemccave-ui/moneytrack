@@ -35,22 +35,13 @@
   bottom: calc(96px + env(safe-area-inset-bottom));
 }
 
-/* Home-only content clearance for the fixed FAB. RecentOperations is a direct
-   child of the Home main element; the Accounts explorer owns its operations
-   deeper in its subtree, so this does not change Accounts layout. The extra
-   space lets the last transaction scroll fully above the FAB instead of being
-   covered by it. */
+/* Home-only vertical clearance for the fixed FAB.
+   Home transaction cards keep their canonical full width. The additional
+   bottom space creates a dedicated empty FAB zone below the final operation,
+   matching the accepted Accounts layout instead of shrinking the last card.
+   Accounts is unaffected because its operation list is deeper in the tree. */
 .spaceFinancialRoot > .app > .recentOperationsSection {
-  padding-bottom: 80px;
-}
-
-/* Final SPC-001 visual acceptance:
-   the fixed Home FAB must never cover the final transaction card.
-   Reserve only the FAB slot on the final Home transaction.
-   Accounts and all preceding Home transactions remain unchanged. */
-.spaceFinancialRoot > .app > .recentOperationsSection
-  .transactionGroup:last-child .transactionCard:last-child {
-  margin-right: 76px;
+  padding-bottom: 136px;
 }
 
 /* Space menu is visually the same action family as the + FAB. */
