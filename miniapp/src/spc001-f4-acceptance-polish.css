@@ -35,6 +35,13 @@
   bottom: calc(96px + env(safe-area-inset-bottom));
 }
 
+/* Space menu is visually the same action family as the + FAB. */
+.spaceManageButton {
+  background: linear-gradient(145deg, var(--mt-teal-800, #1d5559), var(--mt-teal-500, #4f9fa3));
+  color: #fff;
+  box-shadow: var(--mt-shadow-fab, 0 14px 30px rgba(28, 91, 94, .24));
+}
+
 @media (prefers-reduced-motion: reduce) {
   .spaceGateNotice {
     animation-duration: .01ms;
