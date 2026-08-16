@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Source-only gate for SPC-001F4.2/F4R3 acceptance polish."""
+"""Source-only gate for SPC-001F4 final acceptance polish."""
 from pathlib import Path
 import sys
 
@@ -9,7 +9,7 @@ APP = (ROOT / "miniapp/src/App.jsx").read_text(encoding="utf-8")
 BASE = (ROOT / "miniapp/src/styles.css").read_text(encoding="utf-8")
 POLISH = (ROOT / "miniapp/src/spc001-f4-acceptance-polish.css").read_text(encoding="utf-8")
 QUICK = (ROOT / "miniapp/src/quick-actions-runtime.js").read_text(encoding="utf-8")
-RUNNER = (ROOT / "scripts/spc001-f4r3-preview-apply.sh").read_text(encoding="utf-8")
+RUNNER = (ROOT / "scripts/spc001-f4r4-preview-apply.sh").read_text(encoding="utf-8")
 
 checks = {
     "f4_recovery_notice_is_transient": all(x in POLISH for x in (
@@ -25,31 +25,27 @@ checks = {
         and "import './spc001-f4-acceptance-polish.css'" in MAIN
         and MAIN.index("import './spc001-space.css'") < MAIN.index("import './spc001-f4-acceptance-polish.css'")
     ),
-    "f4_home_quick_add_is_not_viewport_fab": (
-        "menu?.classList.add('homeQuickFabSource')" in QUICK
-        and ".homeQuickFabSource" in POLISH
-        and "display: none !important" in POLISH
-        and ".balanceHeader ~ .fabMenu" not in POLISH
+    "f4_home_and_accounts_use_bottom_fixed_fab": (
+        ".fabMenu { position:fixed" in BASE
+        and ".spaceFinancialRoot .fabMenu" in POLISH
+        and "position: fixed" in POLISH
+        and "top: auto" in POLISH
+        and "bottom: calc(96px + env(safe-area-inset-bottom))" in POLISH
+        and "activeScreen === 'accounts'" in APP
+        and APP.count("className={`fabMenu ${actionsOpen ? 'open' : ''}`}") >= 2
     ),
-    "f4_home_quick_add_is_docked_to_recent_operations": all(x in QUICK for x in (
-        "document.querySelector('.recentOperationsSection > .sectionHeader')",
+    "f4_rejected_inline_home_add_is_absent": all(x not in QUICK for x in (
         "homeQuickAddInline",
-        "header.appendChild(button)",
-        "aria-label', 'Добавить операцию'",
-    )) and all(x in POLISH for x in (
-        ".recentOperationsSection > .sectionHeader",
-        ".homeQuickAddInline",
-        "margin-left: auto",
-    )),
-    "f4_home_quick_actions_expand_in_normal_flow": all(x in QUICK for x in (
         "homeQuickInlineActions",
-        "header.insertAdjacentElement('afterend', panel)",
         "data-home-quick-action",
-    )) and all(x in POLISH for x in (
+        "header.insertAdjacentElement('afterend', panel)",
+        "homeQuickFabSource",
+    )) and all(x not in POLISH for x in (
+        ".homeQuickAddInline",
         ".homeQuickInlineActions",
-        "display: grid",
-        "grid-template-columns: repeat(2, minmax(0, 1fr))",
-    )) and "position: fixed" not in POLISH,
+        ".homeQuickFabSource",
+        ".balanceHeader ~ .fabMenu",
+    )),
     "f4_home_quick_action_capabilities_preserved": all(x in QUICK for x in (
         "moneytrack:new-operation",
         "photoInput.click()",
@@ -60,23 +56,22 @@ checks = {
         "Голос",
         "Текст",
     )),
-    "f4_accounts_fab_contract_preserved": (
-        ".fabMenu { position:fixed" in BASE
-        and "activeScreen === 'accounts'" in APP
-        and "className={`fabMenu ${actionsOpen ? 'open' : ''}`}" in APP
-        and "const isHomeQuickMenu = labels.some" in QUICK
-        and "['Фото', 'Фото чека', 'Текст', 'Голос']" in QUICK
-    ),
-    "f4r3_preview_requires_exact_f4_evidence_and_safe_delta": all(x in RUNNER for x in (
+    "f4_space_menu_matches_fab_palette": all(x in POLISH for x in (
+        ".spaceManageButton",
+        "linear-gradient(145deg, var(--mt-teal-800, #1d5559), var(--mt-teal-500, #4f9fa3))",
+        "box-shadow: var(--mt-shadow-fab",
+        "color: #fff",
+    )),
+    "f4r4_preview_requires_exact_f4_evidence_and_safe_delta": all(x in RUNNER for x in (
         "explicit_--apply_required",
         "SPC001_F4_PREVIEW=PASS",
         "sha256sum -c SHA256SUMS",
         "git merge-base --is-ancestor",
-        "F4_TO_F4R3_SAFE_DELTA=PASS",
+        "F4_TO_F4R4_SAFE_DELTA=PASS",
         "miniapp/src/quick-actions-runtime.js",
         "miniapp/src/spc001-f4-acceptance-polish.css",
     )),
-    "f4r3_preview_is_preview_only_with_rollback_and_identity": (
+    "f4r4_preview_is_preview_only_with_rollback_and_identity": (
         RUNNER.index("npm run build") < RUNNER.index("preview_mutated=1")
         and RUNNER.index("preview.before.tgz") < RUNNER.index("rsync -a --delete")
         and "PREVIEW_ROLLBACK=PASS" in RUNNER
@@ -86,7 +81,7 @@ checks = {
         and "DB_MUTATION=NONE" in RUNNER
         and "N8N_MUTATION=NONE" in RUNNER
         and "PRODUCTION_FRONTEND_MUTATION=NONE" in RUNNER
-        and "SPC001_F4R3_PREVIEW=PASS" in RUNNER
+        and "SPC001_F4R4_PREVIEW=PASS" in RUNNER
         and "docker exec" not in RUNNER
         and "psql" not in RUNNER
         and "n8n import:workflow" not in RUNNER
