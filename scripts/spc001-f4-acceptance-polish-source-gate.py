@@ -34,6 +34,11 @@ checks = {
         and "activeScreen === 'accounts'" in APP
         and APP.count("className={`fabMenu ${actionsOpen ? 'open' : ''}`}") >= 2
     ),
+    "f4_home_last_transaction_clears_fixed_fab": all(x in POLISH for x in (
+        ".spaceFinancialRoot > .app > .recentOperationsSection",
+        "padding-bottom: 80px",
+        "last transaction scroll fully above the FAB",
+    )),
     "f4_rejected_inline_home_add_is_absent": all(x not in QUICK for x in (
         "homeQuickAddInline",
         "homeQuickInlineActions",
