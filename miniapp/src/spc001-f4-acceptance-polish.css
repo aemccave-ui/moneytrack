@@ -35,6 +35,15 @@
   bottom: calc(96px + env(safe-area-inset-bottom));
 }
 
+/* Home-only content clearance for the fixed FAB. RecentOperations is a direct
+   child of the Home main element; the Accounts explorer owns its operations
+   deeper in its subtree, so this does not change Accounts layout. The extra
+   space lets the last transaction scroll fully above the FAB instead of being
+   covered by it. */
+.spaceFinancialRoot > .app > .recentOperationsSection {
+  padding-bottom: 80px;
+}
+
 /* Space menu is visually the same action family as the + FAB. */
 .spaceManageButton {
   background: linear-gradient(145deg, var(--mt-teal-800, #1d5559), var(--mt-teal-500, #4f9fa3));
