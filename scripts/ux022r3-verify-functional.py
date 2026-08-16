@@ -151,7 +151,10 @@ require(
     'api/v1/transaction/photo' in api
     and 'api/v1/transaction/text' in api
     and 'api/v1/transaction/voice' in api
-    and 'body: { text }' in api
+    and (
+        'body: { text }' in api
+        or "body: { text, request_id: captureRequestId('text') }" in api
+    )
     and 'MediaRecorder' in quick
     and 'createTransactionFromPhoto' in quick
     and 'createTransactionFromText' in quick

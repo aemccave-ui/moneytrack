@@ -4,6 +4,7 @@ import App from './App.jsx'
 import QuickOperationPortal from './QuickOperationPortal.jsx'
 import SettingsPortal from './SettingsPortal.jsx'
 import SecurityGate from './SecurityGate.jsx'
+import SpaceGate from './SpaceGate.jsx'
 import '../packages/lab-design-system/navigation.css'
 import './styles.css'
 import './polish.css'
@@ -18,6 +19,8 @@ import './ux022r3-saldo.css'
 import './ux022r3-reference-runtime.css'
 import './transaction-picker.css'
 import './receipt-modal.css'
+import './spc001-space.css'
+import './spc001-f4-acceptance-polish.css'
 import './telegram-gesture-policy.js'
 import './account-drag-ghost-runtime.js'
 import './quick-actions-runtime.js'
@@ -25,11 +28,11 @@ import './ux022r3-reference-runtime.js'
 
 export function ProtectedApplication() {
   return (
-    <>
+    <SpaceGate>
       <App />
       <QuickOperationPortal />
       <SettingsPortal />
-    </>
+    </SpaceGate>
   )
 }
 

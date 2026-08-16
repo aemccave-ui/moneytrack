@@ -1,0 +1,192 @@
+#!/usr/bin/env python3
+"""Build one atomic SPC-001 PostgreSQL migration bundle.
+
+Canonical SPC SQL units are individually transaction-wrapped for source review.
+For controlled runtime apply we must not allow partial commits between units, so
+this builder removes only each unit's outer BEGIN/COMMIT, inserts the pre-mutation
+baselines and pre-commit reconciliation fragments, and wraps the complete program
+in one transaction.
+
+The live legacy database contains proven historical cross-user reference
+anomalies. The main controlled repair fragment is injected *inside* 010 after
+Personal Spaces/space_id are assigned and before 010's own same-Space
+reconciliation. Legacy UX-022 filter preset template-category references are
+handled later: the ordinary full migration reconciliation must pass first, then
+only ledger-backed array element remaps are allowed immediately before COMMIT.
+
+This script only writes a candidate SQL file. It never connects to PostgreSQL.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import re
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SPC = ROOT / "db" / "domain" / "SPC-001"
+
+BASELINE = "301_migration_baseline_reference_repair.sql"
+FILTER_BASELINE = "302_migration_filter_preset_reference_baseline.sql"
+REPAIR = "309_migration_legacy_reference_repair.sql"
+RECONCILE = "312_migration_reconciliation_guard_reference_repair.sql"
+FILTER_REPAIR = "311_migration_filter_preset_reference_repair.sql"
+FILTER_RECONCILE = "316_migration_filter_preset_reference_reconciliation.sql"
+
+MUTATION_UNITS = [
+    "010_tenancy_foundation.sql",
+    "011_same_space_trigger_dispatch_hardening.sql",
+    "012_tenancy_uniqueness_hardening.sql",
+    "013_actor_erasure_fk_hardening.sql",
+    "014_space_bootstrap.sql",
+    "015_legacy_financial_user_erasure_hardening.sql",
+    "020_space_finance_domain.sql",
+    "021_space_finance_hardening.sql",
+    "030_space_extended_finance_domain.sql",
+    "031_space_extended_finance_hardening.sql",
+    "032_actor_space_context.sql",
+    "040_space_api_dispatch.sql",
+    "110_space_lifecycle.sql",
+    "111_space_lifecycle_hardening.sql",
+    "112_user_bootstrap_cutover.sql",
+    "120_user_erasure_guard.sql",
+    "121_space_lifecycle_api.sql",
+    "122_space_control_dispatch.sql",
+    "210_capture_projection.sql",
+    "211_capture_projection_hardening.sql",
+    "212_capture_ingress_compat.sql",
+    "213_receipt_projection_assignment.sql",
+    "214_capture_receipt_atomic_ingress.sql",
+    "215_receipt_projection_read_wrappers.sql",
+    "216_capture_resolvers.sql",
+    "217_bot_capture_read_wrappers.sql",
+    "218_capture_text_account_hint.sql",
+]
+
+TX_BEGIN = re.compile(r"^\s*begin\s*;\s*$", re.I)
+TX_COMMIT = re.compile(r"^\s*commit\s*;\s*$", re.I)
+TX_ROLLBACK = re.compile(r"^\s*rollback\s*;\s*$", re.I)
+FOUNDATION_RECONCILE_MARKER = (
+    "-- ---------------------------------------------------------------------------\n"
+    "-- 6. Reconciliation MUST pass before this transaction can commit."
+)
+
+
+def read(path: Path) -> str:
+    if not path.is_file():
+        raise SystemExit(f"missing source file: {path.relative_to(ROOT)}")
+    return path.read_text(encoding="utf-8")
+
+
+def unwrap_unit(name: str) -> str:
+    path = SPC / name
+    lines = read(path).splitlines()
+    begin = [i for i, line in enumerate(lines) if TX_BEGIN.match(line)]
+    commit = [i for i, line in enumerate(lines) if TX_COMMIT.match(line)]
+    rollback = [i for i, line in enumerate(lines) if TX_ROLLBACK.match(line)]
+    if len(begin) != 1 or len(commit) != 1 or rollback:
+        raise SystemExit(
+            f"unsafe transaction wrapper in {name}: begin={len(begin)} commit={len(commit)} rollback={len(rollback)}"
+        )
+    if begin[0] >= commit[0]:
+        raise SystemExit(f"invalid transaction wrapper order in {name}")
+    if any(line.strip() for line in lines[commit[0] + 1 :]):
+        raise SystemExit(f"content exists after outer COMMIT in {name}")
+    body = lines[begin[0] + 1 : commit[0]]
+    for line in body:
+        if TX_BEGIN.match(line) or TX_COMMIT.match(line) or TX_ROLLBACK.match(line):
+            raise SystemExit(f"nested standalone transaction command in {name}: {line.strip()}")
+    return "\n".join(body).strip() + "\n"
+
+
+def fragment(name: str) -> str:
+    text = read(SPC / name)
+    for line in text.splitlines():
+        if TX_BEGIN.match(line) or TX_COMMIT.match(line) or TX_ROLLBACK.match(line):
+            raise SystemExit(f"transaction command forbidden in fragment {name}: {line.strip()}")
+    return text.rstrip() + "\n"
+
+
+def foundation_with_repair() -> str:
+    body = unwrap_unit("010_tenancy_foundation.sql")
+    marker_index = body.find(FOUNDATION_RECONCILE_MARKER)
+    if marker_index < 0:
+        raise SystemExit("010 repair injection marker not found")
+    before = body[:marker_index].rstrip() + "\n"
+    after = body[marker_index:]
+    return (
+        before
+        + "\n-- ===== CONTROLLED LEGACY REFERENCE REPAIR =====\n"
+        + fragment(REPAIR)
+        + "\n"
+        + after
+    )
+
+
+def build(final_action: str) -> str:
+    if final_action not in {"commit", "rollback"}:
+        raise SystemExit(f"invalid final action: {final_action}")
+
+    pieces = [
+        "-- GENERATED by scripts/spc001-build-db-migration.py; DO NOT EDIT.\n",
+        "-- Complete SPC-001 DB migration is intentionally one transaction.\n",
+        "\\set ON_ERROR_STOP on\n",
+        "begin;\n",
+        "set local lock_timeout = '10s';\n",
+        "set local statement_timeout = '15min';\n",
+        "select pg_advisory_xact_lock(hashtextextended('SPC-001:controlled-migration',0));\n",
+        "\n-- ===== PRE-MUTATION BASELINE =====\n",
+        fragment(BASELINE),
+        "\n-- ===== PRE-MUTATION FILTER PRESET REFERENCE BASELINE =====\n",
+        fragment(FILTER_BASELINE),
+    ]
+
+    for name in MUTATION_UNITS:
+        pieces.append(f"\n-- ===== SOURCE UNIT: {name} =====\n")
+        if name == "010_tenancy_foundation.sql":
+            pieces.append(foundation_with_repair())
+        else:
+            pieces.append(unwrap_unit(name))
+
+    pieces.extend(
+        [
+            "\n-- ===== PRE-COMMIT RECONCILIATION =====\n",
+            fragment(RECONCILE),
+            "\n-- ===== CONTROLLED FILTER PRESET REFERENCE REPAIR =====\n",
+            fragment(FILTER_REPAIR),
+            "\n-- ===== PRE-COMMIT FILTER PRESET RECONCILIATION =====\n",
+            fragment(FILTER_RECONCILE),
+            f"\n{final_action};\n",
+        ]
+    )
+    return "".join(pieces)
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--output", required=True)
+    ap.add_argument("--final", choices=("commit", "rollback"), default="commit")
+    args = ap.parse_args()
+
+    payload = build(args.final)
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(payload, encoding="utf-8")
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    print("SPC001_DB_MIGRATION_BUNDLE=CREATED")
+    print(f"mutation_units={len(MUTATION_UNITS)}")
+    print(f"baseline={BASELINE}")
+    print(f"filter_baseline={FILTER_BASELINE}")
+    print(f"repair={REPAIR}")
+    print(f"reconciliation={RECONCILE}")
+    print(f"filter_repair={FILTER_REPAIR}")
+    print(f"filter_reconciliation={FILTER_RECONCILE}")
+    print(f"final_action={args.final.upper()}")
+    print(f"sha256={digest}")
+    print("db_connection=NONE")
+    print("db_mutation=NONE")
+
+
+if __name__ == "__main__":
+    main()

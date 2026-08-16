@@ -10,6 +10,7 @@ import { hierarchyOptions } from './hierarchy-options.js'
 import { OperationSourceIcon } from './operation-source.jsx'
 import { currencyOptions as buildCurrencyOptions } from './reference-options.js'
 import { SmartSelect } from './SmartSelect.jsx'
+import { useSpace } from './space-context.js'
 
 const idOf = (item) => item?.id ?? item?.account_id
 const parentOf = (item) => item?.parent_id ?? item?.parent_account_id ?? item?.account_parent_id ?? null
@@ -100,6 +101,7 @@ function ClockIcon() {
 }
 
 export default function TransactionEditor({ operation = {}, mode = 'edit', onClose, onSaved }) {
+  const { activeSpace } = useSpace()
   const creating = mode === 'create'
   const repeat = mode === 'repeat'
   const initial = useMemo(
@@ -251,7 +253,7 @@ export default function TransactionEditor({ operation = {}, mode = 'edit', onClo
   return createPortal(
     <div className="transactionEditorBackdrop visible" role="presentation" onClick={(event) => event.target === event.currentTarget && onClose?.()}>
       <form className="transactionEditorSheet" role="dialog" aria-modal="true" aria-label={dialogLabel} onSubmit={submit}>
-        <div className="transactionEditorHeader"><OperationSourceIcon operation={operation} kind={creating ? 'manual' : undefined} /><div><span>Операция</span><strong>{headerAction}</strong></div><button type="button" className="transactionEditorClose" onClick={onClose}>×</button></div>
+        <div className="transactionEditorHeader"><OperationSourceIcon operation={operation} kind={creating ? 'manual' : undefined} /><div><span>Операция</span><strong>{headerAction}</strong>{activeSpace && <span className="spaceContextPill transactionEditorSpace" title={activeSpace.name}>{activeSpace.name}</span>}</div><button type="button" className="transactionEditorClose" onClick={onClose}>×</button></div>
         <div className="transactionEditorForm">
           <SmartSelect label="Тип" title="Тип операции" value={form.transaction_type} options={typeOptions} onChange={changeType} />
           <label className="transactionEditorField"><span>Сумма</span><input type="number" inputMode="decimal" step="0.01" value={form.amount} onChange={update('amount')} /></label>

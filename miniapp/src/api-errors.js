@@ -14,6 +14,8 @@ const messages = {
   AUTH_DATE_EXPIRED: 'Сессия Telegram устарела. Закройте и снова откройте MoneyTrack.',
   AUTH_DATE_IN_FUTURE: 'Не удалось подтвердить время сессии Telegram. Откройте MoneyTrack заново.',
   USER_NOT_FOUND: 'Пользователь MoneyTrack не найден.',
+  SPACE_CONTEXT_NOT_FOUND: 'У вас больше нет доступа к выбранному пространству.',
+  SPACE_NOT_FOUND_OR_NOT_MEMBER: 'У вас больше нет доступа к выбранному пространству.',
   ACCOUNT_PARENT_HAS_OPERATIONS: 'Этот счёт содержит операции и не может быть родительским.',
   ACCOUNT_PARENT_IS_DEFAULT: 'Основной счёт нельзя использовать как группу. Сначала выберите другой основной счёт.',
   ACCOUNT_GROUP_NOT_POSTABLE: 'Операции нельзя записывать прямо в группу счетов. Выберите дочерний счёт.',
@@ -57,6 +59,11 @@ const messages = {
   VOICE_PROCESSOR_ERROR: 'Не удалось обработать аудиозапись. Попробуйте ещё раз.',
 }
 
+const SPACE_ACCESS_LOSS_CODES = new Set([
+  'SPACE_CONTEXT_NOT_FOUND',
+  'SPACE_NOT_FOUND_OR_NOT_MEMBER',
+])
+
 export function apiErrorMessage(code, fallback = '') {
   const normalized = String(code || '').trim()
   if (messages[normalized]) return messages[normalized]
@@ -74,5 +81,11 @@ export class MoneyTrackApiError extends Error {
     this.name = 'MoneyTrackApiError'
     this.code = String(code || 'DOMAIN_ERROR')
     this.status = status
+
+    if (SPACE_ACCESS_LOSS_CODES.has(this.code) && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('moneytrack:space-invalid', {
+        detail: { code: this.code },
+      }))
+    }
   }
 }

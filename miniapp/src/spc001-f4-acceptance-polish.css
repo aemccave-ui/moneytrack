@@ -1,0 +1,58 @@
+/* SPC-001F4R4 — final acceptance polish.
+   Successful Space recovery is informational and transient.
+   Home and Accounts both keep the same lower-right floating add slot. */
+
+.spaceGateNotice {
+  overflow: hidden;
+  animation: spc001SpaceNoticeDismiss .32s ease 5s forwards;
+}
+
+@keyframes spc001SpaceNoticeDismiss {
+  from {
+    opacity: 1;
+    max-height: 180px;
+    margin-bottom: 14px;
+    padding-top: 13px;
+    padding-bottom: 13px;
+    visibility: visible;
+  }
+  to {
+    opacity: 0;
+    max-height: 0;
+    margin-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+
+/* Final UX contract: both Home and Accounts use the canonical fixed FAB slot.
+   This intentionally cancels the rejected header/inline Home placement. */
+.spaceFinancialRoot .fabMenu {
+  position: fixed;
+  top: auto;
+  bottom: calc(96px + env(safe-area-inset-bottom));
+}
+
+/* Home-only vertical clearance for the fixed FAB.
+   Home transaction cards keep their canonical full width. The additional
+   bottom space creates a dedicated empty FAB zone below the final operation,
+   matching the accepted Accounts layout instead of shrinking the last card.
+   Accounts is unaffected because its operation list is deeper in the tree. */
+.spaceFinancialRoot > .app > .recentOperationsSection {
+  padding-bottom: 136px;
+}
+
+/* Space menu is visually the same action family as the + FAB. */
+.spaceManageButton {
+  background: linear-gradient(145deg, var(--mt-teal-800, #1d5559), var(--mt-teal-500, #4f9fa3));
+  color: #fff;
+  box-shadow: var(--mt-shadow-fab, 0 14px 30px rgba(28, 91, 94, .24));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spaceGateNotice {
+    animation-duration: .01ms;
+  }
+}

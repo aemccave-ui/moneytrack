@@ -1,0 +1,244 @@
+name: SPC-001 Source Contract
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/spc-001-space-tenancy
+    paths:
+      - '.github/workflows/spc001-source-contract.yml'
+      - 'db/domain/SPC-001/**'
+      - 'docs/architecture/SPC-001-tenancy-forensic.md'
+      - 'ops/spc001/**'
+      - 'scripts/spc001-*'
+      - 'miniapp/src/**'
+      - 'workflows/moneytrack-DER2Lc3dT2afyQhy.json'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/spc001-source-contract.yml'
+      - 'db/domain/SPC-001/**'
+      - 'docs/architecture/SPC-001-tenancy-forensic.md'
+      - 'ops/spc001/**'
+      - 'scripts/spc001-*'
+      - 'miniapp/src/**'
+      - 'workflows/moneytrack-DER2Lc3dT2afyQhy.json'
+
+permissions:
+  contents: read
+
+jobs:
+  source-contract:
+    name: SPC-001 source-only contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Compile SPC scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/spc001-*.py
+          bash -n scripts/spc001-*.sh
+
+      - name: Stage C source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-source-gate.py --stage C
+
+      - name: Cumulative SPC contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-cumulative-source-gate.py
+
+      - name: SPC-001 bootstrap conflict source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-bootstrap-conflict-source-gate.py
+
+      - name: SPC-001 erasure pointer source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-erasure-pointer-source-gate.py
+
+      - name: SPC-001 capture verifier source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-capture-verifier-source-gate.py
+
+      - name: SPC-001D atomic migration source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-migration-source-gate.py
+          python scripts/spc001-repair-sql-static-gate.py
+          python scripts/spc001-filter-preset-migration-source-gate.py
+          python scripts/spc001-build-db-migration.py \
+            --output /tmp/spc001-migration-commit.sql \
+            --final commit
+          python scripts/spc001-build-db-migration.py \
+            --output /tmp/spc001-migration-rollback.sql \
+            --final rollback
+
+      - name: SPC-001D3 filter preset diagnostic source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-filter-preset-diagnostic-source-gate.py
+
+      - name: SPC-001D3 live commit source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-live-commit-source-gate.py
+
+      - name: SPC-001E1 n8n cutover preflight source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-n8n-cutover-preflight-source-gate.py
+
+      - name: SPC-001E2 controlled n8n cutover source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-n8n-cutover-source-gate.py
+
+      - name: SPC-001E2R isolated n8n metadata rehearsal source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-n8n-import-rehearsal-source-gate.py
+
+      - name: SPC-001F preview-only deployment source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-preview-source-gate.py
+
+      - name: SPC-001F3 invite runtime source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-invite-runtime-source-gate.py
+
+      - name: SPC-001F4 financial transport source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-f4-financial-transport-source-gate.py
+
+      - name: SPC-001F4.2 acceptance polish source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-f4-acceptance-polish-source-gate.py
+
+      - name: Generate financial adapter candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-generate-financial-api.py \
+            --output /tmp/spc001-financial-api.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/spc001-financial-api.json')
+          w=json.loads(p.read_text(encoding='utf-8'))
+          assert w['id']=='SPC001FinancialApi202608'
+          assert w['active'] is False
+          assert len(w['nodes'])>0
+          print(f"financial_adapter=PASS nodes={len(w['nodes'])}")
+          PY
+
+      - name: Generate control adapter candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/spc001-generate-control-api.py \
+            --output /tmp/spc001-control-api.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/spc001-control-api.json')
+          w=json.loads(p.read_text(encoding='utf-8'))
+          assert w['id']=='SPC001ControlApi202608'
+          assert w['active'] is False
+          assert len(w['nodes'])>0
+          print(f"control_adapter=PASS nodes={len(w['nodes'])}")
+          PY
+
+      - name: Transform canonical Bot capture source
+        shell: bash
+        run: |
+          set -euo pipefail
+          # SPC composes on top of the accepted API-2C removal of the legacy
+          # /moneytrack-test ingress, then applies explicit Bot Space context,
+          # inline capture authority cutover, and manual receipt-category cutover.
+          python scripts/api-2c-transform-remove-test-ingress.py \
+            --before workflows/moneytrack-DER2Lc3dT2afyQhy.json \
+            --after /tmp/spc001-bot-api2c.json
+          python scripts/spc001-transform-bot-capture.py \
+            /tmp/spc001-bot-api2c.json \
+            /tmp/spc001-bot-context.json
+          python scripts/spc001-transform-bot-inline-capture.py \
+            /tmp/spc001-bot-context.json \
+            /tmp/spc001-bot-inline.json
+          python scripts/spc001-transform-bot-receipt-category.py \
+            /tmp/spc001-bot-inline.json \
+            /tmp/spc001-bot-final.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/spc001-bot-final.json')
+          doc=json.loads(p.read_text(encoding='utf-8'))
+          w=doc[0] if isinstance(doc,list) else doc
+          assert w['id']=='DER2Lc3dT2afyQhy'
+          names={n.get('name') for n in w.get('nodes',[])}
+          assert 'Webhook moneytrack-test' not in names
+          text=p.read_text(encoding='utf-8')
+          assert 'bot_capture_context_v1' in text
+          assert 'capture_receipt_ingest_projection_v1' in text
+          assert 'capture_receipt_duplicate_probe_v1' in text
+          assert 'receipt_projection_uncategorized_products_v1' in text
+          assert 'receipt_projection_set_item_category_hint_v1' in text
+          assert 'receipt_set_item_category_v1(' not in text
+          print(f"bot_transform=PASS nodes={len(w.get('nodes',[]))}")
+          PY
+
+      - name: Audit transformed canonical Bot tenancy
+        shell: bash
+        run: |
+          set -euo pipefail
+          # SEC-001 preserves disconnected legacy command/report nodes for
+          # forensic rollback. SPC audits the execution-reachable Telegram Bot
+          # surface and fails safe to all-nodes when no ingress is recognized.
+          python scripts/spc001-audit-workflow-tenancy.py \
+            --reachable-only \
+            /tmp/spc001-bot-final.json
+
+      - name: State source-only boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'SPC001_SOURCE_CONTRACT=PASS'
+          echo 'RUNTIME_EVIDENCE=NOT_CLAIMED'
+          echo 'DB_MIGRATION_FORENSIC=NOT_RUN'
+          echo 'DB_MUTATION=NONE'
+          echo 'N8N_MUTATION=NONE'
+          echo 'PREVIEW_MUTATION=NONE'
+          echo 'PRODUCTION_MUTATION=NONE'
