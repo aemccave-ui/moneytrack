@@ -1,0 +1,116 @@
+.settingsPage {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settingsPageHeader {
+  display: grid;
+  gap: 3px;
+  padding: 6px 3px 4px;
+}
+
+.settingsPageHeader > span {
+  color: #718083;
+  font-size: 12px;
+}
+
+.settingsPageHeader > h2 {
+  margin: 0;
+  color: var(--mt-teal-900, #163f43);
+  font-size: 24px;
+}
+
+.settingsSectionCard {
+  overflow: hidden;
+  border: 1px solid rgba(29, 85, 89, .09);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, .78);
+  box-shadow: var(--mt-shadow-card, 0 18px 46px rgba(38, 78, 82, .11));
+}
+
+.settingsSectionToggle {
+  width: 100%;
+  min-height: 64px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--mt-teal-900, #163f43);
+  text-align: left;
+}
+
+.settingsSectionToggle > strong {
+  min-width: 0;
+  font-size: 15px;
+}
+
+.settingsSectionMeta {
+  color: #718083;
+  font-size: 11px;
+  text-align: right;
+}
+
+.settingsSectionChevron {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
+  background: var(--mt-teal-100, #dcebec);
+  color: var(--mt-teal-700, #267176);
+  font-size: 22px;
+  line-height: 1;
+  transition: transform 180ms ease;
+}
+
+.settingsSectionChevron.expanded {
+  transform: rotate(90deg);
+}
+
+.settingsSectionBody {
+  padding: 0 14px 14px;
+  border-top: 1px solid rgba(29, 85, 89, .07);
+}
+
+.settingsSectionBody > .securitySettings {
+  margin-top: 14px;
+}
+
+.settingsCategorySection {
+  padding-top: 14px;
+}
+
+.screenPlaceholderPage {
+  display: flex;
+  flex-direction: column;
+}
+
+.screenPlaceholderCard {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 24px;
+  border: 1px solid rgba(29, 85, 89, .08);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, .78);
+  box-shadow: var(--mt-shadow-card, 0 18px 46px rgba(38, 78, 82, .11));
+}
+
+.screenPlaceholderCard > span,
+.screenPlaceholderCard > p {
+  color: #718083;
+  font-size: 12px;
+}
+
+.screenPlaceholderCard > h2,
+.screenPlaceholderCard > p {
+  margin: 0;
+}
+
+.screenPlaceholderCard > p {
+  line-height: 1.5;
+}
