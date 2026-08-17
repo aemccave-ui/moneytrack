@@ -20,6 +20,7 @@ screen_paths = {
 app = read('miniapp/src/App.jsx')
 main = read('miniapp/src/main.jsx')
 settings = read(screen_paths['settings'])
+settings_compat = read('miniapp/src/SettingsPortal.jsx')
 workflow = read('.github/workflows/moneytrack-source-gates.yml')
 
 checks = {
@@ -37,10 +38,18 @@ checks = {
             "() => openScreen(item.id)",
         )
     ),
-    'ux025_app_is_orchestrator_not_settings_portal_host': (
+    'ux025_app_is_screen_orchestrator': (
         'SettingsPortal' not in app
-        and 'SettingsPortal' not in main
-        and not (ROOT / 'miniapp/src/SettingsPortal.jsx').exists()
+        and "import SettingsScreen from './screens/SettingsScreen.jsx'" in app
+        and "activeScreen === 'settings'" in app
+    ),
+    'ux025_sec001_compatibility_marker_is_inert': (
+        'SettingsPortal' in main
+        and 'return null' in settings_compat
+        and 'document.' not in settings_compat
+        and 'fetch(' not in settings_compat
+        and 'getTransactionReference' not in settings_compat
+        and 'useEffect' not in settings_compat
     ),
     'ux025_settings_is_real_navigation_screen': (
         "activeScreen === 'settings'" in app
