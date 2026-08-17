@@ -84,6 +84,197 @@
   padding-top: 14px;
 }
 
+.categorySettings {
+  display: grid;
+  gap: 12px;
+}
+
+.categorySettingsToolbar,
+.categoryEditorHeader,
+.categoryEditorActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.categorySettingsToolbar > div,
+.categoryEditorHeader > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.categorySettingsToolbar strong,
+.categoryEditorHeader strong {
+  color: var(--mt-teal-900, #163f43);
+  font-size: 15px;
+}
+
+.categorySettingsToolbar span,
+.categoryEditorHeader span {
+  color: #718083;
+  font-size: 10px;
+}
+
+.categorySettingsToolbar > button,
+.categoryEditorActions > button:not(.secondary) {
+  min-height: 38px;
+  border: 0;
+  border-radius: 12px;
+  padding: 0 13px;
+  background: linear-gradient(145deg, var(--mt-teal-800, #1d5559), var(--mt-teal-500, #4f9fa3));
+  color: #fff;
+  font-weight: 700;
+}
+
+.categoryTree {
+  overflow: hidden;
+  border: 1px solid rgba(29, 85, 89, .08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, .78);
+}
+
+.categoryTreeRow {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px calc(10px + var(--category-depth, 0) * 14px);
+  border-top: 1px solid rgba(29, 85, 89, .06);
+}
+
+.categoryTreeRow:first-child {
+  border-top: 0;
+}
+
+.categoryTreeBranch {
+  color: var(--mt-teal-500, #4f9fa3);
+  font-size: 13px;
+}
+
+.categoryTreeIdentity {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  border: 0;
+  padding: 3px 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.categoryTreeIdentity strong,
+.categoryTreeIdentity small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.categoryTreeIdentity strong {
+  color: var(--mt-teal-900, #163f43);
+  font-size: 12px;
+}
+
+.categoryTreeIdentity small {
+  color: #829596;
+  font-size: 9px;
+}
+
+.categoryFlowBadge {
+  min-width: 52px;
+  border-radius: 999px;
+  padding: 5px 8px;
+  font-size: 9px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.categoryFlowBadge.expense {
+  background: rgba(197, 93, 100, .1);
+  color: #a24650;
+}
+
+.categoryFlowBadge.income {
+  background: rgba(29, 139, 114, .11);
+  color: #1d8069;
+}
+
+.categoryTreeActions {
+  display: flex;
+  gap: 3px;
+}
+
+.categoryTreeActions button,
+.categoryEditorHeader > button {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 9px;
+  background: rgba(29, 85, 89, .07);
+  color: var(--mt-teal-800, #1d5559);
+  font-weight: 750;
+}
+
+.categoryTreeActions button.danger {
+  color: #a24650;
+}
+
+.categoryTreeActions button:disabled,
+.categorySettingsToolbar button:disabled,
+.categoryEditor button:disabled {
+  opacity: .38;
+}
+
+.categoryEditor {
+  display: grid;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.categoryEditorHeader {
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(29, 85, 89, .07);
+}
+
+.categoryEditor label {
+  display: grid;
+  gap: 6px;
+}
+
+.categoryEditor label > span {
+  color: #718083;
+  font-size: 10px;
+}
+
+.categoryEditor input,
+.categoryEditor select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid rgba(29, 85, 89, .12);
+  border-radius: 13px;
+  padding: 0 11px;
+  background: rgba(255, 255, 255, .88);
+  color: var(--mt-teal-900, #163f43);
+  font: inherit;
+}
+
+.categoryEditorActions {
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
+.categoryEditorActions > button.secondary {
+  min-height: 38px;
+  border: 0;
+  border-radius: 12px;
+  padding: 0 13px;
+  background: rgba(29, 85, 89, .07);
+  color: var(--mt-teal-800, #1d5559);
+  font-weight: 700;
+}
+
 .screenPlaceholderPage {
   display: flex;
   flex-direction: column;
@@ -113,4 +304,14 @@
 
 .screenPlaceholderCard > p {
   line-height: 1.5;
+}
+
+@media (max-width: 390px) {
+  .settingsSectionBody { padding-left: 10px; padding-right: 10px; }
+  .categoryTreeRow {
+    grid-template-columns: 16px minmax(0, 1fr) auto;
+  }
+  .categoryFlowBadge { display: none; }
+  .categoryTreeActions { gap: 2px; }
+  .categoryTreeActions button { width: 28px; height: 28px; }
 }
