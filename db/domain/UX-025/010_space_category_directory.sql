@@ -85,7 +85,7 @@ begin
     if v_name is null then
         raise exception 'CATEGORY_NAME_REQUIRED' using errcode = '22023';
     end if;
-    if v_flow not in ('income', 'expense') then
+    if v_flow is null or v_flow not in ('income', 'expense') then
         raise exception 'CATEGORY_FLOW_TYPE_INVALID' using errcode = '22023';
     end if;
 
@@ -207,7 +207,7 @@ begin
     if v_name is null then
         raise exception 'CATEGORY_NAME_REQUIRED' using errcode = '22023';
     end if;
-    if v_flow not in ('income', 'expense') then
+    if v_flow is null or v_flow not in ('income', 'expense') then
         raise exception 'CATEGORY_FLOW_TYPE_INVALID' using errcode = '22023';
     end if;
     if p_sort_order is null then
@@ -297,8 +297,8 @@ comment on function moneytrack.category_edit_space_v1(bigint,bigint,bigint,text,
 is 'UX-025 category edit/reparent. Same-Space parent and recursive cycle guards are authoritative in PostgreSQL.';
 
 -- ---------------------------------------------------------------------------
--- Reorder only. This is explicit even though edit can also carry sort_order;
--- clients do not need to rewrite name/flow/parent for a simple sibling move.
+-- Preliminary numeric reorder primitive. UX-025/015 replaces this overload
+-- with the accepted atomic sibling up/down contract before transport apply.
 -- ---------------------------------------------------------------------------
 
 create or replace function moneytrack.category_reorder_space_v1(
@@ -334,7 +334,7 @@ end;
 $function$;
 
 comment on function moneytrack.category_reorder_space_v1(bigint,bigint,bigint,integer)
-is 'UX-025 explicit Space-local category reorder primitive.';
+is 'UX-025 preliminary Space-local numeric reorder primitive; replaced by 015 atomic sibling reorder.';
 
 -- ---------------------------------------------------------------------------
 -- Delete semantics = archive. Never physically remove historical category ids.
