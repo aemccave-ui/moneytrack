@@ -74,8 +74,15 @@ jobs:
       - name: UX-025 screen decomposition source gate
         run: python3 scripts/ux025-screen-decomposition-source-gate.py
 
+      - name: UX-025 category directory source gate
+        run: python3 scripts/ux025-category-directory-source-gate.py
+
       - name: UX-025 Python syntax
-        run: python3 -m py_compile scripts/ux025-screen-decomposition-source-gate.py
+        run: |
+          python3 -m py_compile \
+            scripts/ux025-screen-decomposition-source-gate.py \
+            scripts/ux025-category-directory-source-gate.py \
+            scripts/ux025-generate-financial-api.py
 
       - name: Frontend dependencies
         working-directory: miniapp
