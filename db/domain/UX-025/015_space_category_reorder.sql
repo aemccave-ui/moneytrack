@@ -28,7 +28,7 @@ declare
 begin
     perform moneytrack.assert_space_member_v1(p_actor_user_id, p_space_id);
 
-    if v_direction not in ('up', 'down') then
+    if v_direction is null or v_direction not in ('up', 'down') then
         raise exception 'CATEGORY_REORDER_DIRECTION_INVALID' using errcode = '22023';
     end if;
 
