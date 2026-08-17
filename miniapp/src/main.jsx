@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App.jsx'
 import QuickOperationPortal from './QuickOperationPortal.jsx'
+import SettingsPortal from './SettingsPortal.jsx'
 import SecurityGate from './SecurityGate.jsx'
 import SpaceGate from './SpaceGate.jsx'
 import '../packages/lab-design-system/navigation.css'
@@ -31,6 +32,7 @@ export function ProtectedApplication() {
     <SpaceGate>
       <App />
       <QuickOperationPortal />
+      <SettingsPortal />
     </SpaceGate>
   )
 }
