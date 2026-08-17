@@ -6,6 +6,8 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = (ROOT / "miniapp/src/main.jsx").read_text(encoding="utf-8")
 APP = (ROOT / "miniapp/src/App.jsx").read_text(encoding="utf-8")
+HOME = (ROOT / "miniapp/src/screens/HomeScreen.jsx").read_text(encoding="utf-8")
+ACCOUNTS = (ROOT / "miniapp/src/screens/AccountsScreen.jsx").read_text(encoding="utf-8")
 BASE = (ROOT / "miniapp/src/styles.css").read_text(encoding="utf-8")
 POLISH = (ROOT / "miniapp/src/spc001-f4-acceptance-polish.css").read_text(encoding="utf-8")
 QUICK = (ROOT / "miniapp/src/quick-actions-runtime.js").read_text(encoding="utf-8")
@@ -32,7 +34,10 @@ checks = {
         and "top: auto" in POLISH
         and "bottom: calc(96px + env(safe-area-inset-bottom))" in POLISH
         and "activeScreen === 'accounts'" in APP
-        and APP.count("className={`fabMenu ${actionsOpen ? 'open' : ''}`}") >= 2
+        and "<AccountsScreen" in APP
+        and "<HomeScreen" in APP
+        and "className={`fabMenu ${actionsOpen ? 'open' : ''}`}" in HOME
+        and "className={`fabMenu ${actionsOpen ? 'open' : ''}`}" in ACCOUNTS
     ),
     "f4_home_last_transaction_clears_fixed_fab": (
         all(x in POLISH for x in (
