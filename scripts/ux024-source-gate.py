@@ -18,6 +18,7 @@ def require(name, condition, detail):
 
 FAILURES = []
 app = text('miniapp/src/App.jsx')
+home = text('miniapp/src/screens/HomeScreen.jsx')
 recent = text('miniapp/src/RecentOperations.jsx')
 editor = text('miniapp/src/TransactionEditor.jsx')
 receipt = text('miniapp/src/ReceiptModal.jsx')
@@ -45,10 +46,10 @@ require('receipt_datetime_immutable_ui', 'receiptDateTime(' in receipt and 'type
 require('receipt_datetime_immutable_backend', 'RECEIPT_DATETIME_IMMUTABLE' in source_sql and "operation_source_kind_v1(p_user_id, p_transaction_id) = 'photo_receipt'" in source_sql, 'generic update rejects receipt datetime mutation')
 require('receipt_category_change_keeps_modal_open', 'receiptRefreshPending' in recent and 'setReceiptView(null)' in recent and 'receiptChanged' in recent, 'parent refresh deferred until explicit close')
 require('currency_chip_visual_contract', '.currencyGroupHeader' in explorer_css and '.accountTreeRow' in explorer_css, 'currency/account visual language shares shell semantics')
-require('currency_count_badge', 'currencyRowCountBadge' in app and 'group.accounts.length' in app, 'currency row starts with operational account count badge')
-require('account_count_badge', 'accountRowCountBadge' in app and 'node.leafCount' in app, 'account row starts with descendant leaf count badge')
-require('currency_count_badge_leading', app.index('currencyRowCountBadge') < app.index('currencyBadge">{group.currency}'), 'currency count badge precedes currency label')
-require('account_count_badge_leading', app.index('accountRowCountBadge') < app.index('accountTreeIdentity'), 'account count badge precedes account identity')
+require('currency_count_badge', 'currencyRowCountBadge' in home and 'group.accounts.length' in home, 'currency row starts with operational account count badge')
+require('account_count_badge', 'accountRowCountBadge' in home and 'node.leafCount' in home, 'account row starts with descendant leaf count badge')
+require('currency_count_badge_leading', 'currencyRowCountBadge' in home and 'currencyBadge">{group.currency}' in home and home.index('currencyRowCountBadge') < home.index('currencyBadge">{group.currency}'), 'currency count badge precedes currency label')
+require('account_count_badge_leading', 'accountRowCountBadge' in home and 'accountTreeIdentity' in home and home.index('accountRowCountBadge') < home.index('accountTreeIdentity'), 'account count badge precedes account identity')
 require('breakdown_badges_visible_after_legacy_css', '.homeCountBadge.currencyRowCountBadge,.accountDistribution .accountTree .homeCountBadge.accountRowCountBadge{display:inline-flex!important}' in reference_runtime_css, 'late UX022R3 runtime CSS explicitly exposes UX024 breakdown badges')
 require('calendar_week_monday_sunday', 'mondayOffset = (anchor.getDay() + 6) % 7' in periods and 'addLocalDays(monday, 6)' in periods, 'week resolves local Monday through Sunday')
 require('week_not_rolling_seven_days', 'today - 6' not in periods and "period === 'week') from.setDate" not in explorer, 'rolling week implementation absent')
@@ -57,11 +58,11 @@ require('accounts_previous_next_week', 'shiftPeriod(period, current, direction)'
 require('accounts_previous_next_month', 'shiftPeriod(period, current, direction)' in explorer and "periodType === 'month'" in periods, 'Accounts shifts by calendar month')
 require('accounts_previous_next_year', 'shiftPeriod(period, current, direction)' in explorer and "periodType === 'year'" in periods, 'Accounts shifts by calendar year')
 require('accounts_period_model', 'resolvePeriod(period, anchorDate' in explorer and 'export function resolvePeriod' in periods and 'export function shiftPeriod' in periods, 'period model remains on Accounts')
-require('home_period_controls_removed', 'homePeriodTabs' not in app and 'homePeriodNavigation' not in app and 'setHomePeriod(' not in app and 'setHomeAnchorDate(' not in app, 'Home has no date filters')
-require('home_current_month_summary', 'summary.result_month' in app and 'summary.income_month' in app and 'summary.expenses_month' in app and 'monthLabel(' in app, 'Home hero is fixed to current dashboard month')
-require('home_balance_uses_current_snapshot', 'currentNetWorth' in app and 'canonicalLeafTotal' in app and 'currentNetWorthCurrency' in app, 'overall balance shares account snapshot')
-require('home_legacy_networth_mismatch_removed', 'homeTotalsMismatch' not in app and 'Остатки не согласованы с общим балансом' not in app, 'legacy mismatch warning removed')
-require('home_currency_distribution_present', 'Баланс по валютам' in app and 'currencyStackBar' in app and 'currencyGroups' in app, 'currency distribution is present')
+require('home_period_controls_removed', 'homePeriodTabs' not in (app + home) and 'homePeriodNavigation' not in (app + home) and 'setHomePeriod(' not in (app + home) and 'setHomeAnchorDate(' not in (app + home), 'Home has no date filters')
+require('home_current_month_summary', 'summary.result_month' in home and 'summary.income_month' in home and 'summary.expenses_month' in home and 'monthLabel(' in home, 'Home hero is fixed to current dashboard month')
+require('home_balance_uses_current_snapshot', 'currentNetWorth' in app and 'canonicalLeafTotal' in app and 'currentNetWorthCurrency' in app and 'currentNetWorth' in home, 'overall balance shares account snapshot')
+require('home_legacy_networth_mismatch_removed', 'homeTotalsMismatch' not in (app + home) and 'Остатки не согласованы с общим балансом' not in (app + home), 'legacy mismatch warning removed')
+require('home_currency_distribution_present', 'Баланс по валютам' in home and 'currencyStackBar' in home and 'currencyGroups' in home, 'currency distribution is present')
 require(
     'existing_receipt_accounting_contract_preserved',
     'updateReceiptAccounting' in receipt
@@ -78,7 +79,7 @@ require(
 )
 require('persisted_source_read_model', "'source_kind', x.source_kind" in read_sql and "'source_kind', t.source_kind" in read_sql, 'dashboard and account operation JSON expose persisted source')
 require('text_voice_source_ingress', 'finance_create_sourced_transaction_v1' in text_ingress and 'SOURCE_EXPR' in text_ingress and 'source_content_heuristics=NONE' in text_ingress, 'text/voice source comes from ingress contract')
-require('production_frontend_not_targeted', 'production' not in recent.lower() and 'production' not in explorer.lower() and 'production' not in app.lower(), 'UX-024 frontend source contains no deployment target mutation')
+require('production_frontend_not_targeted', 'production' not in recent.lower() and 'production' not in explorer.lower() and 'production' not in app.lower() and 'production' not in home.lower(), 'UX-024 frontend source contains no deployment target mutation')
 
 if FAILURES:
     print('UX024_SOURCE_GATE=FAIL')
