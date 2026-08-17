@@ -20,6 +20,7 @@ refs = read('miniapp/src/reference-options.js')
 quick = read('miniapp/src/quick-actions-runtime.js')
 quick_portal = read('miniapp/src/QuickOperationPortal.jsx')
 settings = read('miniapp/src/screens/SettingsScreen.jsx')
+settings_compat = read('miniapp/src/SettingsPortal.jsx')
 app = read('miniapp/src/App.jsx')
 filters = read('miniapp/src/AccountsFilters.jsx')
 runtime = read('miniapp/src/ux022r3-reference-runtime.js')
@@ -125,7 +126,11 @@ require(
     'category_settings_screen_and_api',
     "import SettingsScreen from './screens/SettingsScreen.jsx'" in app
     and "activeScreen === 'settings'" in app
-    and 'SettingsPortal' not in main
+    and 'SettingsPortal' in main
+    and 'return null' in settings_compat
+    and 'document.addEventListener' not in settings_compat
+    and 'getTransactionReference' not in settings_compat
+    and 'useEffect' not in settings_compat
     and 'updateCategory' in api
     and 'updateCategory({' in settings
     and '<option value="expense">Расход</option>' in settings
