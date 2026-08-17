@@ -70,14 +70,13 @@ begin
         v_category_id := nullif(v_body->>'category_id', '')::bigint;
 
         if lower(coalesce(v_body->>'action', '')) = 'reorder' then
-            v_sort_order := nullif(v_body->>'sort_order', '')::integer;
             select to_jsonb(c)
               into v_result
               from moneytrack.category_reorder_space_v1(
                   v_actor,
                   p_space_id,
                   v_category_id,
-                  v_sort_order
+                  v_body->>'direction'
               ) c;
             return v_result;
         end if;
