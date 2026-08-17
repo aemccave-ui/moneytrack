@@ -3,7 +3,10 @@ import { useMemo, useState } from 'react'
 export default function CategoryEditor({ category = null, categories, onCancel, onSave, busy }) {
   const creating = !category
   const [name, setName] = useState(category?.name || '')
-  const [flowType, setFlowType] = useState(category?.flow_type || 'expense')
+  // New categories may start from the common expense choice. Existing legacy
+  // rows with NULL flow_type must remain unresolved until the user explicitly
+  // classifies them; never silently coerce them to expense.
+  const [flowType, setFlowType] = useState(creating ? 'expense' : (category?.flow_type || ''))
   const [parentId, setParentId] = useState(category?.parent_id == null ? '' : String(category.parent_id))
 
   const blockedParentIds = useMemo(() => {
@@ -58,6 +61,7 @@ export default function CategoryEditor({ category = null, categories, onCancel, 
       <label>
         <span>Тип</span>
         <select value={flowType} onChange={(event) => setFlowType(event.target.value)} disabled={busy}>
+          {!creating && !category?.flow_type && <option value="">Не задан</option>}
           <option value="expense">Расход</option>
           <option value="income">Приход</option>
         </select>
