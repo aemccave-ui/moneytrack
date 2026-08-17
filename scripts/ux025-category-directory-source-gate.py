@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import importlib.util
+import json
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+DOMAIN = (ROOT / 'db/domain/UX-025/010_space_category_directory.sql').read_text(encoding='utf-8')
+DISPATCH = (ROOT / 'db/domain/UX-025/020_category_api_dispatch.sql').read_text(encoding='utf-8')
+GENERATOR = ROOT / 'scripts/ux025-generate-financial-api.py'
+BASE_GENERATOR = ROOT / 'scripts/spc001-generate-financial-api.py'
+DESIGN = (ROOT / 'docs/architecture/UX-025-settings-category-directory.md').read_text(encoding='utf-8')
+
+
+def load_module(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f'cannot load {path}')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+checks: dict[str, bool] = {}
+
+checks['ux025_design_declares_space_owned_directory'] = all(x in DESIGN for x in (
+    'Categories become a full mutable Space-owned directory',
+    'CATEGORY_SAME_SPACE_GUARD=PASS',
+    'CATEGORY_HISTORY_PRESERVED=PASS',
+    'CATEGORY_SPACE_ISOLATION=PASS',
+))
+
+checks['ux025_category_read_is_space_scoped'] = all(x in DOMAIN for x in (
+    'category_directory_space_v1',
+    'assert_space_member_v1(p_actor_user_id, p_space_id)',
+    'c.space_id = p_space_id',
+    "coalesce(c.is_active, true) = true",
+))
+
+checks['ux025_category_create_is_space_owned'] = all(x in DOMAIN for x in (
+    'category_create_space_v1',
+    'user_id,',
+    'space_id,',
+    'created_by_user_id,',
+    'updated_by_user_id',
+    'p_actor_user_id,',
+    'p_space_id,',
+    "'CATEGORY_PARENT_NOT_FOUND_IN_SPACE'",
+))
+
+checks['ux025_category_edit_has_same_space_and_cycle_guards'] = all(x in DOMAIN for x in (
+    'category_edit_space_v1',
+    'p.parent_id',
+    "'CATEGORY_PARENT_CYCLE'",
+    'with recursive descendants(id)',
+    'c.space_id = p_space_id',
+    "'CATEGORY_PARENT_NOT_FOUND_IN_SPACE'",
+))
+
+checks['ux025_category_reorder_is_explicit_and_space_scoped'] = all(x in DOMAIN for x in (
+    'category_reorder_space_v1',
+    'set sort_order = p_sort_order',
+    'c.space_id = p_space_id',
+    "'reordered'::text",
+))
+
+checks['ux025_delete_is_history_safe_archive'] = all(x in DOMAIN for x in (
+    'category_delete_space_v1',
+    "'CATEGORY_HAS_ACTIVE_CHILDREN'",
+    'set is_active = false',
+    "'archived'::text",
+    'Never physically remove historical category ids',
+)) and 'delete from moneytrack.category_catalog' not in DOMAIN.lower()
+
+checks['ux025_dispatch_delegates_non_category_routes'] = all(x in DISPATCH for x in (
+    "if v_path <> 'api/v1/categories' then",
+    'return moneytrack.spc001_financial_api_dispatch_v1(',
+    'spc001_resolve_actor_user_id_v1',
+    'assert_space_member_v1(v_actor, p_space_id)',
+))
+
+checks['ux025_dispatch_owns_category_crud_methods'] = all(x in DISPATCH for x in (
+    "if v_method = 'GET' then",
+    'category_directory_space_v1',
+    "if v_method = 'POST' then",
+    'category_create_space_v1',
+    "if v_method = 'PATCH' then",
+    'category_edit_space_v1',
+    "lower(coalesce(v_body->>'action', '')) = 'reorder'",
+    'category_reorder_space_v1',
+    "if v_method = 'DELETE' then",
+    'category_delete_space_v1',
+))
+
+try:
+    base = load_module(BASE_GENERATOR, 'ux025_base_financial_generator')
+    ux025 = load_module(GENERATOR, 'ux025_financial_generator')
+    checks['ux025_frozen_spc_generator_shape_preserved'] = (
+        len(base.ROUTES) == 30
+        and [x for x in base.ROUTES if x[1] == 'api/v1/categories'] == [('PATCH', 'api/v1/categories')]
+    )
+    checks['ux025_candidate_route_shape'] = (
+        len(ux025.ROUTES) == 33
+        and [x for x in ux025.ROUTES if x[1] == 'api/v1/categories'] == [
+            ('GET', 'api/v1/categories'),
+            ('POST', 'api/v1/categories'),
+            ('PATCH', 'api/v1/categories'),
+            ('DELETE', 'api/v1/categories'),
+        ]
+    )
+except Exception:
+    checks['ux025_frozen_spc_generator_shape_preserved'] = False
+    checks['ux025_candidate_route_shape'] = False
+
+try:
+    with tempfile.TemporaryDirectory(prefix='ux025-category-source-') as tmp:
+        output = Path(tmp) / 'financial.json'
+        subprocess.run(
+            [sys.executable, str(GENERATOR), '--output', str(output)],
+            check=True,
+            cwd=ROOT,
+            stdout=subprocess.DEVNULL,
+        )
+        workflow = json.loads(output.read_text(encoding='utf-8'))
+    backend_nodes = [
+        n for n in workflow.get('nodes', [])
+        if n.get('type') == 'n8n-nodes-base.postgres'
+        and str(n.get('name', '')).endswith(' Backend')
+    ]
+    webhook_nodes = [n for n in workflow.get('nodes', []) if n.get('type') == 'n8n-nodes-base.webhook']
+    backend_queries = [str((n.get('parameters') or {}).get('query') or '') for n in backend_nodes]
+    checks['ux025_candidate_identity_preserved'] = workflow.get('id') == 'SPC001FinancialApi202608'
+    checks['ux025_candidate_has_single_owner_per_route'] = len(webhook_nodes) == 33 and len(backend_nodes) == 33
+    checks['ux025_candidate_calls_wrapper_only'] = bool(backend_queries) and all(
+        'moneytrack.ux025_financial_api_dispatch_v1(' in query for query in backend_queries
+    )
+    checks['ux025_candidate_stays_inactive_in_source'] = workflow.get('active') is False
+except Exception:
+    checks['ux025_candidate_identity_preserved'] = False
+    checks['ux025_candidate_has_single_owner_per_route'] = False
+    checks['ux025_candidate_calls_wrapper_only'] = False
+    checks['ux025_candidate_stays_inactive_in_source'] = False
+
+failed = False
+for name, ok in checks.items():
+    print(f"{name}={'PASS' if ok else 'FAIL'}")
+    failed = failed or not ok
+
+print(f"UX025_CATEGORY_DIRECTORY_SOURCE_GATE={'FAIL' if failed else 'PASS'}")
+print('RUNTIME_EVIDENCE=NOT_CLAIMED')
+print('DB_MUTATION=NONE')
+print('N8N_MUTATION=NONE')
+print('PREVIEW_MUTATION=NONE')
+print('PRODUCTION_FRONTEND_MUTATION=NONE')
+raise SystemExit(1 if failed else 0)
