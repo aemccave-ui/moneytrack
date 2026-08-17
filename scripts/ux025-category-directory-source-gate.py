@@ -10,6 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DOMAIN = (ROOT / 'db/domain/UX-025/010_space_category_directory.sql').read_text(encoding='utf-8')
+REORDER = (ROOT / 'db/domain/UX-025/015_space_category_reorder.sql').read_text(encoding='utf-8')
 DISPATCH = (ROOT / 'db/domain/UX-025/020_category_api_dispatch.sql').read_text(encoding='utf-8')
 GENERATOR = ROOT / 'scripts/ux025-generate-financial-api.py'
 BASE_GENERATOR = ROOT / 'scripts/spc001-generate-financial-api.py'
@@ -54,16 +55,21 @@ checks['ux025_category_create_is_space_owned'] = all(x in DOMAIN for x in (
 
 checks['ux025_category_edit_has_same_space_and_cycle_guards'] = all(x in DOMAIN for x in (
     'category_edit_space_v1',
-    'p.parent_id',
     "'CATEGORY_PARENT_CYCLE'",
     'with recursive descendants(id)',
     'c.space_id = p_space_id',
     "'CATEGORY_PARENT_NOT_FOUND_IN_SPACE'",
 ))
 
-checks['ux025_category_reorder_is_explicit_and_space_scoped'] = all(x in DOMAIN for x in (
-    'category_reorder_space_v1',
-    'set sort_order = p_sort_order',
+checks['ux025_category_reorder_is_atomic_sibling_move'] = all(x in REORDER for x in (
+    'drop function if exists moneytrack.category_reorder_space_v1(bigint,bigint,bigint,integer)',
+    'category_reorder_space_v1(',
+    "v_direction not in ('up', 'down')",
+    'array_agg(c.id order by coalesce(c.sort_order, 0), c.id)',
+    'array_position(v_ids, p_category_id)',
+    'v_ids[v_index] := v_ids[v_target]',
+    'set sort_order = v_i * 10',
+    'pg_advisory_xact_lock',
     'c.space_id = p_space_id',
     "'reordered'::text",
 ))
@@ -91,6 +97,7 @@ checks['ux025_dispatch_owns_category_crud_methods'] = all(x in DISPATCH for x in
     "if v_method = 'PATCH' then",
     'category_edit_space_v1',
     "lower(coalesce(v_body->>'action', '')) = 'reorder'",
+    "v_body->>'direction'",
     'category_reorder_space_v1',
     "if v_method = 'DELETE' then",
     'category_delete_space_v1',
