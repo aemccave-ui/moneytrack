@@ -42,7 +42,7 @@ checks['ux025_category_read_is_space_scoped'] = all(x in DOMAIN for x in (
     "coalesce(c.is_active, true) = true",
 ))
 
-checks['ux025_category_create_is_space_owned'] = all(x in DOMAIN for x in (
+checks['ux025_category_create_is_space_owned_and_flow_fail_closed'] = all(x in DOMAIN for x in (
     'category_create_space_v1',
     'user_id,',
     'space_id,',
@@ -50,11 +50,13 @@ checks['ux025_category_create_is_space_owned'] = all(x in DOMAIN for x in (
     'updated_by_user_id',
     'p_actor_user_id,',
     'p_space_id,',
+    "if v_flow is null or v_flow not in ('income', 'expense') then",
     "'CATEGORY_PARENT_NOT_FOUND_IN_SPACE'",
 ))
 
-checks['ux025_category_edit_has_same_space_and_cycle_guards'] = all(x in DOMAIN for x in (
+checks['ux025_category_edit_has_same_space_cycle_and_flow_guards'] = all(x in DOMAIN for x in (
     'category_edit_space_v1',
+    "if v_flow is null or v_flow not in ('income', 'expense') then",
     "'CATEGORY_PARENT_CYCLE'",
     'with recursive descendants(id)',
     'c.space_id = p_space_id',
@@ -64,7 +66,7 @@ checks['ux025_category_edit_has_same_space_and_cycle_guards'] = all(x in DOMAIN 
 checks['ux025_category_reorder_is_atomic_sibling_move'] = all(x in REORDER for x in (
     'drop function if exists moneytrack.category_reorder_space_v1(bigint,bigint,bigint,integer)',
     'category_reorder_space_v1(',
-    "v_direction not in ('up', 'down')",
+    "if v_direction is null or v_direction not in ('up', 'down') then",
     'array_agg(c.id order by coalesce(c.sort_order, 0), c.id)',
     'array_position(v_ids, p_category_id)',
     'v_ids[v_index] := v_ids[v_target]',
@@ -133,23 +135,41 @@ try:
             stdout=subprocess.DEVNULL,
         )
         workflow = json.loads(output.read_text(encoding='utf-8'))
+    nodes = workflow.get('nodes', [])
     backend_nodes = [
-        n for n in workflow.get('nodes', [])
+        n for n in nodes
         if n.get('type') == 'n8n-nodes-base.postgres'
         and str(n.get('name', '')).endswith(' Backend')
     ]
-    webhook_nodes = [n for n in workflow.get('nodes', []) if n.get('type') == 'n8n-nodes-base.webhook']
+    webhook_nodes = [n for n in nodes if n.get('type') == 'n8n-nodes-base.webhook']
     backend_queries = [str((n.get('parameters') or {}).get('query') or '') for n in backend_nodes]
+    unlock_prepare = [n for n in nodes if str(n.get('name', '')).startswith('SEC001 Unlock Prepare [')]
+    unlock_verify = [n for n in nodes if str(n.get('name', '')).startswith('SEC001 Unlock Verify [')]
+    unlock_decision = [n for n in nodes if str(n.get('name', '')).startswith('SEC001 Unlock Decision [')]
+    unlock_ok = [n for n in nodes if str(n.get('name', '')).startswith('SEC001 Unlock OK [')]
+    unlock_reject = [n for n in nodes if str(n.get('name', '')).startswith('SEC001 Unlock Reject [')]
+    names = {str(n.get('name', '')) for n in nodes}
+    category_sec_markers = {
+        f'SEC001 Unlock Prepare [{method} api/v1/categories]'
+        for method in ('GET', 'POST', 'PATCH', 'DELETE')
+    }
     checks['ux025_candidate_identity_preserved'] = workflow.get('id') == 'SPC001FinancialApi202608'
     checks['ux025_candidate_has_single_owner_per_route'] = len(webhook_nodes) == 33 and len(backend_nodes) == 33
     checks['ux025_candidate_calls_wrapper_only'] = bool(backend_queries) and all(
         'moneytrack.ux025_financial_api_dispatch_v1(' in query for query in backend_queries
     )
+    checks['ux025_candidate_all_financial_routes_sec_protected'] = all(
+        len(group) == 33
+        for group in (unlock_prepare, unlock_verify, unlock_decision, unlock_ok, unlock_reject)
+    )
+    checks['ux025_category_crud_routes_sec_protected'] = category_sec_markers <= names
     checks['ux025_candidate_stays_inactive_in_source'] = workflow.get('active') is False
 except Exception:
     checks['ux025_candidate_identity_preserved'] = False
     checks['ux025_candidate_has_single_owner_per_route'] = False
     checks['ux025_candidate_calls_wrapper_only'] = False
+    checks['ux025_candidate_all_financial_routes_sec_protected'] = False
+    checks['ux025_category_crud_routes_sec_protected'] = False
     checks['ux025_candidate_stays_inactive_in_source'] = False
 
 failed = False
