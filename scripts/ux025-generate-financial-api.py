@@ -8,18 +8,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE_GENERATOR = ROOT / 'scripts/spc001-generate-financial-api.py'
+SEC_BUILDER = ROOT / 'scripts/sec001-build-live-candidates.py'
 
 
-def load_base():
-    spec = importlib.util.spec_from_file_location('spc001_financial_generator', BASE_GENERATOR)
+def load_module(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise SystemExit('ERROR: cannot load SPC-001 financial generator')
+        raise SystemExit(f'ERROR: cannot load {path.name}')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-BASE = load_base()
+BASE = load_module(BASE_GENERATOR, 'spc001_financial_generator')
+SEC = load_module(SEC_BUILDER, 'ux025_sec_runtime_builder')
 
 # Preserve every accepted SPC-001 route and add only missing category CRUD
 # methods on the already-owned /api/v1/categories path.
@@ -56,15 +58,23 @@ def build(credential_id: str, credential_name: str) -> dict:
     try:
         BASE.ROUTES = ROUTES
         BASE.sql_query = sql_query
-        workflow = BASE.build(credential_id, credential_name)
+        raw = BASE.build(credential_id, credential_name)
     finally:
         BASE.ROUTES = original_routes
         BASE.sql_query = original_sql_query
 
-    # Runtime cutover replaces the accepted financial workflow in place rather
-    # than creating a second owner for the same webhook paths.
-    if workflow.get('id') != 'SPC001FinancialApi202608':
+    if raw.get('id') != 'SPC001FinancialApi202608':
         raise SystemExit('ERROR: financial workflow identity changed')
+
+    # Every Financial API route is SEC-001 Class B. Apply the canonical SEC
+    # graph transform after extending the route set; importing the raw SPC
+    # generator output would otherwise remove unlock enforcement from the
+    # existing financial workflow during replacement.
+    workflow = SEC.transform_api(raw)
+    SEC.verify_protected_api(workflow)
+
+    if workflow.get('id') != 'SPC001FinancialApi202608':
+        raise SystemExit('ERROR: SEC transform changed workflow identity')
     workflow['name'] = 'MoneyTrack UX-025 Financial API'
     workflow['active'] = False
     return workflow
@@ -82,6 +92,7 @@ def main() -> None:
     args.output.write_text(json.dumps(workflow, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 
     print(f"workflow={workflow['id']} routes={len(ROUTES)} nodes={len(workflow['nodes'])} path={args.output}")
+    print('SEC001_FINANCIAL_PROTECTION=PASS')
     for method, path in ROUTES:
         print(f"UX025_FINANCIAL {method} /{path}")
 
