@@ -75,7 +75,8 @@ export default function CategorySettings() {
 
   useEffect(() => {
     const controller = new AbortController()
-    refresh(controller.signal)
+    getCategoryDirectory(controller.signal)
+      .then((next) => setCategories(next))
       .catch((error) => {
         if (error?.name !== 'AbortError') showError(error?.message || 'Не удалось загрузить категории')
       })
