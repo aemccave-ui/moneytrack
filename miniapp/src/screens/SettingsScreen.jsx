@@ -96,20 +96,27 @@ export default function SettingsScreen({ navigation }) {
   const toggleSection = (section) => setOpenSection((current) => current === section ? null : section)
 
   useEffect(() => {
-    if (openSection !== 'categories' || categoriesLoaded || loadingCategories) return undefined
+    if (openSection !== 'categories' || categoriesLoaded) return undefined
     const controller = new AbortController()
+    let active = true
     setLoadingCategories(true)
     getTransactionReference(controller.signal)
       .then((result) => {
+        if (!active) return
         setCategories(result?.categories || [])
         setCategoriesLoaded(true)
       })
       .catch((error) => {
-        if (error?.name !== 'AbortError') showError(error?.message || 'Не удалось загрузить категории')
+        if (active && error?.name !== 'AbortError') showError(error?.message || 'Не удалось загрузить категории')
       })
-      .finally(() => setLoadingCategories(false))
-    return () => controller.abort()
-  }, [categoriesLoaded, loadingCategories, openSection])
+      .finally(() => {
+        if (active) setLoadingCategories(false)
+      })
+    return () => {
+      active = false
+      controller.abort()
+    }
+  }, [categoriesLoaded, openSection])
 
   const rows = useMemo(() => flattenCategories(categories), [categories])
   const backendReady = categories.length === 0 || categories.every((category) => (
