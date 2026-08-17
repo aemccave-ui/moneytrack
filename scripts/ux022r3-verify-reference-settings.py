@@ -19,7 +19,8 @@ create_sheet = read('miniapp/src/AccountCreateSheet.jsx')
 refs = read('miniapp/src/reference-options.js')
 quick = read('miniapp/src/quick-actions-runtime.js')
 quick_portal = read('miniapp/src/QuickOperationPortal.jsx')
-settings = read('miniapp/src/SettingsPortal.jsx')
+settings = read('miniapp/src/screens/SettingsScreen.jsx')
+app = read('miniapp/src/App.jsx')
 filters = read('miniapp/src/AccountsFilters.jsx')
 runtime = read('miniapp/src/ux022r3-reference-runtime.js')
 api = read('miniapp/src/api.js')
@@ -122,7 +123,9 @@ require(
 )
 require(
     'category_settings_screen_and_api',
-    'SettingsPortal' in main
+    "import SettingsScreen from './screens/SettingsScreen.jsx'" in app
+    and "activeScreen === 'settings'" in app
+    and 'SettingsPortal' not in main
     and 'updateCategory' in api
     and 'updateCategory({' in settings
     and '<option value="expense">Расход</option>' in settings
@@ -135,6 +138,15 @@ require(
     "typeof category.editable === 'boolean'" in settings
     and '!sourceFlow && <option value="">Не задан</option>' in settings
     and 'flowOf(category) && typeof category.editable' not in settings,
+)
+require(
+    'settings_sections_are_collapsed_by_default',
+    'useState(null)' in settings
+    and 'Управление защитой' in settings
+    and 'Управление категориями' in settings
+    and "openSection === 'security'" in settings
+    and "openSection === 'categories'" in settings
+    and 'document.addEventListener' not in settings,
 )
 require(
     'text_and_voice_ingress_starts_with_current_time',
