@@ -69,7 +69,8 @@ BACKUP_ROOT="$OUTPUT_DIR/prod-h2" bash "$ROOT/scripts/prod-h2-backup-now.sh" >"$
 mapfile -t BACKUP_DIRS < <(find "$OUTPUT_DIR/prod-h2" -mindepth 1 -maxdepth 1 -type d | sort)
 [[ "${#BACKUP_DIRS[@]}" -eq 1 ]] || { echo 'UX025_DB_APPLY=FAIL backup_directory_count' >&2; exit 1; }
 BACKUP_DIR="${BACKUP_DIRS[0]}"
-for f in COMPLETE SHA256SUMS moneytrack.dump; do
+[[ -f "$BACKUP_DIR/COMPLETE" ]] || { echo 'UX025_DB_APPLY=FAIL backup_complete_marker_missing' >&2; exit 1; }
+for f in SHA256SUMS moneytrack.dump; do
   [[ -s "$BACKUP_DIR/$f" ]] || { echo "UX025_DB_APPLY=FAIL backup_file_missing=$f" >&2; exit 1; }
 done
 (cd "$BACKUP_DIR" && sha256sum -c SHA256SUMS >/dev/null)
@@ -85,6 +86,14 @@ clone_psql() {
     export PGPASSWORD="$POSTGRES_PASSWORD"
     exec psql -X -h 127.0.0.1 -U "$POSTGRES_USER" -d "$1" -v ON_ERROR_STOP=1
   ' sh "$CLONE_DB" < "$file"
+}
+
+live_query_scalar() {
+  local sql="$1"
+  docker exec "$UX022_DB_CONTAINER" sh -ceu '
+    export PGPASSWORD="$POSTGRES_PASSWORD"
+    exec psql -X -q -At -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c "$1"
+  ' sh "$sql"
 }
 
 drop_clone() {
@@ -139,10 +148,11 @@ grep -F 'UX025_REHEARSAL_TERMINAL_ROLLBACK=PASS' "$CLONE_REHEARSAL_LOG" >/dev/nu
 echo 'UX025_CLONE_CRUD_REHEARSAL=PASS'
 
 clone_psql "$ROLLBACK_SQL" >"$CLONE_ROLLBACK_LOG" 2>&1
-# Inverse rollback must remove UX-025 dispatcher and CRUD functions.
+# Inverse rollback must remove every UX-025 category function/dispatcher.
 docker exec "$UX022_DB_CONTAINER" sh -ceu '
   export PGPASSWORD="$POSTGRES_PASSWORD"
-  test "$(psql -X -h 127.0.0.1 -U "$POSTGRES_USER" -d "$1" -Atc "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='\''moneytrack'\'' and p.proname in ('\''category_directory_space_v1'\'','\''category_create_space_v1'\'','\''category_edit_space_v1'\'','\''category_delete_space_v1'\'','\''ux025_financial_api_dispatch_v1'\'');")" = 0
+  test "$(psql -X -h 127.0.0.1 -U "$POSTGRES_USER" -d "$1" -Atc "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='\''moneytrack'\'' and p.proname in ('\''category_directory_space_v1'\'','\''category_create_space_v1'\'','\''category_edit_space_v1'\'','\''category_reorder_space_v1'\'','\''category_delete_space_v1'\'','\''ux025_financial_api_dispatch_v1'\'');")" = 0
+  test "$(psql -X -h 127.0.0.1 -U "$POSTGRES_USER" -d "$1" -Atc "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='\''moneytrack'\'' and p.proname='\''category_update_space_v1'\'';")" -ge 1
 ' sh "$CLONE_DB"
 echo 'UX025_CLONE_SCHEMA_ROLLBACK=PASS'
 
@@ -153,7 +163,7 @@ echo 'UX025_CLONE_REAPPLY=PASS'
 drop_clone
 
 # Fail closed on unexpected partial prior deployment.
-PREEXISTING="$(ux022_db_query_scalar "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='moneytrack' and p.proname='ux025_financial_api_dispatch_v1';")"
+PREEXISTING="$(live_query_scalar "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='moneytrack' and p.proname='ux025_financial_api_dispatch_v1';")"
 [[ "$PREEXISTING" == 0 ]] || { echo "UX025_DB_APPLY=FAIL preexisting_ux025_dispatch=$PREEXISTING" >&2; exit 1; }
 
 LIVE_MUTATED=1
