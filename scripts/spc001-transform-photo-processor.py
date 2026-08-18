@@ -98,7 +98,18 @@ from moneytrack.capture_receipt_ingest_projection_v1(
 INSERT_RECEIPT_QUERY = r'''select
     {{ $('Insert transaction').first().json.receipt_id || 'null' }}::bigint as id;'''
 
+# The atomic ingress has already created immutable receipt items and projection
+# classification rows. Preserve the legacy Prepare receipt items row shape while
+# resolving the corresponding projection item; downstream read-back therefore
+# receives receipt_id/name/quantity/prices instead of only product/category IDs.
 CREATE_PRODUCTS_QUERY = r'''select
+    {{ $json.receipt_id }}::bigint as receipt_id,
+    r.receipt_item_id,
+    r.item_name_original,
+    nullif('{{ String($json.item_language || '').replace(/'/g,"''") }}','')::text as item_language,
+    r.quantity,
+    r.unit_price,
+    r.amount,
     r.product_id,
     r.category_id
 from moneytrack.receipt_projection_product_item_read_v1(
@@ -251,6 +262,7 @@ def main():
     print("duplicate_contract=exact_plus_semantic")
     print("account_resolution=SPACE_NATIVE")
     print("photo_parser_aliases=total_or_total_amount,merchant_or_shop_name")
+    print("photo_item_shape=receipt_id,receipt_item_id,item_name_original,item_language,quantity,unit_price,amount,product_id,category_id")
     print("classification=projection_specific")
     print("runtime_mutation=NONE")
 
