@@ -126,6 +126,11 @@ checks['ux025_n8n_db_evidence_reuse_is_fail_closed'] = all(x in N8N_APPLY_TEXT f
     'db_source_changed_since_evidence',
 ))
 
+checks['ux025_n8n_import_staging_root_safe'] = all(x in N8N_APPLY_TEXT for x in (
+    'docker exec -u 0 "$N8N_CONTAINER" rm -f "$remote"',
+    'docker exec -u 0 "$N8N_CONTAINER" chmod 0644 "$remote"',
+)) and 'docker exec "$N8N_CONTAINER" chmod 0644 "$remote"' not in N8N_APPLY_TEXT
+
 try:
     base = load_module(BASE_GENERATOR, 'ux025_base_financial_generator')
     ux025 = load_module(GENERATOR, 'ux025_financial_generator')
