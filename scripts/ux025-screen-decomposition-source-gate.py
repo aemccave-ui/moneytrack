@@ -22,6 +22,7 @@ app = read('miniapp/src/App.jsx')
 main = read('miniapp/src/main.jsx')
 settings = read(screen_paths['settings'])
 settings_css = read('miniapp/src/screens/ux025-screens.css')
+settings_scroll_css = read('miniapp/src/screens/ux025-settings-page-scroll.css')
 settings_compat = read('miniapp/src/SettingsPortal.jsx')
 category_settings = read('miniapp/src/screens/settings/CategorySettings.jsx')
 category_editor = read('miniapp/src/screens/settings/CategoryEditor.jsx')
@@ -114,16 +115,22 @@ checks = {
         'children.get(id)',
         '!blockedParentIds.has(String(item.id))',
     )),
-    'ux025_settings_page_owns_category_vertical_scroll': (
-        '.categoryTree {' in settings_css
-        and 'the Settings page owns vertical scrolling' in settings_css
-        and 'scrolls the whole Settings screen' in settings_css
+    'ux025_settings_page_owns_full_vertical_scroll': (
+        "import './screens/ux025-settings-page-scroll.css'" in main
+        and main.index("./screens/ux025-settings-page-scroll.css") > main.index("./screens/ux025-screens.css")
+        and '.settingsPage {' in settings_scroll_css
+        and 'height: calc(100dvh - 67px);' in settings_scroll_css
+        and 'overflow-y: auto;' in settings_scroll_css
+        and '.settingsPage > .settingsPageHeader,' in settings_scroll_css
+        and '.settingsPage > .settingsSectionCard {' in settings_scroll_css
+        and 'flex: 0 0 auto;' in settings_scroll_css
+        and 'min-height: max-content;' in settings_scroll_css
+        and '.settingsPage .categoryTree {' in settings_scroll_css
+        and 'max-height: none;' in settings_scroll_css
         and 'max-height: clamp(260px, 44dvh, 520px)' not in settings_css
         and 'overflow-y: auto' not in settings_css
         and 'overscroll-behavior-y: contain' not in settings_css
         and 'scrollbar-gutter: stable' not in settings_css
-        and '.categoryTreeRow button {' in settings_css
-        and 'touch-action: pan-y' in settings_css
     ),
     'ux025_preview_apply_is_fail_closed': all(token in preview_apply for token in (
         'MONEYTRACK_PREVIEW_ROOT:-/var/www/moneytrack-miniapp-preview',
