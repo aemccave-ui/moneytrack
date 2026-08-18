@@ -52,6 +52,15 @@ def sql_query(method: str, path: str) -> str:
 ) as data;"""
 
 
+def secure(workflow: dict) -> dict:
+    secured = SEC.transform_api(workflow)
+    SEC.verify_protected_api(secured)
+    if secured.get('id') != 'SPC001FinancialApi202608':
+        raise SystemExit('ERROR: SEC transform changed workflow identity')
+    secured['active'] = False
+    return secured
+
+
 def build(credential_id: str, credential_name: str) -> dict:
     original_routes = BASE.ROUTES
     original_sql_query = BASE.sql_query
@@ -70,30 +79,47 @@ def build(credential_id: str, credential_name: str) -> dict:
     # graph transform after extending the route set; importing the raw SPC
     # generator output would otherwise remove unlock enforcement from the
     # existing financial workflow during replacement.
-    workflow = SEC.transform_api(raw)
-    SEC.verify_protected_api(workflow)
-
-    if workflow.get('id') != 'SPC001FinancialApi202608':
-        raise SystemExit('ERROR: SEC transform changed workflow identity')
+    workflow = secure(raw)
     workflow['name'] = 'MoneyTrack UX-025 Financial API'
-    workflow['active'] = False
+    return workflow
+
+
+def build_spc_secured(credential_id: str, credential_name: str) -> dict:
+    """Canonical protected SPC-001 fallback used only for UX-025 rollback.
+
+    Do not restore a forensic pre-cutover export when that export has lost its
+    SEC-001 Class-B boundary. Rebuild the accepted 30-route SPC workflow from
+    source and apply the canonical SEC transform before any UX-025 mutation.
+    """
+    raw = BASE.build(credential_id, credential_name)
+    if raw.get('id') != 'SPC001FinancialApi202608':
+        raise SystemExit('ERROR: SPC rollback workflow identity changed')
+    workflow = secure(raw)
+    workflow['name'] = 'MoneyTrack SPC-001 Financial API (SEC rollback)'
     return workflow
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--mode', choices=('ux025', 'spc-secured'), default='ux025')
     parser.add_argument('--postgres-credential-id', default='tM27zg5m7tREo2ep')
     parser.add_argument('--postgres-credential-name', default='Postgres account')
     args = parser.parse_args()
 
-    workflow = build(args.postgres_credential_id, args.postgres_credential_name)
+    workflow = (
+        build(args.postgres_credential_id, args.postgres_credential_name)
+        if args.mode == 'ux025'
+        else build_spc_secured(args.postgres_credential_id, args.postgres_credential_name)
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(workflow, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 
-    print(f"workflow={workflow['id']} routes={len(ROUTES)} nodes={len(workflow['nodes'])} path={args.output}")
+    route_count = len(ROUTES) if args.mode == 'ux025' else len(BASE.ROUTES)
+    print(f"workflow={workflow['id']} mode={args.mode} routes={route_count} nodes={len(workflow['nodes'])} path={args.output}")
     print('SEC001_FINANCIAL_PROTECTION=PASS')
-    for method, path in ROUTES:
+    routes = ROUTES if args.mode == 'ux025' else BASE.ROUTES
+    for method, path in routes:
         print(f"UX025_FINANCIAL {method} /{path}")
 
 
