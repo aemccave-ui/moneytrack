@@ -114,17 +114,17 @@ checks = {
         'children.get(id)',
         '!blockedParentIds.has(String(item.id))',
     )),
-    'ux025_category_directory_owns_vertical_scroll': all(token in settings_css for token in (
-        '.categoryTree {',
-        'max-height: clamp(260px, 44dvh, 520px)',
-        'overflow-x: hidden',
-        'overflow-y: auto',
-        'overscroll-behavior-y: contain',
-        '-webkit-overflow-scrolling: touch',
-        'touch-action: pan-y',
-        'scrollbar-gutter: stable',
-        '.categoryTreeRow button {',
-    )),
+    'ux025_settings_page_owns_category_vertical_scroll': (
+        '.categoryTree {' in settings_css
+        and 'the Settings page owns vertical scrolling' in settings_css
+        and 'scrolls the whole Settings screen' in settings_css
+        and 'max-height: clamp(260px, 44dvh, 520px)' not in settings_css
+        and 'overflow-y: auto' not in settings_css
+        and 'overscroll-behavior-y: contain' not in settings_css
+        and 'scrollbar-gutter: stable' not in settings_css
+        and '.categoryTreeRow button {' in settings_css
+        and 'touch-action: pan-y' in settings_css
+    ),
     'ux025_preview_apply_is_fail_closed': all(token in preview_apply for token in (
         'MONEYTRACK_PREVIEW_ROOT:-/var/www/moneytrack-miniapp-preview',
         '--db-evidence-dir',
