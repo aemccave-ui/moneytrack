@@ -27,7 +27,7 @@ for p in "$DB_EVIDENCE" "$OUTPUT_DIR"; do [[ "$p" = /* ]] || { echo "ERROR: abso
 case "$OUTPUT_DIR" in /tmp|/tmp/*) echo 'UX025_N8N_APPLY=REFUSED durable_output_required' >&2; exit 2;; esac
 [[ ! -e "$OUTPUT_DIR" ]] || { echo "ERROR: output exists: $OUTPUT_DIR" >&2; exit 2; }
 
-for cmd in git docker python3 sha256sum find grep awk curl sync; do
+for cmd in git docker python3 sha256sum find grep awk curl sync sed; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "UX025_N8N_APPLY=FAIL missing_command=$cmd" >&2; exit 1; }
 done
 HEAD_SHA="$(git rev-parse HEAD)"
@@ -41,11 +41,30 @@ for f in "$DB_EVIDENCE/db-metadata.txt" "$DB_EVIDENCE/SHA256SUMS"; do
   [[ -s "$f" ]] || { echo "UX025_N8N_APPLY=FAIL db_evidence_missing=$f" >&2; exit 1; }
 done
 (cd "$DB_EVIDENCE" && sha256sum -c SHA256SUMS >/dev/null)
-grep -Fx "HEAD=$HEAD_SHA" "$DB_EVIDENCE/db-metadata.txt" >/dev/null
+DB_EVIDENCE_HEAD="$(sed -n 's/^HEAD=//p' "$DB_EVIDENCE/db-metadata.txt" | head -n1)"
+[[ -n "$DB_EVIDENCE_HEAD" ]] || { echo 'UX025_N8N_APPLY=FAIL db_evidence_head_missing' >&2; exit 1; }
 grep -Fx 'LIVE_DB_POST_VERIFY=PASS' "$DB_EVIDENCE/db-metadata.txt" >/dev/null
 grep -Fx 'UX025_DB_APPLY=PASS' "$DB_EVIDENCE/db-metadata.txt" >/dev/null
 grep -Fx 'N8N_MUTATION=NONE' "$DB_EVIDENCE/db-metadata.txt" >/dev/null
-echo 'UX025_DB_EVIDENCE=PASS'
+
+# Source-only recovery commits after an accepted DB apply may reuse that DB
+# evidence only when the evidence HEAD is an ancestor and every DB-affecting
+# UX-025 source remains byte-identical across the range.
+git merge-base --is-ancestor "$DB_EVIDENCE_HEAD" "$HEAD_SHA" || {
+  echo "UX025_N8N_APPLY=FAIL db_evidence_not_ancestor evidence=$DB_EVIDENCE_HEAD head=$HEAD_SHA" >&2
+  exit 1
+}
+DB_RELEVANT=(
+  db/domain/UX-025
+  scripts/ux025-build-db-bundle.py
+  scripts/ux025-db-runtime-apply.sh
+)
+if ! git diff --quiet "$DB_EVIDENCE_HEAD" "$HEAD_SHA" -- "${DB_RELEVANT[@]}"; then
+  echo "UX025_N8N_APPLY=FAIL db_source_changed_since_evidence evidence=$DB_EVIDENCE_HEAD head=$HEAD_SHA" >&2
+  git diff --name-only "$DB_EVIDENCE_HEAD" "$HEAD_SHA" -- "${DB_RELEVANT[@]}" >&2
+  exit 1
+fi
+echo "UX025_DB_EVIDENCE=PASS evidence_head=$DB_EVIDENCE_HEAD current_head=$HEAD_SHA"
 
 source "$ROOT/scripts/ux022-db-runtime.sh"
 ux022_db_init
@@ -65,6 +84,8 @@ mkdir -p "$OUTPUT_DIR"
 chmod 700 "$OUTPUT_DIR"
 OLD_CURRENT="$OUTPUT_DIR/financial.before.current.json"
 OLD_PUBLISHED="$OUTPUT_DIR/financial.before.published.json"
+PRE_VERIFY_LOG="$OUTPUT_DIR/financial.before.verify.log"
+ROLLBACK_SECURED="$OUTPUT_DIR/financial.rollback.secured.json"
 CANDIDATE="$OUTPUT_DIR/financial.candidate.json"
 POST_CURRENT="$OUTPUT_DIR/financial.after.current.json"
 POST_PUBLISHED="$OUTPUT_DIR/financial.after.published.json"
@@ -109,13 +130,38 @@ N8N_BACKUP_DIR="${BACKUP_DIRS[0]}"
 (cd "$N8N_BACKUP_DIR" && sha256sum -c SHA256SUMS >/dev/null)
 echo "UX025_N8N_FRESH_BACKUP=PASS path=$N8N_BACKUP_DIR"
 
+# Preserve the actual pre-state for forensics. It may contain the SEC-001 gap
+# discovered during recovery, so observe its protection state without ever
+# treating GAP as accepted protection or using this export for rollback.
 export_workflow "$OLD_CURRENT" current
 export_workflow "$OLD_PUBLISHED" published
-python3 scripts/ux025-verify-financial-workflow.py --input "$OLD_PUBLISHED" --expected spc
+python3 scripts/ux025-verify-financial-workflow.py \
+  --input "$OLD_PUBLISHED" \
+  --expected spc \
+  --protection observe >"$PRE_VERIFY_LOG"
+cat "$PRE_VERIFY_LOG"
 PRE_SHA="$(sha256sum "$OLD_PUBLISHED" | awk '{print $1}')"
-echo "UX025_PRE_CUTOVER_WORKFLOW=PASS sha256=$PRE_SHA"
+if grep -Fq 'UX025_FINANCIAL_SEC001_PROTECTION=PASS' "$PRE_VERIFY_LOG"; then
+  PRE_SEC001_PROTECTION=PASS
+  SEC001_REPAIR=PRESERVED
+else
+  grep -Fq 'UX025_FINANCIAL_SEC001_PROTECTION=GAP' "$PRE_VERIFY_LOG" || {
+    echo 'UX025_N8N_APPLY=FAIL pre_protection_state_unknown' >&2
+    exit 1
+  }
+  PRE_SEC001_PROTECTION=GAP
+  SEC001_REPAIR=APPLIED
+fi
+echo "UX025_PRE_CUTOVER_WORKFLOW=PASS sha256=$PRE_SHA sec001=$PRE_SEC001_PROTECTION"
 
-python3 scripts/ux025-generate-financial-api.py --output "$CANDIDATE"
+# Rollback is generated from accepted SPC source and protected before mutation.
+# Never roll back to the forensic export when that export is unprotected.
+python3 scripts/ux025-generate-financial-api.py --mode spc-secured --output "$ROLLBACK_SECURED"
+python3 scripts/ux025-verify-financial-workflow.py --input "$ROLLBACK_SECURED" --expected spc
+ROLLBACK_SHA="$(sha256sum "$ROLLBACK_SECURED" | awk '{print $1}')"
+echo "UX025_SECURED_ROLLBACK_CANDIDATE=PASS sha256=$ROLLBACK_SHA"
+
+python3 scripts/ux025-generate-financial-api.py --mode ux025 --output "$CANDIDATE"
 python3 scripts/ux025-verify-financial-workflow.py --input "$CANDIDATE" --expected ux025
 CANDIDATE_SHA="$(sha256sum "$CANDIDATE" | awk '{print $1}')"
 echo "UX025_N8N_CANDIDATE=PASS sha256=$CANDIDATE_SHA"
@@ -126,11 +172,11 @@ rollback() {
   trap - ERR
   if [[ "$MUTATED" -eq 1 ]]; then
     echo 'UX025_N8N_ROLLBACK_TRIGGERED=YES' >&2
-    if import_publish "$OLD_PUBLISHED" \
+    if import_publish "$ROLLBACK_SECURED" \
       && n8n_health \
       && export_workflow "$OUTPUT_DIR/financial.rollback.published.json" published \
       && python3 scripts/ux025-verify-financial-workflow.py --input "$OUTPUT_DIR/financial.rollback.published.json" --expected spc; then
-      echo 'UX025_N8N_WORKFLOW_ROLLBACK=PASS' >&2
+      echo 'UX025_N8N_WORKFLOW_ROLLBACK=PASS secured_spc=YES' >&2
     else
       echo 'UX025_N8N_WORKFLOW_ROLLBACK=FAIL' >&2
     fi
@@ -158,12 +204,17 @@ echo "UX025_N8N_CUTOVER=PASS sha256=$POST_SHA"
 {
   echo "HEAD=$HEAD_SHA"
   echo "DB_EVIDENCE_DIR=$DB_EVIDENCE"
+  echo "DB_EVIDENCE_HEAD=$DB_EVIDENCE_HEAD"
   echo "PRE_PUBLISHED_SHA256=$PRE_SHA"
+  echo "PRE_SEC001_PROTECTION=$PRE_SEC001_PROTECTION"
+  echo "SEC001_REPAIR=$SEC001_REPAIR"
+  echo "ROLLBACK_SECURED_SHA256=$ROLLBACK_SHA"
   echo "CANDIDATE_SHA256=$CANDIDATE_SHA"
   echo "POST_PUBLISHED_SHA256=$POST_SHA"
   echo "BACKUP_DIR=$N8N_BACKUP_DIR"
   echo 'PRE_ROUTE_COUNT=30'
   echo 'POST_ROUTE_COUNT=33'
+  echo 'ROLLBACK_CANDIDATE_SEC001=PASS'
   echo 'SEC001_PROTECTION=PASS'
   echo 'TENANCY_AUDIT=PASS'
   echo 'DB_MUTATION=ALREADY_APPLIED_FROM_EVIDENCE'
