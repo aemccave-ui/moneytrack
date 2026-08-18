@@ -128,8 +128,17 @@
   font-weight: 700;
 }
 
+/* UX-025 acceptance: long category directories own their vertical scroll.
+   Keep the toolbar/hint and fixed bottom navigation outside the scroll surface,
+   and reserve a usable touch area across Telegram viewport sizes. */
 .categoryTree {
-  overflow: hidden;
+  max-height: clamp(260px, 44dvh, 520px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
   border: 1px solid rgba(29, 85, 89, .08);
   border-radius: 18px;
   background: rgba(255, 255, 255, .78);
@@ -147,6 +156,10 @@
 
 .categoryTreeRow:first-child {
   border-top: 0;
+}
+
+.categoryTreeRow button {
+  touch-action: pan-y;
 }
 
 .categoryTreeBranch {
