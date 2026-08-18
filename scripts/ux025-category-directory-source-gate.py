@@ -13,8 +13,11 @@ DOMAIN = (ROOT / 'db/domain/UX-025/010_space_category_directory.sql').read_text(
 REORDER = (ROOT / 'db/domain/UX-025/015_space_category_reorder.sql').read_text(encoding='utf-8')
 DISPATCH = (ROOT / 'db/domain/UX-025/020_category_api_dispatch.sql').read_text(encoding='utf-8')
 GENERATOR = ROOT / 'scripts/ux025-generate-financial-api.py'
+VERIFIER = ROOT / 'scripts/ux025-verify-financial-workflow.py'
+N8N_APPLY = ROOT / 'scripts/ux025-n8n-runtime-apply.sh'
 BASE_GENERATOR = ROOT / 'scripts/spc001-generate-financial-api.py'
 DESIGN = (ROOT / 'docs/architecture/UX-025-settings-category-directory.md').read_text(encoding='utf-8')
+N8N_APPLY_TEXT = N8N_APPLY.read_text(encoding='utf-8')
 
 
 def load_module(path: Path, name: str):
@@ -105,6 +108,24 @@ checks['ux025_dispatch_owns_category_crud_methods'] = all(x in DISPATCH for x in
     'category_delete_space_v1',
 ))
 
+checks['ux025_n8n_recovery_never_rolls_back_to_forensic_prestate'] = all(x in N8N_APPLY_TEXT for x in (
+    'financial.before.published.json',
+    'financial.rollback.secured.json',
+    '--mode spc-secured',
+    'import_publish "$ROLLBACK_SECURED"',
+    'ROLLBACK_CANDIDATE_SEC001=PASS',
+    'PRE_SEC001_PROTECTION=',
+)) and 'import_publish "$OLD_PUBLISHED"' not in N8N_APPLY_TEXT
+
+checks['ux025_n8n_db_evidence_reuse_is_fail_closed'] = all(x in N8N_APPLY_TEXT for x in (
+    'git merge-base --is-ancestor "$DB_EVIDENCE_HEAD" "$HEAD_SHA"',
+    'git diff --quiet "$DB_EVIDENCE_HEAD" "$HEAD_SHA"',
+    'db/domain/UX-025',
+    'scripts/ux025-build-db-bundle.py',
+    'scripts/ux025-db-runtime-apply.sh',
+    'db_source_changed_since_evidence',
+))
+
 try:
     base = load_module(BASE_GENERATOR, 'ux025_base_financial_generator')
     ux025 = load_module(GENERATOR, 'ux025_financial_generator')
@@ -171,6 +192,32 @@ except Exception:
     checks['ux025_candidate_all_financial_routes_sec_protected'] = False
     checks['ux025_category_crud_routes_sec_protected'] = False
     checks['ux025_candidate_stays_inactive_in_source'] = False
+
+try:
+    subprocess.run(['bash', '-n', str(N8N_APPLY)], check=True, cwd=ROOT, stdout=subprocess.DEVNULL)
+    subprocess.run([sys.executable, '-m', 'py_compile', str(VERIFIER)], check=True, cwd=ROOT, stdout=subprocess.DEVNULL)
+    with tempfile.TemporaryDirectory(prefix='ux025-sec-recovery-') as tmp:
+        secured = Path(tmp) / 'spc-secured.json'
+        ux_candidate = Path(tmp) / 'ux025.json'
+        subprocess.run(
+            [sys.executable, str(GENERATOR), '--mode', 'spc-secured', '--output', str(secured)],
+            check=True, cwd=ROOT, stdout=subprocess.DEVNULL,
+        )
+        subprocess.run(
+            [sys.executable, str(VERIFIER), '--input', str(secured), '--expected', 'spc'],
+            check=True, cwd=ROOT, stdout=subprocess.DEVNULL,
+        )
+        subprocess.run(
+            [sys.executable, str(GENERATOR), '--mode', 'ux025', '--output', str(ux_candidate)],
+            check=True, cwd=ROOT, stdout=subprocess.DEVNULL,
+        )
+        subprocess.run(
+            [sys.executable, str(VERIFIER), '--input', str(ux_candidate), '--expected', 'ux025'],
+            check=True, cwd=ROOT, stdout=subprocess.DEVNULL,
+        )
+    checks['ux025_secured_recovery_candidate_gate'] = True
+except Exception:
+    checks['ux025_secured_recovery_candidate_gate'] = False
 
 failed = False
 for name, ok in checks.items():
