@@ -110,11 +110,15 @@ export_workflow() {
 import_publish() {
   local file="$1"
   local remote="/tmp/ux025-import-${WORKFLOW_ID}.json"
+  # docker cp writes the container-side file as root on this runtime. Always
+  # clean and normalize that staging path as root before invoking n8n as its
+  # normal container user; otherwise chmod can fail before import starts.
+  docker exec -u 0 "$N8N_CONTAINER" rm -f "$remote" >/dev/null 2>&1 || true
   docker cp "$file" "$N8N_CONTAINER:$remote" >/dev/null
-  docker exec "$N8N_CONTAINER" chmod 0644 "$remote"
+  docker exec -u 0 "$N8N_CONTAINER" chmod 0644 "$remote"
   docker exec "$N8N_CONTAINER" n8n import:workflow --input="$remote" >/dev/null
   docker exec "$N8N_CONTAINER" n8n publish:workflow --id="$WORKFLOW_ID" >/dev/null
-  docker exec "$N8N_CONTAINER" rm -f "$remote" >/dev/null 2>&1 || true
+  docker exec -u 0 "$N8N_CONTAINER" rm -f "$remote" >/dev/null 2>&1 || true
 }
 
 n8n_health() {
