@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +27,8 @@ category_editor = read('miniapp/src/screens/settings/CategoryEditor.jsx')
 category_tree = read('miniapp/src/screens/settings/CategoryTree.jsx')
 category_api = read('miniapp/src/category-directory-api.js')
 workflow = read('.github/workflows/moneytrack-source-gates.yml')
+preview_apply_path = ROOT / 'scripts/ux025-preview-runtime-apply.sh'
+preview_apply = preview_apply_path.read_text(encoding='utf-8')
 
 checks = {
     'ux025_top_level_screen_files_exist': all((ROOT / path).is_file() for path in screen_paths.values()),
@@ -110,8 +113,31 @@ checks = {
         'children.get(id)',
         '!blockedParentIds.has(String(item.id))',
     )),
+    'ux025_preview_apply_is_fail_closed': all(token in preview_apply for token in (
+        'MONEYTRACK_PREVIEW_ROOT:-/var/www/moneytrack-miniapp-preview',
+        '--db-evidence-dir',
+        '--n8n-evidence-dir',
+        'UX025_DB_EVIDENCE=PASS',
+        'UX025_N8N_EVIDENCE=PASS',
+        'git merge-base --is-ancestor "$N8N_EVIDENCE_HEAD" "$HEAD_SHA"',
+        'git diff --quiet "$N8N_EVIDENCE_HEAD" "$HEAD_SHA"',
+        'npm run lint',
+        'npm run build',
+        'preview.before.tgz',
+        'rsync -a --delete "$ROOT/miniapp/dist/" "$PREVIEW_ROOT/"',
+        'UX025_PREVIEW_INDEX_IDENTITY=PASS',
+        'UX025_PREVIEW_ARTIFACT_IDENTITY=PASS',
+        'PRODUCTION_FRONTEND_MUTATION=NONE',
+        'UX025_PREVIEW_APPLY=PASS',
+    )),
     'ux025_gate_is_wired_into_source_ci': 'python3 scripts/ux025-screen-decomposition-source-gate.py' in workflow,
 }
+
+try:
+    subprocess.run(['bash', '-n', str(preview_apply_path)], check=True, cwd=ROOT, stdout=subprocess.DEVNULL)
+    checks['ux025_preview_apply_shell_syntax'] = True
+except Exception:
+    checks['ux025_preview_apply_shell_syntax'] = False
 
 failed = False
 for name, ok in checks.items():
