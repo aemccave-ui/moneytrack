@@ -198,7 +198,8 @@ export_workflow "$POST_PUBLISHED" published
 python3 scripts/ux025-verify-financial-workflow.py --input "$POST_CURRENT" --expected ux025
 python3 scripts/ux025-verify-financial-workflow.py --input "$POST_PUBLISHED" --expected ux025
 python3 scripts/spc001-audit-workflow-tenancy.py --reachable-only "$POST_PUBLISHED" >"$OUTPUT_DIR/tenancy-audit.log"
-grep -F 'SPC001_WORKFLOW_TENANCY_AUDIT=PASS' "$OUTPUT_DIR/tenancy-audit.log" >/dev/null
+grep -Fx 'SPC001_TENANCY_AUDIT=PASS' "$OUTPUT_DIR/tenancy-audit.log" >/dev/null
+echo 'UX025_N8N_TENANCY_AUDIT=PASS'
 POST_SHA="$(sha256sum "$POST_PUBLISHED" | awk '{print $1}')"
 MUTATED=0
 trap - ERR
