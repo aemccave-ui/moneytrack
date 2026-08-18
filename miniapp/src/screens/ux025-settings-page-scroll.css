@@ -1,0 +1,20 @@
+/* UX-025 runtime scroll contract.
+   Telegram vertical swipe handling is disabled globally for gesture safety, so
+   Settings cannot rely on document/body scrolling. Make the entire Settings
+   screen below the 67px Space bar the one vertical scroll surface. The
+   category directory itself remains fully expanded and never owns a nested
+   viewport. */
+.settingsPage {
+  height: calc(100dvh - 67px);
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
+}
+
+.settingsPage .categoryTree {
+  max-height: none;
+}
