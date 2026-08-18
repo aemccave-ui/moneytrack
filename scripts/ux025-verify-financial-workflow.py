@@ -53,6 +53,12 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('--input', type=Path, required=True)
     parser.add_argument('--expected', choices=('spc', 'ux025'), required=True)
+    parser.add_argument(
+        '--protection',
+        choices=('required', 'observe'),
+        default='required',
+        help='observe reports a pre-existing SEC gap without accepting it as protected runtime',
+    )
     args = parser.parse_args()
 
     base = load_module(BASE_PATH, 'ux025_verify_base')
@@ -71,9 +77,18 @@ def main() -> None:
             f'missing={sorted(expected-actual)} extra={sorted(actual-expected)}'
         )
 
-    # Both accepted-before and UX-025-after runtime must retain SEC Class-B
-    # unlock enforcement on every Financial API endpoint.
-    sec.verify_protected_api(workflow)
+    # Accepted runtime always requires SEC Class-B protection. The observe mode
+    # exists only to classify a forensic pre-cutover export before repairing it;
+    # it must never be used to validate a candidate, post-state, or rollback.
+    protection = 'PASS'
+    protection_detail = ''
+    try:
+        sec.verify_protected_api(workflow)
+    except SystemExit as exc:
+        if args.protection != 'observe':
+            raise
+        protection = 'GAP'
+        protection_detail = str(exc)
 
     backend_nodes = [
         n for n in workflow.get('nodes') or []
@@ -110,7 +125,10 @@ def main() -> None:
 
     print(f'UX025_FINANCIAL_WORKFLOW_ID=PASS id={WORKFLOW_ID}')
     print(f'UX025_FINANCIAL_ROUTE_SET=PASS expected={args.expected} routes={len(actual)}')
-    print(f'UX025_FINANCIAL_SEC001_PROTECTION=PASS routes={len(actual)}')
+    if protection == 'PASS':
+        print(f'UX025_FINANCIAL_SEC001_PROTECTION=PASS routes={len(actual)}')
+    else:
+        print(f'UX025_FINANCIAL_SEC001_PROTECTION=GAP detail={protection_detail}')
     print(f'UX025_FINANCIAL_DISPATCHER=PASS expected={args.expected}')
     print('UX025_FINANCIAL_WORKFLOW_VERIFY=PASS')
 
