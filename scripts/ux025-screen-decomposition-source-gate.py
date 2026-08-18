@@ -21,6 +21,7 @@ screen_paths = {
 app = read('miniapp/src/App.jsx')
 main = read('miniapp/src/main.jsx')
 settings = read(screen_paths['settings'])
+settings_css = read('miniapp/src/screens/ux025-screens.css')
 settings_compat = read('miniapp/src/SettingsPortal.jsx')
 category_settings = read('miniapp/src/screens/settings/CategorySettings.jsx')
 category_editor = read('miniapp/src/screens/settings/CategoryEditor.jsx')
@@ -112,6 +113,17 @@ checks = {
         'new Set([String(category.id)])',
         'children.get(id)',
         '!blockedParentIds.has(String(item.id))',
+    )),
+    'ux025_category_directory_owns_vertical_scroll': all(token in settings_css for token in (
+        '.categoryTree {',
+        'max-height: clamp(260px, 44dvh, 520px)',
+        'overflow-x: hidden',
+        'overflow-y: auto',
+        'overscroll-behavior-y: contain',
+        '-webkit-overflow-scrolling: touch',
+        'touch-action: pan-y',
+        'scrollbar-gutter: stable',
+        '.categoryTreeRow button {',
     )),
     'ux025_preview_apply_is_fail_closed': all(token in preview_apply for token in (
         'MONEYTRACK_PREVIEW_ROOT:-/var/www/moneytrack-miniapp-preview',
