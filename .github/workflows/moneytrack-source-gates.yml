@@ -68,8 +68,14 @@ jobs:
       - name: SPC-001 source gate
         run: python3 scripts/spc001-source-gate.py --stage A
 
+      - name: SPC-001 Home operation contract gate
+        run: python3 scripts/spc001-home-operation-contract-gate.py
+
       - name: SPC-001 Python syntax
-        run: python3 -m py_compile scripts/spc001-source-gate.py
+        run: |
+          python3 -m py_compile \
+            scripts/spc001-source-gate.py \
+            scripts/spc001-home-operation-contract-gate.py
 
       - name: Frontend dependencies
         working-directory: miniapp
