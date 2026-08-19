@@ -77,6 +77,9 @@ jobs:
             scripts/spc001-source-gate.py \
             scripts/spc001-home-operation-contract-gate.py
 
+      - name: SPC-001 runtime apply shell syntax
+        run: bash -n scripts/spc001-home-operation-runtime-apply.sh
+
       - name: Frontend dependencies
         working-directory: miniapp
         run: npm ci
