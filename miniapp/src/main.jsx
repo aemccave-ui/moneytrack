@@ -29,16 +29,6 @@ import './quick-actions-runtime.js'
 import './ux022r3-reference-runtime.js'
 
 export function ProtectedApplication() {
-  return (
-    <SpaceGate>
-      <App />
-      <QuickOperationPortal />
-      <SettingsPortal />
-    </SpaceGate>
-  )
-}
-
-export function RefreshableProtectedApplication() {
   const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
@@ -47,13 +37,19 @@ export function RefreshableProtectedApplication() {
     return () => window.removeEventListener('moneytrack:quick-capture-completed', refresh)
   }, [])
 
-  return <ProtectedApplication key={refreshKey} />
+  return (
+    <SpaceGate key={refreshKey}>
+      <App />
+      <QuickOperationPortal />
+      <SettingsPortal />
+    </SpaceGate>
+  )
 }
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <SecurityGate>
-      <RefreshableProtectedApplication />
+      <ProtectedApplication />
     </SecurityGate>
   </StrictMode>,
 )
