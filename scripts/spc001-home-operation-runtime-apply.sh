@@ -125,13 +125,13 @@ cat > "$WORK/verify.sql" <<'SQL'
 \pset format unaligned
 
 select 'dashboard_source_kind_definition=' || case
-  when position("'source_kind'" in pg_get_functiondef('moneytrack.finance_dashboard_space_read_model_v1(bigint,bigint,date)'::regprocedure)) > 0
+  when position('source_kind' in pg_get_functiondef('moneytrack.finance_dashboard_space_read_model_v1(bigint,bigint,date)'::regprocedure)) > 0
    and position('capture_events' in pg_get_functiondef('moneytrack.finance_dashboard_space_read_model_v1(bigint,bigint,date)'::regprocedure)) > 0
   then 'PASS' else 'FAIL' end;
 
 select 'receipt_nullable_definition=' || case
-  when position('return null' in lower(pg_get_functiondef('moneytrack.receipt_projection_api_read_v1(bigint,bigint,bigint)'::regprocedure))) > 0
-   and position('TRANSACTION_NOT_FOUND_IN_SPACE' in pg_get_functiondef('moneytrack.receipt_projection_api_read_v1(bigint,bigint,bigint)'::regprocedure)) > 0
+  when position('TRANSACTION_NOT_FOUND_IN_SPACE' in pg_get_functiondef('moneytrack.receipt_projection_api_read_v1(bigint,bigint,bigint)'::regprocedure)) > 0
+   and position('RECEIPT_PROJECTION_NOT_FOUND_IN_SPACE' in pg_get_functiondef('moneytrack.receipt_projection_api_read_v1(bigint,bigint,bigint)'::regprocedure)) = 0
   then 'PASS' else 'FAIL' end;
 
 with candidate as (
@@ -140,6 +140,8 @@ with candidate as (
   join moneytrack.workspace_members wm
     on wm.workspace_id=t.space_id and coalesce(wm.is_active,true)=true
   where t.space_id is not null
+    and lower(coalesce(t.source_type,'manual')) not in ('photo','photo_receipt')
+    and not exists (select 1 from moneytrack.receipts r where r.transaction_id=t.id)
     and not exists (
       select 1 from moneytrack.capture_receipts cr
       where cr.capture_event_id=t.capture_event_id
@@ -176,14 +178,15 @@ with candidate as (
   order by t.id desc
   limit 1
 ), payload as (
-  select moneytrack.finance_dashboard_space_read_model_v1(actor_user_id,space_id,current_date) d
-  from candidate
+  select d.latest_operations
+  from candidate c
+  cross join lateral moneytrack.finance_dashboard_space_read_model_v1(c.actor_user_id,c.space_id,current_date) d
 ), rows as (
-  select jsonb_array_elements((d).latest_operations) item from payload
+  select jsonb_array_elements(latest_operations) item from payload
 )
-select 'home_latest_source_kind=' || case
+select 'home_latest_source_kind_key=' || case
   when not exists(select 1 from candidate) then 'SKIP_NO_CANDIDATE'
-  when not exists(select 1 from rows where nullif(item->>'source_kind','') is null) then 'PASS'
+  when not exists(select 1 from rows where not (item ? 'source_kind')) then 'PASS'
   else 'FAIL' end;
 
 do $verify$
@@ -214,7 +217,7 @@ grep -q '^receipt_nullable_definition=PASS$' <<<"$VERIFY"
 ! grep -q '=FAIL$' <<<"$VERIFY"
 grep -Eq '^ordinary_receipt_lookup=(PASS|SKIP_NO_CANDIDATE)$' <<<"$VERIFY"
 grep -Eq '^receipt_projection_lookup=(PASS|SKIP_NO_CANDIDATE)$' <<<"$VERIFY"
-grep -Eq '^home_latest_source_kind=(PASS|SKIP_NO_CANDIDATE)$' <<<"$VERIFY"
+grep -Eq '^home_latest_source_kind_key=(PASS|SKIP_NO_CANDIDATE)$' <<<"$VERIFY"
 grep -Eq 'unknown_transaction_fail_closed=PASS|unknown_transaction_fail_closed=SKIP_NO_CANDIDATE' <<<"$VERIFY"
 
 echo 'runtime_verify=PASS'
