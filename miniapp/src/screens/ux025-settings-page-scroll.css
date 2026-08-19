@@ -1,0 +1,26 @@
+/* UX-025 runtime scroll contract.
+   UX-022 intentionally locks html/body/#root and makes .app the vertical
+   scroll surface. Settings therefore owns one full-screen scroll viewport
+   below the Space bar. Its flex children must never shrink to fit that
+   viewport: they must keep their intrinsic height so .settingsPage gets real
+   scrollHeight for both Security and Category management. */
+.settingsPage {
+  height: calc(100dvh - 67px);
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
+}
+
+.settingsPage > .settingsPageHeader,
+.settingsPage > .settingsSectionCard {
+  flex: 0 0 auto;
+  min-height: max-content;
+}
+
+.settingsPage .categoryTree {
+  max-height: none;
+}

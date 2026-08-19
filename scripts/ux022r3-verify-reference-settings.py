@@ -19,7 +19,12 @@ create_sheet = read('miniapp/src/AccountCreateSheet.jsx')
 refs = read('miniapp/src/reference-options.js')
 quick = read('miniapp/src/quick-actions-runtime.js')
 quick_portal = read('miniapp/src/QuickOperationPortal.jsx')
-settings = read('miniapp/src/SettingsPortal.jsx')
+settings = read('miniapp/src/screens/SettingsScreen.jsx')
+settings_compat = read('miniapp/src/SettingsPortal.jsx')
+category_settings = read('miniapp/src/screens/settings/CategorySettings.jsx')
+category_editor = read('miniapp/src/screens/settings/CategoryEditor.jsx')
+category_api = read('miniapp/src/category-directory-api.js')
+app = read('miniapp/src/App.jsx')
 filters = read('miniapp/src/AccountsFilters.jsx')
 runtime = read('miniapp/src/ux022r3-reference-runtime.js')
 api = read('miniapp/src/api.js')
@@ -122,19 +127,36 @@ require(
 )
 require(
     'category_settings_screen_and_api',
-    'SettingsPortal' in main
+    "import SettingsScreen from './screens/SettingsScreen.jsx'" in app
+    and "activeScreen === 'settings'" in app
+    and 'SettingsPortal' in main
+    and 'return null' in settings_compat
+    and 'document.addEventListener' not in settings_compat
+    and 'getTransactionReference' not in settings_compat
+    and 'useEffect' not in settings_compat
     and 'updateCategory' in api
-    and 'updateCategory({' in settings
-    and '<option value="expense">Расход</option>' in settings
-    and '<option value="income">Приход</option>' in settings
+    and "import CategorySettings from './settings/CategorySettings.jsx'" in settings
+    and '<CategorySettings />' in settings
+    and all(x in category_api for x in ('getCategoryDirectory', 'createCategory', 'editCategory', 'reorderCategory', 'deleteCategory'))
+    and '<option value="expense">Расход</option>' in category_editor
+    and '<option value="income">Приход</option>' in category_editor
     and "'api/v1/categories'" in category_workflow
     and 'category_update_v1' in category_workflow,
 )
 require(
     'settings_can_correct_unset_flow_after_backend_capability',
-    "typeof category.editable === 'boolean'" in settings
-    and '!sourceFlow && <option value="">Не задан</option>' in settings
-    and 'flowOf(category) && typeof category.editable' not in settings,
+    "useState(creating ? 'expense' : (category?.flow_type || ''))" in category_editor
+    and '!creating && !category?.flow_type && <option value="">Не задан</option>' in category_editor
+    and "creating ? 'expense'" in category_editor,
+)
+require(
+    'settings_sections_are_collapsed_by_default',
+    'useState(null)' in settings
+    and 'Управление защитой' in settings
+    and 'Управление категориями' in settings
+    and "openSection === 'security'" in settings
+    and "openSection === 'categories'" in settings
+    and 'document.addEventListener' not in settings,
 )
 require(
     'text_and_voice_ingress_starts_with_current_time',

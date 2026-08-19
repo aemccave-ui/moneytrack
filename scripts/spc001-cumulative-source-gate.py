@@ -120,8 +120,17 @@ def main() -> None:
     tx_editor = read("miniapp/src/TransactionEditor.jsx")
     receipt_modal = read("miniapp/src/ReceiptModal.jsx")
     bot_transform = read("scripts/spc001-transform-bot-capture.py") + read("scripts/spc001-transform-bot-inline-capture.py") + read("scripts/spc001-transform-bot-receipt-category.py")
-    quick_transform = read("scripts/spc001-transform-quick-input.py") + read("scripts/spc001-transform-text-processor.py") + read("scripts/spc001-transform-photo-processor.py")
+    photo_transform = read("scripts/spc001-transform-photo-processor.py")
+    quick_transform = read("scripts/spc001-transform-quick-input.py") + read("scripts/spc001-transform-text-processor.py") + photo_transform
     audit = read("scripts/spc001-audit-workflow-tenancy.py") + read("scripts/spc001-runtime-forensic.py") + read("scripts/spc001-runtime-forensic-v3.py")
+
+    create_products_match = re.search(
+        r"CREATE_PRODUCTS_QUERY = r'''(.*?)'''\n\nINSERT_RECEIPT_ITEMS_QUERY",
+        photo_transform,
+        re.S,
+    )
+    require("photo_create_products_query_extractable", create_products_match is not None)
+    create_products_query = create_products_match.group(1) if create_products_match else ""
 
     require("space_is_financial_tenant", contains_all(foundation + extended, ("space_id", "assert_space_member_v1")))
     require("owner_is_admin_not_financial_role", "assert_space_owner_v1" in lifecycle and "owner-only" in lifecycle.lower())
@@ -148,6 +157,24 @@ def main() -> None:
     require("user_erasure_shared_space_safe", "OWNER_DELETION_REQUIRES_TRANSFER" in erase and "MEMBER_ERASURE_SHARED_HISTORY=PASS" in verifier)
 
     require("quick_capture_space_context", contains_all(quick_transform, ("space_id", "capture_source_ref", "capture_create_projection_compat_v1", "capture_receipt_ingest_projection_v1")))
+    require("photo_capture_parser_alias_compatibility", contains_all(photo_transform, (
+        "$('Parse receipt JSON').item.json.total ?? $('Parse receipt JSON').item.json.total_amount",
+        "$('Parse receipt JSON').item.json.merchant || $('Parse receipt JSON').item.json.shop_name || ''",
+        "photo_parser_aliases=total_or_total_amount,merchant_or_shop_name",
+    )))
+    require("photo_capture_item_shape_preserved", (
+        contains_all(create_products_query, (
+            "{{ $json.receipt_id }}::bigint as receipt_id",
+            "r.receipt_item_id",
+            "r.item_name_original",
+            "r.quantity",
+            "r.unit_price",
+            "r.amount",
+            "r.product_id",
+            "r.category_id",
+        ))
+        and "photo_item_shape=receipt_id,receipt_item_id,item_name_original,item_language,quantity,unit_price,amount,product_id,category_id" in photo_transform
+    ))
     require("capture_text_account_hint_space_native", contains_all(capture + quick_transform, ("capture_infer_account_hint_space_v1", "assert_space_member_v1", "Parse transaction JSON1", "account_hint_inference=SPACE_NATIVE")))
     require("bot_capture_space_context", contains_all(bot_transform, ("bot_capture_context_v1", "capture_source_ref", "default_capture_space")))
     require("runtime_workflow_tenancy_audit_source_ready", contains_all(audit, ("financial_user_id_predicate", "SPC001_TENANCY_AUDIT=FAIL", "SPC001_TENANCY_AUDIT=PASS", "MUTATION_POLICY=READ_ONLY_EXPORT_ONLY")))
