@@ -1,4 +1,4 @@
-import { StrictMode } from 'react'
+import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App.jsx'
 import QuickOperationPortal from './QuickOperationPortal.jsx'
@@ -29,8 +29,16 @@ import './quick-actions-runtime.js'
 import './ux022r3-reference-runtime.js'
 
 export function ProtectedApplication() {
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  useEffect(() => {
+    const refresh = () => setRefreshKey((value) => value + 1)
+    window.addEventListener('moneytrack:quick-capture-completed', refresh)
+    return () => window.removeEventListener('moneytrack:quick-capture-completed', refresh)
+  }, [])
+
   return (
-    <SpaceGate>
+    <SpaceGate key={refreshKey}>
       <App />
       <QuickOperationPortal />
       <SettingsPortal />

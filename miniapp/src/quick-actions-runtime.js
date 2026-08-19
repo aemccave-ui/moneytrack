@@ -26,7 +26,8 @@ function status(message = '') {
 
 async function completed() {
   status('Операция добавлена')
-  window.setTimeout(() => window.location.reload(), 450)
+  window.dispatchEvent(new CustomEvent('moneytrack:quick-capture-completed'))
+  window.setTimeout(() => status(''), 1200)
 }
 
 async function run(task, pendingLabel) {

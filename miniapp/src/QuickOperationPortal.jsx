@@ -19,7 +19,7 @@ export default function QuickOperationPortal() {
       onClose={() => setOpen(false)}
       onSaved={() => {
         setOpen(false)
-        window.setTimeout(() => window.location.reload(), 0)
+        window.dispatchEvent(new CustomEvent('moneytrack:quick-capture-completed'))
       }}
     />
   )
